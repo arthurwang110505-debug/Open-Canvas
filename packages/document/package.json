@@ -1,0 +1,23 @@
+{
+  "name": "@opencanvas/document",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCanvas document model: schemas, types, factories, serialization and migrations.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "nanoid": "^6.0.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.4"
+  }
+}
