@@ -41,11 +41,29 @@ const INSTAGRAM_POST_PRESET: CanvasPreset = {
 /** Common starting sizes offered when creating a blank document. */
 export const CANVAS_PRESETS: readonly CanvasPreset[] = [
   INSTAGRAM_POST_PRESET,
-  { id: 'instagram-story', label: 'Instagram story', category: 'social', width: 1080, height: 1920 },
+  {
+    id: 'instagram-story',
+    label: 'Instagram story',
+    category: 'social',
+    width: 1080,
+    height: 1920,
+  },
   { id: 'facebook-post', label: 'Facebook post', category: 'social', width: 1200, height: 630 },
   { id: 'x-post', label: 'X / Twitter post', category: 'social', width: 1600, height: 900 },
-  { id: 'youtube-thumbnail', label: 'YouTube thumbnail', category: 'video', width: 1280, height: 720 },
-  { id: 'presentation-16-9', label: 'Presentation (16:9)', category: 'presentation', width: 1920, height: 1080 },
+  {
+    id: 'youtube-thumbnail',
+    label: 'YouTube thumbnail',
+    category: 'video',
+    width: 1280,
+    height: 720,
+  },
+  {
+    id: 'presentation-16-9',
+    label: 'Presentation (16:9)',
+    category: 'presentation',
+    width: 1920,
+    height: 1080,
+  },
   { id: 'poster-a4', label: 'Poster A4 (300 dpi)', category: 'print', width: 2480, height: 3508 },
   { id: 'business-card', label: 'Business card', category: 'print', width: 1050, height: 600 },
 ];

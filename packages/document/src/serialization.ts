@@ -96,7 +96,10 @@ export interface SerializeOptions {
 }
 
 /** Serializes a document to its canonical JSON representation. */
-export function serializeDocument(document: DesignDocument, options: SerializeOptions = {}): string {
+export function serializeDocument(
+  document: DesignDocument,
+  options: SerializeOptions = {},
+): string {
   return JSON.stringify(document, null, options.pretty ? 2 : undefined);
 }
 

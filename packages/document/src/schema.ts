@@ -15,7 +15,10 @@ export const IdSchema = z
 /** `#rrggbb` or `#rrggbbaa`. Kept deliberately simple so every exporter can consume it. */
 export const HexColorSchema = z
   .string()
-  .regex(/^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/, 'Expected a hex color such as #1a2b3c or #1a2b3cff');
+  .regex(
+    /^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/,
+    'Expected a hex color such as #1a2b3c or #1a2b3cff',
+  );
 
 export const SolidFillSchema = z.object({
   type: z.literal('solid'),
