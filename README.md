@@ -3,9 +3,10 @@
 OpenCanvas is an open-source, self-hostable visual design studio — an alternative to Canva for
 posters, social media graphics, presentation covers and other visual content.
 
-> **Status: Milestone 1 (Foundation) — early development.**
-> The editor shell works end to end for shapes and text with undo/redo and keyboard shortcuts.
-> Persistence, export, templates, AI assistance and cloud sync are not implemented yet.
+> **Status: Milestone 2 (Core editor) — early development.**
+> The editor works end to end for shapes, text and uploaded images (drag-and-drop, cover/fill,
+> snapping guides) with undo/redo and keyboard shortcuts. Uploads live in memory for the session:
+> persistence, export, templates, AI assistance and cloud sync are not implemented yet.
 > See [docs/roadmap.md](docs/roadmap.md) for what exists today and what comes next.
 
 ## Principles
@@ -46,11 +47,12 @@ pnpm check        # all of the above plus formatting
 | `packages/document`      | Canonical document model: Zod schemas, factories, serialization, explicit schema migrations.       |
 | `packages/editor-core`   | Editing engine: command vocabulary, pure reducer, undo/redo history, selection, zoom helpers.      |
 | `packages/canvas-fabric` | Fabric.js 7 adapter: renders a page, syncs selection/ordering, translates interactions to patches. |
+| `packages/storage`       | Asset blob stores, image import (sniffing, decoding, limits) and safe asset URL resolution.        |
 | `packages/ui`            | Shared accessible UI primitives (shadcn/ui-style, Tailwind CSS v4 design tokens).                  |
 | `docs`                   | Architecture notes and roadmap.                                                                    |
 
-Planned (not yet present): `apps/api`, `packages/storage`, `packages/export`, `packages/ai-core`,
-`templates`, `tests` (Playwright).
+Planned (not yet present): `apps/api`, `packages/export`, `packages/ai-core`, `templates`,
+`tests` (Playwright).
 
 ## Architecture in one paragraph
 

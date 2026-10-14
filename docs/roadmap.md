@@ -11,14 +11,16 @@ its acceptance tests pass in CI.
 - [x] Fabric.js 7 adapter with pure geometry mapping and loop-safe reconciliation
 - [x] Editor shell: top bar, insert sidebar, canvas workspace, properties panel, shortcuts
 - [x] First working objects: rectangles, ellipses and text (move, resize, rotate, edit, delete)
-- [ ] Alignment guides and snapping _(moved to Milestone 2 with multi-select polish)_
+- [x] Alignment guides and snapping _(delivered in Milestone 2)_
 
 ## Milestone 2 — Core editor
 
-- [ ] Image elements, uploads and asset references
+- [x] Image elements, uploads and asset references (document assets map, `image` element with
+      cover/fill, `@opencanvas/storage` import pipeline, Uploads panel, drag-and-drop)
+- [x] Alignment guides and snapping (Fabric `AligningGuidelines`, toggle in the top bar)
 - [ ] Group / ungroup, alignment and distribution tools
-- [ ] Alignment guides and snapping
 - [ ] Layers panel (ordering, lock, visibility, rename)
+- [ ] Image polish: `contain` fit, manual crop, replace image, IndexedDB-backed blobs
 - [ ] Text polish: font registry, loading states, rich defaults
 
 ## Milestone 3 — Projects and export

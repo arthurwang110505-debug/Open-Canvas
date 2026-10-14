@@ -8,7 +8,8 @@ milestones build on. It is intentionally concrete: file names, types and invaria
 ```
 apps/web ──► packages/editor-core ──► packages/document
    │                                        ▲
-   ├────────► packages/canvas-fabric ───────┘
+   ├────────► packages/canvas-fabric ───────┤
+   ├────────► packages/storage ─────────────┘
    └────────► packages/ui
 ```
 
@@ -17,7 +18,9 @@ apps/web ──► packages/editor-core ──► packages/document
   Node, tests, the future API server and AI tooling.
 - `packages/canvas-fabric` depends on `document` and `fabric`. It never imports `editor-core`:
   the adapter communicates through callbacks and a `render(scene)` method.
-- `apps/web` is the only place where React, the store and the adapter meet.
+- `packages/storage` depends only on `document`: asset blob stores, image import and asset URL
+  resolution (project persistence joins it in Milestone 3).
+- `apps/web` is the only place where React, the store, the adapter and storage meet.
 
 Internal packages are consumed as TypeScript source (`exports` → `src/index.ts`); Vite, Vitest
 and `tsc` resolve them through the pnpm workspace. A compiled build step will be added when a
@@ -26,9 +29,15 @@ Node consumer (`apps/api`) needs it.
 ## 2. Document model (`packages/document`)
 
 - **Schema version** `1` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
-- **Structure**: `DesignDocument { id, name, size, pages[], metadata }` →
+- **Structure**: `DesignDocument { id, name, size, pages[], assets, metadata }` →
   `Page { id, background, elements[] }` → `DesignElement` (discriminated union on `type`:
-  `rect`, `ellipse`, `text`). Z-order is array order (index 0 = back).
+  `rect`, `ellipse`, `text`, `image`). Z-order is array order (index 0 = back).
+- **Assets**: `assets` is a record of `ImageAsset { id, kind, name?, mimeType, width, height,
+byteSize?, source, createdAt }`. It carries **metadata only** — bytes live in an asset store
+  keyed by id (`source: { type: 'local' }`) or behind an http(s) URL (`source: { type: 'url' }`).
+  `image` elements reference assets by `assetId` and choose a `fit` (`cover` crops to fill the
+  box, `fill` stretches). A document-level check rejects images whose asset is not registered,
+  so a document can never reference bytes it does not know about.
 - **Geometry convention**: `x`/`y` is the top-left corner of the un-rotated element; `rotation`
   (degrees, clockwise) is applied around that corner. This equals SVG
   `translate(x y) rotate(r)` and is what exporters will implement.
@@ -77,6 +86,17 @@ with structural sharing (untouched pages/elements keep identity; no-ops return t
 - **Dirty tracking** by saved-snapshot identity, so undoing back to the saved state reports clean.
 - `lastError` surfaces rejected commands to the UI instead of failing silently.
 
+### Asset commands
+
+- `asset.register { asset }` validates the record with `AssetSchema`, rejects duplicate ids and
+  enforces `LIMITS.maxAssetsPerDocument`. `asset.remove { assetId }` is rejected while any element
+  still references the asset.
+- `element.add` parses the element with `ElementSchema` (producers include drops and, later, AI)
+  and `element.add`/`element.update(Many)` fail with `asset-not-found` when an image points at an
+  unregistered asset.
+- Inserting an upload dispatches `asset.register` and `element.add` with a shared `mergeKey`, so
+  one Undo removes both.
+
 ## 4. Fabric adapter (`packages/canvas-fabric`)
 
 Fabric.js 7 positions objects by **center** (`left`/`top`, `originX/Y` are deprecated) and counts
@@ -98,19 +118,57 @@ Fabric.js 7 positions objects by **center** (`left`/`top`, `originX/Y` are depre
 - Zoom/pan: `setZoom(zoom, focalPoint)`, `panBy`, `fitToViewport(padding)`; `Ctrl/⌘ + wheel`
   zooms at the pointer, plain wheel pans.
 - `dispose()` cancels pending renders so teardown is synchronous (React StrictMode safe).
+- **Images**: an `image` element becomes a `FabricImage`. `computeImageFit(box, natural, fit)`
+  turns `cover`/`fill` into Fabric's crop window (`cropX/Y`, `width/height`) plus `scaleX/Y`;
+  the drawn size always equals the element box, so `geometryFromTransform` needs no special
+  case. Bitmaps load asynchronously through two injectable functions passed in the options:
+  `resolveAssetUrl(asset)` (object URL or http(s) URL) and `loadImage(url, { signal })`
+  (defaults to Fabric's loader with anonymous CORS so exports stay untainted). While loading, a
+  placeholder bitmap is stretched over the box so the element is immediately selectable; on
+  failure an error placeholder stays and `onAssetError(elementId, assetId, { code })` fires
+  (`asset-missing` | `unavailable` | `load-failed`). Loads are aborted when the element
+  disappears or the adapter is disposed, and a failed asset is not retried until the element
+  points at a different asset.
+- **Snapping**: `setSnapping(enabled)` installs Fabric's `AligningGuidelines` extension
+  (alignment to other objects and to the page rect, which is a regular Fabric object at index 0).
+  `fabric/extensions` imports `westures` without declaring it, so `canvas-fabric` lists it as a
+  dependency explicitly.
+- `clientToPage(clientX, clientY)` inverts the viewport transform for drag-and-drop placement.
 
 Unit tests run real Fabric classes in jsdom with a stubbed 2D context
-(`test/setup-canvas.ts`); pixel output is left to browser E2E tests.
+(`test/setup-canvas.ts`); image tests inject a loader that returns sized `<canvas>` elements
+because jsdom never fires `<img>` load events. Pixel output is left to browser E2E tests.
+
+## 4a. Storage (`packages/storage`)
+
+- `AssetBlobStore { put, get, has, delete, keys }` is the only storage contract the editor
+  knows. `MemoryAssetBlobStore` backs the current session; a Dexie/IndexedDB implementation
+  arrives with project persistence in Milestone 3.
+- `importImageFile(file, { maxBytes, allowedTypes, decode })` returns a `Result`: it enforces the
+  size cap, sniffs the real format from the bytes (PNG/JPEG/GIF/WebP magic numbers — `File.type`
+  is never trusted), decodes to learn the pixel size (`createImageBitmap`, `<img>` fallback,
+  injectable for tests) and checks `LIMITS.maxAssetDimension`.
+- `ObjectUrlCache` hands out one object URL per asset, shares in-flight lookups and revokes on
+  release; `createAssetResolver` maps `local` assets through it and allows `url` assets only
+  over http(s) (`isSafeAssetUrl` rejects `javascript:`, `data:`, `blob:`, `file:`).
 
 ## 5. Web app (`apps/web`)
 
-- `EditorProvider` creates one store + one `CanvasController` per document.
+- `EditorProvider` creates one store, one `CanvasController` and one notification store per
+  document. `AssetProvider` (outside it) owns the blob store, object URL cache, resolver and
+  decoder; tests inject deterministic implementations through `EditorPage`'s `assetServices`.
 - `CanvasStage` mounts the adapter, subscribes to the store (`document`, `selectedIds`,
-  `activePageId`) and re-renders the scene; adapter callbacks dispatch commands.
-- `actions.ts` (`useEditorActions`) is the single place UI code turns intents into commands.
-- `TopBar` (rename, undo/redo, zoom/fit, change status), `Sidebar` (Shapes, Text, Background),
-  `PropertiesPanel` (layout, fill & stroke, typography, arrange; page size when nothing is
-  selected), `useKeyboardShortcuts`, `ErrorToast` for rejected commands.
+  `activePageId`) and re-renders the scene; adapter callbacks dispatch commands. It is also the
+  drop target: files dropped on the canvas are imported and centered on the drop point
+  (`controller.clientToPage`).
+- `actions.ts` (`useEditorActions`) is the single place UI code turns intents into commands;
+  `assets/useImageImport.ts` owns the upload flow (validate → store bytes → register → add).
+- `TopBar` (rename, undo/redo, change status, snapping toggle, zoom/fit), `Sidebar` (Shapes,
+  Text, Uploads, Background), `PropertiesPanel` (layout, fill & stroke, typography, crop & fit
+  for images, arrange; page size when nothing is selected), `useKeyboardShortcuts`,
+  `ErrorToast` for rejected commands and application failures (import, asset loading).
+- Removing an upload only drops the asset record; its bytes stay in the session store so Undo
+  can restore it. Unreferenced blobs are pruned when projects are saved (Milestone 3).
 - Form fields commit validated values (clamped to schema limits) and follow external changes
   unless focused.
 
@@ -138,9 +196,10 @@ Unit tests run real Fabric classes in jsdom with a stubbed 2D context
 
 ## 8. Extension points reserved for later milestones
 
-- `assets` map on the document + `image` element (Milestone 2).
-- `packages/storage`: `ProjectRepository` interface over Dexie/IndexedDB and a remote
-  implementation; autosave subscribes to the store's `dirty` flag (Milestone 3).
+- `packages/storage`: `ProjectRepository` interface over Dexie/IndexedDB (documents + asset
+  blobs) and a remote implementation; autosave subscribes to the store's `dirty` flag
+  (Milestone 3). `contain` fit and manual crop offsets for images extend `ImageElement`
+  additively.
 - `packages/export`: renderers from the document model to SVG/PNG/PDF (Milestone 3).
 - `packages/ai-core`: structured generation validated with `DocumentSchema`/`ElementSchema`,
   applied through `element.add`/`element.update` so AI edits are undoable (Milestone 4).
