@@ -215,6 +215,14 @@ describe('FabricCanvasAdapter', () => {
     expect(adapter.getZoom()).toBe(8);
   });
 
+  it('maps client coordinates to page coordinates through zoom and pan', () => {
+    adapter.render({ page: makePage([]), size, selectedIds: [], assets: {} });
+    adapter.getFabricCanvas().setViewportTransform([2, 0, 0, 2, 100, 50]);
+    // jsdom reports a 0x0 box at the origin for the canvas element.
+    expect(adapter.clientToPage(100, 50)).toEqual({ x: 0, y: 0 });
+    expect(adapter.clientToPage(300, 250)).toEqual({ x: 100, y: 100 });
+  });
+
   it('fits the page into the viewport with padding', () => {
     adapter.render({ page: makePage([]), size, selectedIds: [], assets: {} });
     adapter.fitToViewport(40);

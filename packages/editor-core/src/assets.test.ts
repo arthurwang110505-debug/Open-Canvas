@@ -67,6 +67,20 @@ describe('asset commands', () => {
     expect(result.error.message).toContain('width');
   });
 
+  it('rejects structurally invalid elements on add (e.g. NaN coordinates from a bad drop)', () => {
+    const { doc, pageId } = fixture();
+    const result = applyCommand(
+      doc,
+      { type: 'element.add', pageId, element: createRectElement({ id: 'bad', x: Number.NaN }) },
+      clock,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('invalid-command');
+    expect(result.error.message).toContain('x');
+    expect(doc.pages[0]?.elements).toHaveLength(1);
+  });
+
   it('rejects image elements whose asset is not registered', () => {
     const { doc, pageId } = fixture();
     const result = applyCommand(
@@ -216,16 +230,14 @@ describe('store integration', () => {
       true,
     );
     expect(
-      store
-        .getState()
-        .dispatch(
-          {
-            type: 'element.add',
-            pageId,
-            element: createImageElement({ id: 'img', assetId: 'asset_1' }),
-          },
-          { mergeKey },
-        ).ok,
+      store.getState().dispatch(
+        {
+          type: 'element.add',
+          pageId,
+          element: createImageElement({ id: 'img', assetId: 'asset_1' }),
+        },
+        { mergeKey },
+      ).ok,
     ).toBe(true);
     expect(store.getState().selectedIds).toEqual(['img']);
     expect(store.getState().past).toHaveLength(1);

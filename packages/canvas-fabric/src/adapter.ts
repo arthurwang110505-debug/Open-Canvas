@@ -314,6 +314,17 @@ export class FabricCanvasAdapter {
     return active instanceof Textbox && active.isEditing;
   }
 
+  /**
+   * Converts a point in CSS pixels relative to the browser viewport (e.g. `clientX/Y` of a
+   * drop event) into page coordinates, taking zoom and pan into account.
+   */
+  clientToPage(clientX: number, clientY: number): { x: number; y: number } {
+    const bounds = this.canvas.getElement().getBoundingClientRect();
+    const local = new Point(clientX - bounds.left, clientY - bounds.top);
+    const page = local.transform(util.invertTransform(this.canvas.viewportTransform));
+    return { x: roundTo(page.x), y: roundTo(page.y) };
+  }
+
   /** Toggles alignment guides and snapping to other objects and the page edges/center. */
   setSnapping(enabled: boolean): void {
     if (this.disposed) return;

@@ -116,14 +116,34 @@ function applyToPage(
           command: command.type,
         });
       }
-      const assetError = checkAssetReference(command.element, context, command.type);
+      // Elements arrive from many producers (UI, drops, AI); never trust them unchecked.
+      const parsed = ElementSchema.safeParse(command.element);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return err({
+          code: 'invalid-command',
+          message: issue
+            ? `Invalid element "${issue.path.map(String).join('.')}": ${issue.message}`
+            : 'The element is invalid.',
+          command: command.type,
+        });
+      }
+      const element = parsed.data;
+      const assetError = checkAssetReference(element, context, command.type);
       if (assetError) return err(assetError);
+      if (page.elements.length >= LIMITS.maxElementsPerPage) {
+        return err({
+          code: 'invalid-command',
+          message: `A page may hold at most ${LIMITS.maxElementsPerPage} elements.`,
+          command: command.type,
+        });
+      }
       const elements = page.elements.slice();
       const index =
         command.index === undefined
           ? elements.length
           : Math.max(0, Math.min(elements.length, command.index));
-      elements.splice(index, 0, command.element);
+      elements.splice(index, 0, element);
       return ok({ ...page, elements });
     }
 
