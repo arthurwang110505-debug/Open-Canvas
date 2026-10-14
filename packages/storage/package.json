@@ -1,0 +1,22 @@
+{
+  "name": "@opencanvas/storage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCanvas persistence primitives: asset blob stores, image import and asset URL resolution.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@opencanvas/document": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.4"
+  }
+}
