@@ -20,7 +20,22 @@ export const LIMITS = {
   maxStrokeWidth: 1_000,
   maxFontSize: 2_000,
   minFontSize: 1,
+  /** Largest raster asset edge we accept (decoders and GPUs struggle beyond this). */
+  maxAssetDimension: 32_768,
+  /** Upload size cap for a single image asset. */
+  maxAssetBytes: 25 * 1024 * 1024,
+  maxAssetsPerDocument: 500,
+  maxUrlLength: 2_048,
 } as const;
+
+/** Raster formats every supported browser can decode and draw to a canvas. */
+export const SUPPORTED_IMAGE_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+] as const;
+export type SupportedImageMimeType = (typeof SUPPORTED_IMAGE_MIME_TYPES)[number];
 
 export interface CanvasPreset {
   id: string;

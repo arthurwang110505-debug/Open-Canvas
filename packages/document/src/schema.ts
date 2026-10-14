@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { CURRENT_SCHEMA_VERSION, LIMITS } from './constants';
+import { CURRENT_SCHEMA_VERSION, LIMITS, SUPPORTED_IMAGE_MIME_TYPES } from './constants';
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -103,11 +103,57 @@ export const TextElementSchema = ElementBaseSchema.extend({
   color: HexColorSchema,
 });
 
+export const ImageFitSchema = z.enum(['cover', 'fill']);
+
+/**
+ * Images reference an asset record (see `ImageAssetSchema`); the bytes themselves live in an
+ * asset store, never inside the document JSON.
+ */
+export const ImageElementSchema = ElementBaseSchema.extend({
+  type: z.literal('image'),
+  assetId: IdSchema,
+  /** `cover` crops to fill the box (default); `fill` stretches to the box. */
+  fit: ImageFitSchema.default('cover'),
+});
+
 export const ElementSchema = z.discriminatedUnion('type', [
   RectElementSchema,
   EllipseElementSchema,
   TextElementSchema,
+  ImageElementSchema,
 ]);
+
+// ---------------------------------------------------------------------------
+// Assets
+// ---------------------------------------------------------------------------
+
+/** Bytes are stored by the application (IndexedDB, cloud) under the asset id. */
+export const LocalAssetSourceSchema = z.object({ type: z.literal('local') });
+
+/** Bytes are fetched from a URL (templates shipped with the app, cloud storage). */
+export const UrlAssetSourceSchema = z.object({
+  type: z.literal('url'),
+  url: z.string().min(1).max(LIMITS.maxUrlLength),
+});
+
+export const AssetSourceSchema = z.discriminatedUnion('type', [
+  LocalAssetSourceSchema,
+  UrlAssetSourceSchema,
+]);
+
+export const ImageAssetSchema = z.object({
+  id: IdSchema,
+  kind: z.literal('image'),
+  name: z.string().max(LIMITS.maxNameLength).optional(),
+  mimeType: z.enum(SUPPORTED_IMAGE_MIME_TYPES),
+  width: z.number().int().min(1).max(LIMITS.maxAssetDimension),
+  height: z.number().int().min(1).max(LIMITS.maxAssetDimension),
+  byteSize: z.number().int().min(0).max(LIMITS.maxAssetBytes).optional(),
+  source: AssetSourceSchema,
+  createdAt: z.iso.datetime(),
+});
+
+export const AssetSchema = ImageAssetSchema;
 
 // ---------------------------------------------------------------------------
 // Pages & document
@@ -140,6 +186,16 @@ export const DocumentSchema = z
     name: z.string().min(1).max(LIMITS.maxNameLength),
     size: DocumentSizeSchema,
     pages: z.array(PageSchema).min(1).max(LIMITS.maxPages),
+    /** Asset records keyed by asset id. Elements reference assets by id. */
+    assets: z
+      .record(IdSchema, AssetSchema)
+      .default({})
+      .refine((assets) => Object.keys(assets).length <= LIMITS.maxAssetsPerDocument, {
+        message: `A document may reference at most ${LIMITS.maxAssetsPerDocument} assets`,
+      })
+      .refine((assets) => Object.entries(assets).every(([key, asset]) => key === asset.id), {
+        message: 'Asset record keys must match the asset id',
+      }),
     metadata: DocumentMetadataSchema,
   })
   .superRefine((doc, ctx) => {
@@ -163,6 +219,13 @@ export const DocumentSchema = z
           });
         }
         elementIds.add(element.id);
+        if (element.type === 'image' && !(element.assetId in doc.assets)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['pages', pageIndex, 'elements', elementIndex, 'assetId'],
+            message: `Image references unknown asset "${element.assetId}"`,
+          });
+        }
       });
     });
   });
@@ -182,8 +245,14 @@ export type FontStyle = z.infer<typeof FontStyleSchema>;
 export type RectElement = z.infer<typeof RectElementSchema>;
 export type EllipseElement = z.infer<typeof EllipseElementSchema>;
 export type TextElement = z.infer<typeof TextElementSchema>;
+export type ImageElement = z.infer<typeof ImageElementSchema>;
+export type ImageFit = z.infer<typeof ImageFitSchema>;
 export type DesignElement = z.infer<typeof ElementSchema>;
 export type ElementType = DesignElement['type'];
+
+export type AssetSource = z.infer<typeof AssetSourceSchema>;
+export type ImageAsset = z.infer<typeof ImageAssetSchema>;
+export type Asset = z.infer<typeof AssetSchema>;
 
 export type Page = z.infer<typeof PageSchema>;
 export type DocumentSize = z.infer<typeof DocumentSizeSchema>;

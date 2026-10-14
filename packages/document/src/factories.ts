@@ -4,6 +4,8 @@ import type {
   DesignDocument,
   EllipseElement,
   Fill,
+  ImageAsset,
+  ImageElement,
   Page,
   RectElement,
   TextElement,
@@ -41,6 +43,7 @@ export function createBlankDocument(options: CreateDocumentOptions = {}): Design
       height: options.height ?? DEFAULT_PRESET.height,
     },
     pages: [createPage({ background: options.background })],
+    assets: {},
     metadata: {
       createdAt: now,
       updatedAt: now,
@@ -107,5 +110,42 @@ export function createTextElement(overrides: Partial<Omit<TextElement, 'type'>> 
     letterSpacing: overrides.letterSpacing ?? 0,
     underline: overrides.underline ?? false,
     color: overrides.color ?? '#111827',
+  };
+}
+
+export function createImageElement(
+  overrides: Partial<Omit<ImageElement, 'type'>> & Pick<ImageElement, 'assetId'>,
+): ImageElement {
+  return {
+    ...baseDefaults(overrides),
+    type: 'image',
+    ...(overrides.name !== undefined ? { name: overrides.name } : {}),
+    assetId: overrides.assetId,
+    fit: overrides.fit ?? 'cover',
+  };
+}
+
+export interface CreateImageAssetOptions {
+  id?: string;
+  name?: string;
+  mimeType: ImageAsset['mimeType'];
+  width: number;
+  height: number;
+  byteSize?: number;
+  source?: ImageAsset['source'];
+  now?: Date;
+}
+
+export function createImageAsset(options: CreateImageAssetOptions): ImageAsset {
+  return {
+    id: options.id ?? generateId('asset'),
+    kind: 'image',
+    ...(options.name !== undefined ? { name: options.name } : {}),
+    mimeType: options.mimeType,
+    width: options.width,
+    height: options.height,
+    ...(options.byteSize !== undefined ? { byteSize: options.byteSize } : {}),
+    source: options.source ?? { type: 'local' },
+    createdAt: (options.now ?? new Date()).toISOString(),
   };
 }

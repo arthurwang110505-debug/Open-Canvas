@@ -1,7 +1,9 @@
 import type {
+  Asset,
   DesignElement,
   EllipseElement,
   Fill,
+  ImageElement,
   RectElement,
   TextElement,
 } from '@opencanvas/document';
@@ -13,7 +15,10 @@ import type {
  */
 type EditableProps<T> = Omit<T, 'id' | 'type'>;
 export type ElementPatch = Partial<
-  EditableProps<RectElement> & EditableProps<EllipseElement> & EditableProps<TextElement>
+  EditableProps<RectElement> &
+    EditableProps<EllipseElement> &
+    EditableProps<TextElement> &
+    EditableProps<ImageElement>
 >;
 
 export type ReorderTarget = 'front' | 'back' | 'forward' | 'backward' | { index: number };
@@ -27,6 +32,13 @@ export type EditorCommand =
   | { type: 'document.rename'; name: string }
   | { type: 'document.resize'; width: number; height: number }
   | { type: 'page.setBackground'; pageId: string; background: Fill }
+  /**
+   * Adds an asset record to the document. Bytes live in an asset store; the record only
+   * carries metadata. Image elements may reference the asset once it is registered.
+   */
+  | { type: 'asset.register'; asset: Asset }
+  /** Removes an asset record. Rejected while any element still references it. */
+  | { type: 'asset.remove'; assetId: string }
   | { type: 'element.add'; pageId: string; element: DesignElement; index?: number }
   | { type: 'element.update'; pageId: string; elementId: string; patch: ElementPatch }
   | {
@@ -49,7 +61,12 @@ export type EditorCommand =
 export type EditorCommandType = EditorCommand['type'];
 
 export interface CommandError {
-  code: 'page-not-found' | 'element-not-found' | 'invalid-result' | 'invalid-command';
+  code:
+    | 'page-not-found'
+    | 'element-not-found'
+    | 'asset-not-found'
+    | 'invalid-result'
+    | 'invalid-command';
   message: string;
   command: EditorCommandType;
 }

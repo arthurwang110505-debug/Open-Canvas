@@ -1,6 +1,9 @@
 import {
+  AssetSchema,
   DocumentSchema,
   ElementSchema,
+  LIMITS,
+  collectReferencedAssetIds,
   err,
   findElementIndex,
   generateId,
@@ -20,11 +23,16 @@ export interface ReducerOptions {
 
 type Outcome = Result<DesignDocument, CommandError>;
 
+/** Read-only view of the document that page-level commands may consult. */
+interface PageContext {
+  assets: DesignDocument['assets'];
+}
+
 function withPage(
   document: DesignDocument,
   pageId: string,
   commandType: EditorCommand['type'],
-  update: (page: Page) => Result<Page, CommandError>,
+  update: (page: Page, context: PageContext) => Result<Page, CommandError>,
 ): Outcome {
   const index = document.pages.findIndex((page) => page.id === pageId);
   const page = document.pages[index];
@@ -35,7 +43,7 @@ function withPage(
       command: commandType,
     });
   }
-  const updated = update(page);
+  const updated = update(page, { assets: document.assets });
   if (!updated.ok) return updated;
   // No-op page updates must not produce a new document (and thus a new history entry).
   if (updated.value === page) return ok(document);
@@ -44,9 +52,24 @@ function withPage(
   return ok({ ...document, pages });
 }
 
+/** Image elements may only point at registered assets; other types never carry `assetId`. */
+function checkAssetReference(
+  element: DesignElement,
+  context: PageContext,
+  commandType: EditorCommand['type'],
+): CommandError | null {
+  if (element.type !== 'image' || element.assetId in context.assets) return null;
+  return {
+    code: 'asset-not-found',
+    message: `Asset "${element.assetId}" is not registered in this document.`,
+    command: commandType,
+  };
+}
+
 function patchElement(
   element: DesignElement,
   patch: ElementPatch,
+  context: PageContext,
   commandType: EditorCommand['type'],
 ): Result<DesignElement, CommandError> {
   // Identity is never patchable, even if a caller tries.
@@ -62,6 +85,8 @@ function patchElement(
       command: commandType,
     });
   }
+  const assetError = checkAssetReference(parsed.data, context, commandType);
+  if (assetError) return err(assetError);
   return ok(parsed.data);
 }
 
@@ -74,7 +99,11 @@ function resolveIndex(current: number, length: number, to: ReorderTarget): numbe
   return Math.max(0, Math.min(last, Math.trunc(to.index)));
 }
 
-function applyToPage(page: Page, command: EditorCommand): Result<Page, CommandError> {
+function applyToPage(
+  page: Page,
+  command: EditorCommand,
+  context: PageContext,
+): Result<Page, CommandError> {
   switch (command.type) {
     case 'page.setBackground':
       return ok({ ...page, background: command.background });
@@ -87,6 +116,8 @@ function applyToPage(page: Page, command: EditorCommand): Result<Page, CommandEr
           command: command.type,
         });
       }
+      const assetError = checkAssetReference(command.element, context, command.type);
+      if (assetError) return err(assetError);
       const elements = page.elements.slice();
       const index =
         command.index === undefined
@@ -97,11 +128,15 @@ function applyToPage(page: Page, command: EditorCommand): Result<Page, CommandEr
     }
 
     case 'element.update':
-      return applyToPage(page, {
-        type: 'element.updateMany',
-        pageId: command.pageId,
-        updates: [{ elementId: command.elementId, patch: command.patch }],
-      });
+      return applyToPage(
+        page,
+        {
+          type: 'element.updateMany',
+          pageId: command.pageId,
+          updates: [{ elementId: command.elementId, patch: command.patch }],
+        },
+        context,
+      );
 
     case 'element.updateMany': {
       const elements = page.elements.slice();
@@ -115,7 +150,7 @@ function applyToPage(page: Page, command: EditorCommand): Result<Page, CommandEr
             command: command.type,
           });
         }
-        const patched = patchElement(element, patch, command.type);
+        const patched = patchElement(element, patch, context, command.type);
         if (!patched.ok) return patched;
         elements[index] = patched.value;
       }
@@ -178,6 +213,8 @@ function applyToPage(page: Page, command: EditorCommand): Result<Page, CommandEr
 
     case 'document.rename':
     case 'document.resize':
+    case 'asset.register':
+    case 'asset.remove':
       return err({
         code: 'invalid-command',
         message: `${command.type} is not a page command.`,
@@ -224,6 +261,55 @@ export function applyCommand(
       outcome = ok({ ...document, size: size.data });
       break;
     }
+    case 'asset.register': {
+      const parsed = AssetSchema.safeParse(command.asset);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return err({
+          code: 'invalid-command',
+          message: issue
+            ? `Invalid asset "${issue.path.map(String).join('.')}": ${issue.message}`
+            : 'Invalid asset record.',
+          command: command.type,
+        });
+      }
+      const asset = parsed.data;
+      if (asset.id in document.assets) {
+        return err({
+          code: 'invalid-command',
+          message: `Asset "${asset.id}" is already registered.`,
+          command: command.type,
+        });
+      }
+      if (Object.keys(document.assets).length >= LIMITS.maxAssetsPerDocument) {
+        return err({
+          code: 'invalid-command',
+          message: `A document may reference at most ${LIMITS.maxAssetsPerDocument} assets.`,
+          command: command.type,
+        });
+      }
+      outcome = ok({ ...document, assets: { ...document.assets, [asset.id]: asset } });
+      break;
+    }
+    case 'asset.remove': {
+      if (!(command.assetId in document.assets)) {
+        return err({
+          code: 'asset-not-found',
+          message: `Asset "${command.assetId}" is not registered in this document.`,
+          command: command.type,
+        });
+      }
+      if (collectReferencedAssetIds(document).has(command.assetId)) {
+        return err({
+          code: 'invalid-command',
+          message: 'This asset is still used on the canvas. Delete those images first.',
+          command: command.type,
+        });
+      }
+      const { [command.assetId]: _removed, ...assets } = document.assets;
+      outcome = ok({ ...document, assets });
+      break;
+    }
     case 'page.setBackground':
     case 'element.add':
     case 'element.update':
@@ -231,8 +317,8 @@ export function applyCommand(
     case 'element.delete':
     case 'element.duplicate':
     case 'element.reorder':
-      outcome = withPage(document, command.pageId, command.type, (page) =>
-        applyToPage(page, command),
+      outcome = withPage(document, command.pageId, command.type, (page, context) =>
+        applyToPage(page, command, context),
       );
       break;
   }
