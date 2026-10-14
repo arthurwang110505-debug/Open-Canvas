@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+@import '@opencanvas/ui/theme.css';
+
+/* Shared UI package lives outside this app's root, so tell Tailwind to scan it. */
+@source '../../../packages/ui/src';
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Fabric wraps the <canvas> in .canvas-container; keep it from scrolling the page on touch. */
+.canvas-container canvas {
+  touch-action: none;
+}
+
+/* Hide number input spinners; the fields have their own keyboard stepping. */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
