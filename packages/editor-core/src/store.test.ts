@@ -106,6 +106,23 @@ describe('createEditorStore', () => {
     expect(store.getState().selectedIds).toEqual([]);
   });
 
+  it('selects elements that reappear through undo or redo', () => {
+    const { store, pageId } = makeStore();
+    const { dispatch, undo, redo, setSelection } = store.getState();
+    dispatch({ type: 'element.add', pageId, element: createRectElement({ id: 'r1' }) });
+    dispatch({ type: 'element.add', pageId, element: createRectElement({ id: 'r2' }) });
+    setSelection(['r1']);
+    dispatch({ type: 'element.delete', pageId, elementIds: ['r1'] });
+    expect(store.getState().selectedIds).toEqual([]);
+    undo(); // restores r1
+    expect(store.getState().selectedIds).toEqual(['r1']);
+    redo(); // deletes r1 again
+    expect(store.getState().selectedIds).toEqual([]);
+    undo();
+    undo(); // removes r2; r1 stays selected because it still exists
+    expect(store.getState().selectedIds).toEqual(['r1']);
+  });
+
   it('coalesces consecutive dispatches sharing a merge key', () => {
     const { store, pageId, advance } = makeStore({ mergeWindowMs: 500 });
     const { dispatch, undo } = store.getState();

@@ -79,6 +79,24 @@ function pruneSelection(document: DesignDocument, selectedIds: readonly string[]
   return selectedIds.filter((id) => existing.has(id));
 }
 
+/**
+ * Selection after undo/redo: elements that (re)appear on the active page become the
+ * selection (undoing a delete or redoing an insert highlights the affected elements);
+ * otherwise the current selection is kept, minus elements that no longer exist.
+ */
+function selectionAfterHistoryStep(
+  from: DesignDocument,
+  to: DesignDocument,
+  activePageId: string,
+  selectedIds: readonly string[],
+): string[] {
+  const before = collectElementIds(from);
+  const page = to.pages.find((p) => p.id === activePageId);
+  const appeared = page?.elements.filter((element) => !before.has(element.id)) ?? [];
+  if (appeared.length > 0) return appeared.map((element) => element.id);
+  return pruneSelection(to, selectedIds);
+}
+
 export function createEditorStore(
   initialDocument: DesignDocument,
   options: CreateEditorStoreOptions = {},
@@ -162,7 +180,12 @@ export function createEditorStore(
         document: previous,
         past: state.past.slice(0, -1),
         future: [state.document, ...state.future],
-        selectedIds: pruneSelection(previous, state.selectedIds),
+        selectedIds: selectionAfterHistoryStep(
+          state.document,
+          previous,
+          state.activePageId,
+          state.selectedIds,
+        ),
         dirty: previous !== savedDocument,
       });
       return true;
@@ -177,7 +200,12 @@ export function createEditorStore(
         document: next,
         past: [...state.past, state.document].slice(-historyLimit),
         future: rest,
-        selectedIds: pruneSelection(next, state.selectedIds),
+        selectedIds: selectionAfterHistoryStep(
+          state.document,
+          next,
+          state.activePageId,
+          state.selectedIds,
+        ),
         dirty: next !== savedDocument,
       });
       return true;
