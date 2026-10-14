@@ -1,0 +1,23 @@
+{
+  "name": "@opencanvas/canvas-fabric",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fabric.js rendering adapter for OpenCanvas documents.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@opencanvas/document": "workspace:*",
+    "fabric": "^7.4.0"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.4"
+  }
+}
