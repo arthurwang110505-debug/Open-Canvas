@@ -2,6 +2,8 @@ import type {
   DesignElement,
   EllipseElement,
   Fill,
+  ImageElement,
+  ImageFit,
   RectElement,
   TextElement,
 } from '@opencanvas/document';
@@ -175,10 +177,30 @@ export interface TextFabricProps extends CommonFabricProps {
   editable: boolean;
 }
 
+/**
+ * Fabric draws an image as `drawImage(source, cropX, cropY, width, height)` and then applies
+ * `scaleX`/`scaleY`, so every fit mode is expressed as a crop window plus a scale.
+ */
+export interface ImageFitProps {
+  width: number;
+  height: number;
+  cropX: number;
+  cropY: number;
+  scaleX: number;
+  scaleY: number;
+}
+
+export interface ImageFabricProps
+  extends Omit<CommonFabricProps, 'scaleX' | 'scaleY'>, ImageFitProps {
+  /** Images never draw a stroke; a non-zero default would inflate the bounding box. */
+  strokeWidth: 0;
+}
+
 export type ElementFabricProps =
   | { kind: 'rect'; props: RectFabricProps }
   | { kind: 'ellipse'; props: EllipseFabricProps }
-  | { kind: 'text'; props: TextFabricProps };
+  | { kind: 'text'; props: TextFabricProps }
+  | { kind: 'image'; props: ImageFabricProps };
 
 function commonProps(element: DesignElement): CommonFabricProps {
   const center = topLeftToCenter(element);
@@ -245,7 +267,72 @@ export function textToFabricProps(element: TextElement): TextFabricProps {
   };
 }
 
-export function elementToFabricProps(element: DesignElement): ElementFabricProps {
+/**
+ * Computes the crop window and scale that place a `natural`-sized bitmap into `box`.
+ *
+ * - `cover`: scale uniformly until the box is filled, crop the overflow symmetrically.
+ * - `fill`: stretch the whole bitmap to the box (non-uniform scale, no crop).
+ */
+export function computeImageFit(
+  box: { width: number; height: number },
+  natural: { width: number; height: number },
+  fit: ImageFit,
+): ImageFitProps {
+  const naturalWidth = Math.max(1, natural.width);
+  const naturalHeight = Math.max(1, natural.height);
+  const boxWidth = Math.max(1, box.width);
+  const boxHeight = Math.max(1, box.height);
+
+  if (fit === 'fill') {
+    return {
+      width: naturalWidth,
+      height: naturalHeight,
+      cropX: 0,
+      cropY: 0,
+      scaleX: boxWidth / naturalWidth,
+      scaleY: boxHeight / naturalHeight,
+    };
+  }
+
+  const scale = Math.max(boxWidth / naturalWidth, boxHeight / naturalHeight);
+  const visibleWidth = Math.min(naturalWidth, boxWidth / scale);
+  const visibleHeight = Math.min(naturalHeight, boxHeight / scale);
+  return {
+    width: visibleWidth,
+    height: visibleHeight,
+    cropX: (naturalWidth - visibleWidth) / 2,
+    cropY: (naturalHeight - visibleHeight) / 2,
+    scaleX: scale,
+    scaleY: scale,
+  };
+}
+
+/**
+ * Props for an image element given the bitmap that is currently displayed for it. While the
+ * real bitmap is still loading the adapter passes its placeholder size with `fit: 'fill'`
+ * so the placeholder stretches over the whole box.
+ */
+export function imageToFabricProps(
+  element: ImageElement,
+  natural: { width: number; height: number },
+  fit: ImageFit = element.fit,
+): ImageFabricProps {
+  const { scaleX: _sx, scaleY: _sy, ...common } = commonProps(element);
+  return { ...common, strokeWidth: 0, ...computeImageFit(element, natural, fit) };
+}
+
+export interface ElementToFabricContext {
+  /** Bitmap size used for image elements (placeholder or decoded image). */
+  imageSource: (element: ImageElement) => {
+    natural: { width: number; height: number };
+    fit: ImageFit;
+  };
+}
+
+export function elementToFabricProps(
+  element: DesignElement,
+  context?: ElementToFabricContext,
+): ElementFabricProps {
   switch (element.type) {
     case 'rect':
       return { kind: 'rect', props: rectToFabricProps(element) };
@@ -253,6 +340,10 @@ export function elementToFabricProps(element: DesignElement): ElementFabricProps
       return { kind: 'ellipse', props: ellipseToFabricProps(element) };
     case 'text':
       return { kind: 'text', props: textToFabricProps(element) };
+    case 'image': {
+      const source = context?.imageSource(element) ?? { natural: element, fit: 'fill' as const };
+      return { kind: 'image', props: imageToFabricProps(element, source.natural, source.fit) };
+    }
   }
 }
 

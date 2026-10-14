@@ -123,6 +123,9 @@ importers:
       fabric:
         specifier: ^7.4.0
         version: 7.4.0
+      westures:
+        specifier: 1.1.1
+        version: 1.1.1
     devDependencies:
       typescript:
         specifier: ~6.0.3
@@ -2070,6 +2073,9 @@ packages:
     resolution: {integrity: sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==}
     engines: {node: '>=20'}
 
+  westures@1.1.1:
+    resolution: {integrity: sha512-lXXBn4rNpwJyIAXK9aLS9Fx61WFK9rfigcMavH37ApGwrfr7MHrkm6vMIkpIJ1dgkbMm+Ht2h7PbCpyItJu7lg==}
+
   whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==}
     engines: {node: '>=18'}
@@ -3912,6 +3918,8 @@ snapshots:
     optional: true
 
   webidl-conversions@8.0.1: {}
+
+  westures@1.1.1: {}
 
   whatwg-encoding@3.1.1:
     dependencies:

@@ -1,9 +1,19 @@
-import type { DesignElement, DocumentSize, Page } from '@opencanvas/document';
+import type {
+  Asset,
+  DesignDocument,
+  DesignElement,
+  DocumentSize,
+  ImageElement,
+  ImageFit,
+  Page,
+} from '@opencanvas/document';
 import {
   ActiveSelection,
   Canvas,
   Ellipse,
+  FabricImage,
   type FabricObject,
+  type ImageSource,
   InteractiveFabricObject,
   Point,
   Rect,
@@ -11,6 +21,7 @@ import {
   util,
   type TMat2D,
 } from 'fabric';
+import { AligningGuidelines } from 'fabric/extensions';
 
 import {
   elementToFabricProps,
@@ -19,6 +30,7 @@ import {
   roundTo,
   type BoxGeometry,
 } from './mapping';
+import { PLACEHOLDER_SIZE, createPlaceholderBitmap } from './placeholder';
 
 export interface ElementGeometryChange {
   elementId: string;
@@ -34,23 +46,86 @@ export interface CanvasAdapterCallbacks {
   onTextMeasured: (elementId: string, measuredHeight: number) => void;
   onSelectionChanged: (elementIds: readonly string[]) => void;
   onZoomChanged: (zoom: number) => void;
+  /**
+   * Fired when an image element cannot be displayed: the asset record is missing, its bytes
+   * are not available, or the browser failed to decode them. The element stays on the
+   * canvas with an error placeholder so the user can still select and delete it.
+   */
+  onAssetError: (elementId: string, assetId: string, error: AssetLoadError) => void;
+}
+
+export interface AssetLoadError {
+  code: 'asset-missing' | 'unavailable' | 'load-failed';
+  message: string;
 }
 
 export interface CanvasScene {
   page: Page;
   size: DocumentSize;
   selectedIds: readonly string[];
+  /** Asset records referenced by image elements on the page. */
+  assets: DesignDocument['assets'];
 }
+
+/** Maps an asset record to a URL the browser can load, or `null` when unavailable. */
+export type AssetUrlResolver = (asset: Asset) => Promise<string | null>;
+
+/** Loads a URL into something Fabric can draw. Injectable so tests can skip the network. */
+export type ImageSourceLoader = (
+  url: string,
+  options: { signal: AbortSignal },
+) => Promise<ImageSource>;
 
 export interface CanvasAdapterOptions {
   accentColor?: string;
+  /**
+   * Resolves asset records to loadable URLs. Without a resolver images cannot be displayed:
+   * every image element shows the error placeholder and reports `unavailable`.
+   */
+  resolveAssetUrl?: AssetUrlResolver;
+  /** Defaults to Fabric's loader with anonymous CORS so exported canvases stay untainted. */
+  loadImage?: ImageSourceLoader;
+  /** Alignment guides and snapping while moving or scaling objects. Defaults to `true`. */
+  snapping?: boolean;
 }
 
 const DEFAULT_ACCENT = '#4f46e5';
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 8;
+const SNAP_MARGIN = 6;
 
-type ElementObject = Rect | Ellipse | Textbox;
+type ElementObject = Rect | Ellipse | Textbox | FabricImage;
+
+interface ImageEntry {
+  assetId: string;
+  status: 'loading' | 'ready' | 'error';
+  /** Decoded bitmap size once the image is ready. */
+  natural: { width: number; height: number } | null;
+  abort: AbortController | null;
+}
+
+class AssetLoadFailure extends Error {
+  constructor(
+    readonly code: AssetLoadError['code'],
+    message: string,
+  ) {
+    super(message);
+    this.name = 'AssetLoadFailure';
+  }
+}
+
+const defaultImageLoader: ImageSourceLoader = (url, { signal }) =>
+  util.loadImage(url, { signal, crossOrigin: 'anonymous' });
+
+function sourceSize(source: ImageSource): { width: number; height: number } {
+  if (source instanceof HTMLImageElement) {
+    return { width: source.naturalWidth, height: source.naturalHeight };
+  }
+  if (source instanceof HTMLVideoElement) {
+    return { width: source.videoWidth, height: source.videoHeight };
+  }
+  return { width: source.width, height: source.height };
+}
 
 function applySelectionStyle(accent: string): void {
   // Static defaults apply to every object created afterwards.
@@ -84,7 +159,15 @@ export class FabricCanvasAdapter {
   private readonly idsByObject = new WeakMap<FabricObject, string>();
   private readonly pageBackground: Rect;
   private readonly clip: Rect;
+  private readonly accent: string;
+  private readonly resolveAssetUrl: AssetUrlResolver | null;
+  private readonly loadImage: ImageSourceLoader;
+  private readonly images = new Map<string, ImageEntry>();
+  private readonly loadingBitmap = createPlaceholderBitmap('loading');
+  private readonly errorBitmap = createPlaceholderBitmap('error');
+  private guidelines: AligningGuidelines | null = null;
   private elements = new Map<string, DesignElement>();
+  private assets: DesignDocument['assets'] = {};
   private pageSize: DocumentSize = { width: 1, height: 1 };
   private applying = false;
   private disposed = false;
@@ -94,8 +177,11 @@ export class FabricCanvasAdapter {
     callbacks: CanvasAdapterCallbacks,
     options: CanvasAdapterOptions = {},
   ) {
-    applySelectionStyle(options.accentColor ?? DEFAULT_ACCENT);
+    this.accent = options.accentColor ?? DEFAULT_ACCENT;
+    applySelectionStyle(this.accent);
     this.callbacks = callbacks;
+    this.resolveAssetUrl = options.resolveAssetUrl ?? null;
+    this.loadImage = options.loadImage ?? defaultImageLoader;
     this.canvas = new Canvas(element, {
       preserveObjectStacking: true,
       selection: true,
@@ -126,6 +212,7 @@ export class FabricCanvasAdapter {
     this.canvas.clipPath = this.clip;
     this.canvas.add(this.pageBackground);
     this.bindEvents();
+    this.setSnapping(options.snapping ?? true);
   }
 
   // ---------------------------------------------------------------------------
@@ -199,6 +286,7 @@ export class FabricCanvasAdapter {
     if (this.disposed) return;
     this.applying = true;
     try {
+      this.assets = scene.assets;
       this.syncPage(scene);
       this.syncElements(scene.page.elements);
       this.syncOrder(scene.page.elements);
@@ -226,6 +314,30 @@ export class FabricCanvasAdapter {
     return active instanceof Textbox && active.isEditing;
   }
 
+  /** Toggles alignment guides and snapping to other objects and the page edges/center. */
+  setSnapping(enabled: boolean): void {
+    if (this.disposed) return;
+    if (enabled && !this.guidelines) {
+      this.guidelines = new AligningGuidelines(this.canvas, {
+        margin: SNAP_MARGIN,
+        width: 1,
+        color: this.accent,
+      });
+    } else if (!enabled && this.guidelines) {
+      this.guidelines.dispose();
+      this.guidelines = null;
+    }
+  }
+
+  isSnappingEnabled(): boolean {
+    return this.guidelines !== null;
+  }
+
+  /** Load state of an image element (diagnostics, tests and the layers panel). */
+  getImageStatus(elementId: string): ImageEntry['status'] | undefined {
+    return this.images.get(elementId)?.status;
+  }
+
   /** Escape hatch for tests and advanced integrations. Prefer the typed API above. */
   getFabricCanvas(): Canvas {
     return this.canvas;
@@ -251,6 +363,10 @@ export class FabricCanvasAdapter {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const entry of this.images.values()) entry.abort?.abort();
+    this.images.clear();
+    this.guidelines?.dispose();
+    this.guidelines = null;
     this.objects.clear();
     // With no render pending, Fabric tears the DOM down synchronously, which keeps React
     // StrictMode's mount -> unmount -> mount cycle (and fast navigation) free of races.
@@ -306,6 +422,7 @@ export class FabricCanvasAdapter {
       if (!seen.has(id)) {
         this.canvas.remove(object);
         this.objects.delete(id);
+        this.forgetImage(id);
       }
     }
     this.elements = nextElements;
@@ -315,16 +432,48 @@ export class FabricCanvasAdapter {
     element: DesignElement,
     existing: ElementObject | undefined,
   ): ElementObject {
-    if (existing) this.canvas.remove(existing);
-    const object = createObject(element);
+    if (existing) {
+      this.canvas.remove(existing);
+      this.forgetImage(element.id);
+    }
+    const object = this.createObject(element);
     this.objects.set(element.id, object);
     this.idsByObject.set(object, element.id);
     this.canvas.add(object);
     return object;
   }
 
+  private createObject(element: DesignElement): ElementObject {
+    const mapped = elementToFabricProps(element, this.fabricContext);
+    switch (mapped.kind) {
+      case 'rect':
+        return new Rect(mapped.props);
+      case 'ellipse':
+        return new Ellipse(mapped.props);
+      case 'text':
+        return new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
+      case 'image':
+        return new FabricImage(this.loadingBitmap, mapped.props);
+    }
+  }
+
+  private readonly fabricContext = {
+    imageSource: (
+      element: ImageElement,
+    ): { natural: { width: number; height: number }; fit: ImageFit } => {
+      const entry = this.images.get(element.id);
+      if (entry?.status === 'ready' && entry.natural && entry.assetId === element.assetId) {
+        return { natural: entry.natural, fit: element.fit };
+      }
+      return { natural: { width: PLACEHOLDER_SIZE, height: PLACEHOLDER_SIZE }, fit: 'fill' };
+    },
+  };
+
   private applyElement(object: ElementObject, element: DesignElement): void {
-    const mapped = elementToFabricProps(element);
+    if (element.type === 'image' && object instanceof FabricImage) {
+      this.ensureImageLoading(object, element);
+    }
+    const mapped = elementToFabricProps(element, this.fabricContext);
     const props: Record<string, unknown> = { ...mapped.props };
     // Never overwrite text the user is currently typing; it is committed on exit.
     if (object instanceof Textbox && object.isEditing) {
@@ -387,6 +536,128 @@ export class FabricCanvasAdapter {
         this.callbacks.onTextMeasured(element.id, measured);
       }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Image assets
+  // ---------------------------------------------------------------------------
+
+  private forgetImage(elementId: string): void {
+    const entry = this.images.get(elementId);
+    if (!entry) return;
+    entry.abort?.abort();
+    this.images.delete(elementId);
+  }
+
+  /**
+   * Starts loading the element's asset unless the same asset is already loading or shown.
+   * A failed load is not retried until the element points at a different asset, so a
+   * broken file does not trigger a request on every render.
+   */
+  private ensureImageLoading(object: FabricImage, element: ImageElement): void {
+    const current = this.images.get(element.id);
+    if (current?.assetId === element.assetId) return;
+    current?.abort?.abort();
+
+    const asset = this.assets[element.assetId];
+    if (!asset) {
+      this.images.set(element.id, {
+        assetId: element.assetId,
+        status: 'error',
+        natural: null,
+        abort: null,
+      });
+      object.setElement(this.errorBitmap);
+      this.callbacks.onAssetError(element.id, element.assetId, {
+        code: 'asset-missing',
+        message: `The image asset "${element.assetId}" is not part of this document.`,
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    this.images.set(element.id, {
+      assetId: asset.id,
+      status: 'loading',
+      natural: null,
+      abort: controller,
+    });
+    if (object.getElement() !== this.loadingBitmap) object.setElement(this.loadingBitmap);
+    void this.loadAsset(element.id, asset, controller);
+  }
+
+  private async loadAsset(
+    elementId: string,
+    asset: Asset,
+    controller: AbortController,
+  ): Promise<void> {
+    const isCurrent = () =>
+      !this.disposed &&
+      !controller.signal.aborted &&
+      this.images.get(elementId)?.abort === controller;
+    try {
+      if (!this.resolveAssetUrl) {
+        throw new AssetLoadFailure(
+          'unavailable',
+          'No asset resolver is configured for this canvas, so images cannot be displayed.',
+        );
+      }
+      const url = await this.resolveAssetUrl(asset);
+      if (!isCurrent()) return;
+      if (url === null) {
+        throw new AssetLoadFailure(
+          'unavailable',
+          `The file for "${asset.name ?? asset.id}" is not available in this browser.`,
+        );
+      }
+      const source = await this.loadImage(url, { signal: controller.signal });
+      if (!isCurrent()) return;
+      const natural = sourceSize(source);
+      if (!(natural.width >= 1 && natural.height >= 1)) {
+        throw new AssetLoadFailure(
+          'load-failed',
+          `The image "${asset.name ?? asset.id}" decoded to an empty bitmap.`,
+        );
+      }
+      this.finishImageLoad(elementId, { status: 'ready', natural }, source);
+    } catch (cause) {
+      if (!isCurrent()) return;
+      const error: AssetLoadError =
+        cause instanceof AssetLoadFailure
+          ? { code: cause.code, message: cause.message }
+          : {
+              code: 'load-failed',
+              message: `Could not load the image "${asset.name ?? asset.id}": ${
+                cause instanceof Error ? cause.message : String(cause)
+              }`,
+            };
+      this.finishImageLoad(elementId, { status: 'error', natural: null }, this.errorBitmap);
+      this.callbacks.onAssetError(elementId, asset.id, error);
+    }
+  }
+
+  private finishImageLoad(
+    elementId: string,
+    outcome: Pick<ImageEntry, 'status' | 'natural'>,
+    source: ImageSource,
+  ): void {
+    const entry = this.images.get(elementId);
+    if (!entry) return;
+    entry.status = outcome.status;
+    entry.natural = outcome.natural;
+    entry.abort = null;
+    const object = this.objects.get(elementId);
+    const element = this.elements.get(elementId);
+    if (!(object instanceof FabricImage) || element?.type !== 'image') return;
+    this.applying = true;
+    try {
+      object.setElement(source);
+      this.applyElement(object, element);
+      object.setCoords();
+    } finally {
+      this.applying = false;
+    }
+    this.canvas.requestRenderAll();
   }
 
   // ---------------------------------------------------------------------------
@@ -453,17 +724,7 @@ function objectMatchesType(object: ElementObject, type: DesignElement['type']): 
       return object instanceof Ellipse;
     case 'text':
       return object instanceof Textbox;
-  }
-}
-
-function createObject(element: DesignElement): ElementObject {
-  const mapped = elementToFabricProps(element);
-  switch (mapped.kind) {
-    case 'rect':
-      return new Rect(mapped.props);
-    case 'ellipse':
-      return new Ellipse(mapped.props);
-    case 'text':
-      return new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
+    case 'image':
+      return object instanceof FabricImage;
   }
 }

@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@opencanvas/document": "workspace:*",
-    "fabric": "^7.4.0"
+    "fabric": "^7.4.0",
+    "westures": "1.1.1"
   },
   "devDependencies": {
     "typescript": "~6.0.3",

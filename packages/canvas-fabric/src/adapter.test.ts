@@ -30,6 +30,7 @@ describe('FabricCanvasAdapter', () => {
       onTextMeasured: vi.fn<CanvasAdapterCallbacks['onTextMeasured']>(),
       onSelectionChanged: vi.fn<CanvasAdapterCallbacks['onSelectionChanged']>(),
       onZoomChanged: vi.fn<CanvasAdapterCallbacks['onZoomChanged']>(),
+      onAssetError: vi.fn<CanvasAdapterCallbacks['onAssetError']>(),
     };
     adapter = new FabricCanvasAdapter(canvasEl, callbacks);
     adapter.setViewportSize(800, 600);
@@ -44,7 +45,7 @@ describe('FabricCanvasAdapter', () => {
 
   it('creates one Fabric object per element, positioned by center', () => {
     const rect = createRectElement({ id: 'r1', x: 100, y: 50, width: 200, height: 100 });
-    adapter.render({ page: makePage([rect]), size, selectedIds: [] });
+    adapter.render({ page: makePage([rect]), size, selectedIds: [], assets: {} });
     const objects = elementObjects();
     expect(objects).toHaveLength(1);
     const object = objects[0];
@@ -57,7 +58,12 @@ describe('FabricCanvasAdapter', () => {
   });
 
   it('sizes the page background and clip path from the document size', () => {
-    adapter.render({ page: makePage([]), size: { width: 400, height: 300 }, selectedIds: [] });
+    adapter.render({
+      page: makePage([]),
+      size: { width: 400, height: 300 },
+      selectedIds: [],
+      assets: {},
+    });
     const background = adapter.getFabricCanvas().getObjects()[0];
     expect(background?.width).toBe(400);
     expect(background?.height).toBe(300);
@@ -69,17 +75,17 @@ describe('FabricCanvasAdapter', () => {
   it('preserves object identity across renders and removes deleted elements', () => {
     const a = createRectElement({ id: 'a' });
     const b = createEllipseElement({ id: 'b' });
-    adapter.render({ page: makePage([a, b]), size, selectedIds: [] });
+    adapter.render({ page: makePage([a, b]), size, selectedIds: [], assets: {} });
     const [objA, objB] = elementObjects();
 
     const movedA = { ...a, x: 500 };
-    adapter.render({ page: makePage([movedA, b]), size, selectedIds: [] });
+    adapter.render({ page: makePage([movedA, b]), size, selectedIds: [], assets: {} });
     const [objA2, objB2] = elementObjects();
     expect(objA2).toBe(objA);
     expect(objB2).toBe(objB);
     expect(objA2?.left).toBe(600);
 
-    adapter.render({ page: makePage([b]), size, selectedIds: [] });
+    adapter.render({ page: makePage([b]), size, selectedIds: [], assets: {} });
     expect(elementObjects()).toEqual([objB]);
   });
 
@@ -87,30 +93,30 @@ describe('FabricCanvasAdapter', () => {
     const a = createRectElement({ id: 'a' });
     const b = createRectElement({ id: 'b' });
     const c = createRectElement({ id: 'c' });
-    adapter.render({ page: makePage([a, b, c]), size, selectedIds: [] });
+    adapter.render({ page: makePage([a, b, c]), size, selectedIds: [], assets: {} });
     const [objA, objB, objC] = elementObjects();
-    adapter.render({ page: makePage([c, a, b]), size, selectedIds: [] });
+    adapter.render({ page: makePage([c, a, b]), size, selectedIds: [], assets: {} });
     expect(elementObjects()).toEqual([objC, objA, objB]);
   });
 
   it('applies document selection without echoing it back', () => {
     const a = createRectElement({ id: 'a' });
     const b = createRectElement({ id: 'b' });
-    adapter.render({ page: makePage([a, b]), size, selectedIds: ['a'] });
+    adapter.render({ page: makePage([a, b]), size, selectedIds: ['a'], assets: {} });
     expect(adapter.getFabricCanvas().getActiveObject()).toBe(elementObjects()[0]);
 
-    adapter.render({ page: makePage([a, b]), size, selectedIds: ['a', 'b'] });
+    adapter.render({ page: makePage([a, b]), size, selectedIds: ['a', 'b'], assets: {} });
     expect(adapter.getFabricCanvas().getActiveObject()).toBeInstanceOf(ActiveSelection);
     expect(adapter.getFabricCanvas().getActiveObjects()).toHaveLength(2);
 
-    adapter.render({ page: makePage([a, b]), size, selectedIds: [] });
+    adapter.render({ page: makePage([a, b]), size, selectedIds: [], assets: {} });
     expect(adapter.getFabricCanvas().getActiveObject()).toBeUndefined();
     expect(callbacks.onSelectionChanged).not.toHaveBeenCalled();
   });
 
   it('reports user selection changes', () => {
     const a = createRectElement({ id: 'a' });
-    adapter.render({ page: makePage([a]), size, selectedIds: [] });
+    adapter.render({ page: makePage([a]), size, selectedIds: [], assets: {} });
     const object = elementObjects()[0];
     if (!object) throw new Error('missing object');
     adapter.getFabricCanvas().setActiveObject(object);
@@ -121,7 +127,7 @@ describe('FabricCanvasAdapter', () => {
 
   it('translates a move interaction into a top-left patch', () => {
     const a = createRectElement({ id: 'a', x: 0, y: 0, width: 100, height: 50 });
-    adapter.render({ page: makePage([a]), size, selectedIds: [] });
+    adapter.render({ page: makePage([a]), size, selectedIds: [], assets: {} });
     const object = elementObjects()[0];
     if (!object) throw new Error('missing object');
     // Simulate the end of a drag: Fabric has moved the object's center.
@@ -136,7 +142,7 @@ describe('FabricCanvasAdapter', () => {
 
   it('bakes scaling into width/height and normalizes rotation', () => {
     const a = createRectElement({ id: 'a', x: 0, y: 0, width: 100, height: 50 });
-    adapter.render({ page: makePage([a]), size, selectedIds: [] });
+    adapter.render({ page: makePage([a]), size, selectedIds: [], assets: {} });
     const object = elementObjects()[0];
     if (!object) throw new Error('missing object');
     object.set({ scaleX: 2, scaleY: 3, angle: -90 });
@@ -149,7 +155,7 @@ describe('FabricCanvasAdapter', () => {
   it('reports every member of a multi-selection transform', () => {
     const a = createRectElement({ id: 'a', x: 0, y: 0, width: 100, height: 100 });
     const b = createRectElement({ id: 'b', x: 200, y: 0, width: 100, height: 100 });
-    adapter.render({ page: makePage([a, b]), size, selectedIds: ['a', 'b'] });
+    adapter.render({ page: makePage([a, b]), size, selectedIds: ['a', 'b'], assets: {} });
     const selection = adapter.getFabricCanvas().getActiveObject();
     if (!(selection instanceof ActiveSelection)) throw new Error('expected selection');
     selection.set({ left: selection.left + 50, top: selection.top + 10 });
@@ -163,15 +169,15 @@ describe('FabricCanvasAdapter', () => {
 
   it('does not emit modifications while applying state', () => {
     const a = createRectElement({ id: 'a' });
-    adapter.render({ page: makePage([a]), size, selectedIds: [] });
-    adapter.render({ page: makePage([{ ...a, x: 10 }]), size, selectedIds: ['a'] });
+    adapter.render({ page: makePage([a]), size, selectedIds: [], assets: {} });
+    adapter.render({ page: makePage([{ ...a, x: 10 }]), size, selectedIds: ['a'], assets: {} });
     expect(callbacks.onElementsModified).not.toHaveBeenCalled();
     expect(callbacks.onSelectionChanged).not.toHaveBeenCalled();
   });
 
   it('renders text with a Textbox and reports its measured height', () => {
     const text = createTextElement({ id: 't', text: 'Hello', height: 1 });
-    adapter.render({ page: makePage([text]), size, selectedIds: [] });
+    adapter.render({ page: makePage([text]), size, selectedIds: [], assets: {} });
     const object = elementObjects()[0];
     expect(object).toBeInstanceOf(Textbox);
     expect(callbacks.onTextMeasured).toHaveBeenCalledWith('t', expect.any(Number));
@@ -181,7 +187,7 @@ describe('FabricCanvasAdapter', () => {
 
   it('commits edited text when editing ends', () => {
     const text = createTextElement({ id: 't', text: 'Hello' });
-    adapter.render({ page: makePage([text]), size, selectedIds: [] });
+    adapter.render({ page: makePage([text]), size, selectedIds: [], assets: {} });
     const object = elementObjects()[0];
     if (!(object instanceof Textbox)) throw new Error('expected textbox');
     // Drive the real editing lifecycle instead of firing synthetic events.
@@ -193,15 +199,15 @@ describe('FabricCanvasAdapter', () => {
 
   it('replaces the Fabric object when an element changes type', () => {
     const rect = createRectElement({ id: 'x' });
-    adapter.render({ page: makePage([rect]), size, selectedIds: [] });
+    adapter.render({ page: makePage([rect]), size, selectedIds: [], assets: {} });
     const ellipse = createEllipseElement({ id: 'x' });
-    adapter.render({ page: makePage([ellipse]), size, selectedIds: [] });
+    adapter.render({ page: makePage([ellipse]), size, selectedIds: [], assets: {} });
     expect(elementObjects()).toHaveLength(1);
     expect(elementObjects()[0]).not.toBeInstanceOf(Rect);
   });
 
   it('zooms around the viewport and reports the level', () => {
-    adapter.render({ page: makePage([]), size, selectedIds: [] });
+    adapter.render({ page: makePage([]), size, selectedIds: [], assets: {} });
     adapter.setZoom(2);
     expect(adapter.getZoom()).toBe(2);
     expect(callbacks.onZoomChanged).toHaveBeenLastCalledWith(2);
@@ -210,7 +216,7 @@ describe('FabricCanvasAdapter', () => {
   });
 
   it('fits the page into the viewport with padding', () => {
-    adapter.render({ page: makePage([]), size, selectedIds: [] });
+    adapter.render({ page: makePage([]), size, selectedIds: [], assets: {} });
     adapter.fitToViewport(40);
     // viewport 800x600, page 1080x1080 -> limited by height: (600-80)/1080
     expect(adapter.getZoom()).toBeCloseTo(520 / 1080, 5);
