@@ -168,5 +168,10 @@ describe('EditorPage', () => {
 });
 
 // Type-level guard: the panel must know every element type the schema defines.
-const _exhaustive: Record<DesignElement['type'], true> = { rect: true, ellipse: true, text: true };
+const _exhaustive: Record<DesignElement['type'], true> = {
+  rect: true,
+  ellipse: true,
+  text: true,
+  image: true,
+};
 void _exhaustive;

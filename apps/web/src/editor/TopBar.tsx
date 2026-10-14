@@ -1,10 +1,10 @@
 import { formatZoom, selectCanRedo, selectCanUndo } from '@opencanvas/editor-core';
 import { Button, Input, Separator, Tooltip } from '@opencanvas/ui';
-import { Maximize, Minus, Plus, Redo2, Undo2 } from 'lucide-react';
+import { Magnet, Maximize, Minus, Plus, Redo2, Undo2 } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 
 import { useEditorActions } from './actions';
-import { useCanvasController, useCanvasReady, useEditor } from './hooks';
+import { useCanvasController, useCanvasReady, useEditor, useSnappingEnabled } from './hooks';
 
 function DocumentTitle() {
   const name = useEditor((state) => state.document.name);
@@ -108,6 +108,26 @@ function ZoomControls() {
   );
 }
 
+function SnapToggle() {
+  const snapping = useSnappingEnabled();
+  const canvas = useCanvasController();
+  return (
+    <Tooltip
+      content={snapping ? 'Snapping on: objects align to each other and the page' : 'Snapping off'}
+    >
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Snap to objects"
+        pressed={snapping}
+        onClick={() => canvas.setSnapping(!snapping)}
+      >
+        <Magnet />
+      </Button>
+    </Tooltip>
+  );
+}
+
 function ChangeStatus() {
   const dirty = useEditor((state) => state.dirty);
   return (
@@ -170,6 +190,7 @@ export function TopBar() {
       <div className="ml-auto flex items-center gap-3">
         <ChangeStatus />
         <Separator orientation="vertical" className="h-6" />
+        <SnapToggle />
         <ZoomControls />
       </div>
     </header>

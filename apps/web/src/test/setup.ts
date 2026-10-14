@@ -39,6 +39,25 @@ vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(func
   };
 });
 
+// jsdom has no DragEvent; without it drop events lose their pointer coordinates.
+if (typeof globalThis.DragEvent === 'undefined') {
+  class DragEventPolyfill extends MouseEvent {
+    readonly dataTransfer: DataTransfer | null;
+    constructor(type: string, init: DragEventInit = {}) {
+      super(type, init);
+      this.dataTransfer = init.dataTransfer ?? null;
+    }
+  }
+  globalThis.DragEvent = DragEventPolyfill;
+}
+
+// jsdom does not implement object URLs; thumbnails and the canvas resolve assets through them.
+if (typeof URL.createObjectURL !== 'function') {
+  let objectUrlCounter = 0;
+  URL.createObjectURL = () => `blob:jsdom/${String(++objectUrlCounter)}`;
+  URL.revokeObjectURL = () => undefined;
+}
+
 afterEach(() => {
   cleanup();
 });

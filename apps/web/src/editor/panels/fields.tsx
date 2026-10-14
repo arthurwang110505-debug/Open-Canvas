@@ -41,8 +41,9 @@ export function NumberField({
   const [focused, setFocused] = useState(false);
   const [lastValue, setLastValue] = useState(value);
 
-  // Follow external changes (undo, canvas drags) unless the user is typing.
-  if (value !== lastValue) {
+  // Follow external changes (undo, canvas drags) unless the user is typing. `Object.is`
+  // treats NaN as equal to itself, so a bad value can never cause a render loop.
+  if (!Object.is(value, lastValue)) {
     setLastValue(value);
     if (!focused) setDraft(format(value));
   }

@@ -3,6 +3,8 @@ import {
   LIMITS,
   type DesignElement,
   type FontWeight,
+  type ImageElement,
+  type ImageFit,
   type TextAlign,
   type TextElement,
 } from '@opencanvas/document';
@@ -54,7 +56,17 @@ const ELEMENT_LABELS: Record<DesignElement['type'], string> = {
   rect: 'Rectangle',
   ellipse: 'Ellipse',
   text: 'Text',
+  image: 'Image',
 };
+
+const IMAGE_FITS: { value: ImageFit; label: string; description: string }[] = [
+  {
+    value: 'cover',
+    label: 'Cover (crop to fill)',
+    description: 'Keeps proportions, crops overflow',
+  },
+  { value: 'fill', label: 'Fill (stretch)', description: 'Stretches the image to the box' },
+];
 
 function PageProperties() {
   const size = useEditor((state) => state.document.size);
@@ -356,10 +368,45 @@ function TextProperties({ element }: { element: TextElement }) {
   );
 }
 
+function ImageProperties({ element }: { element: ImageElement }) {
+  const { updateSelection } = useEditorActions();
+  const asset = useEditor((state) => state.document.assets[element.assetId]);
+  const fitId = useId();
+  const current = IMAGE_FITS.find((fit) => fit.value === element.fit);
+
+  return (
+    <FieldGroup title="Crop & fit">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={fitId}>Fit</Label>
+        <Select
+          id={fitId}
+          value={element.fit}
+          onChange={(event) => updateSelection({ fit: event.target.value as ImageFit })}
+        >
+          {IMAGE_FITS.map((fit) => (
+            <option key={fit.value} value={fit.value}>
+              {fit.label}
+            </option>
+          ))}
+        </Select>
+        {current && <p className="text-[11px] text-muted-foreground">{current.description}</p>}
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        <dt className="text-muted-foreground">File</dt>
+        <dd className="truncate" title={asset?.name}>
+          {asset?.name ?? 'Unknown'}
+        </dd>
+        <dt className="text-muted-foreground">Original</dt>
+        <dd>{asset ? `${asset.width}×${asset.height} px` : '—'}</dd>
+      </dl>
+    </FieldGroup>
+  );
+}
+
 function ElementProperties({ element }: { element: DesignElement }) {
   const { updateSelection } = useEditorActions();
   const key = (field: string) => `${field}:${element.id}`;
-  const hasStroke = element.type !== 'text';
+  const hasStroke = element.type === 'rect' || element.type === 'ellipse';
   const stroke = hasStroke ? element.stroke : undefined;
 
   return (
@@ -367,7 +414,11 @@ function ElementProperties({ element }: { element: DesignElement }) {
       <div className="px-3 py-3">
         <h2 className="text-sm font-semibold">{ELEMENT_LABELS[element.type]}</h2>
         <p className="truncate text-xs text-muted-foreground" title={element.id}>
-          {element.type === 'text' ? element.text.split('\n')[0] : `ID ${element.id}`}
+          {element.type === 'text'
+            ? element.text.split('\n')[0]
+            : element.type === 'image'
+              ? (element.name ?? `ID ${element.id}`)
+              : `ID ${element.id}`}
         </p>
       </div>
       <Separator />
@@ -426,7 +477,7 @@ function ElementProperties({ element }: { element: DesignElement }) {
           />
         </div>
       </FieldGroup>
-      {element.type !== 'text' && (
+      {(element.type === 'rect' || element.type === 'ellipse') && (
         <FieldGroup title="Fill & stroke">
           <ColorField
             label={element.fill.type === 'none' ? 'Fill (none)' : 'Fill'}
@@ -488,6 +539,7 @@ function ElementProperties({ element }: { element: DesignElement }) {
         </FieldGroup>
       )}
       {element.type === 'text' && <TextProperties element={element} />}
+      {element.type === 'image' && <ImageProperties element={element} />}
       <ArrangeControls elements={[element]} />
     </>
   );

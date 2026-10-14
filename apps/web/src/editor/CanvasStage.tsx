@@ -1,8 +1,11 @@
 import { FabricCanvasAdapter } from '@opencanvas/canvas-fabric';
 import { selectActivePage, type EditorStoreState } from '@opencanvas/editor-core';
-import { useEffect, useRef } from 'react';
+import { cn } from '@opencanvas/ui';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 
-import { useCanvasController, useEditorStore } from './hooks';
+import { useAssetServices } from './assets/useAssetServices';
+import { useImageImport } from './assets/useImageImport';
+import { useCanvasController, useEditorStore, useNotificationStore } from './hooks';
 
 function sceneChanged(next: EditorStoreState, previous: EditorStoreState): boolean {
   return (
@@ -19,42 +22,64 @@ function sceneChanged(next: EditorStoreState, previous: EditorStoreState): boole
 export function CanvasStage() {
   const store = useEditorStore();
   const controller = useCanvasController();
+  const notifications = useNotificationStore();
+  const assetServices = useAssetServices();
+  const { importFiles } = useImageImport();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [dropActive, setDropActive] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
     const canvasElement = canvasRef.current;
     if (!container || !canvasElement) return;
 
-    const adapter = new FabricCanvasAdapter(canvasElement, {
-      onElementsModified: (changes) => {
-        const { activePageId, dispatch } = store.getState();
-        dispatch({
-          type: 'element.updateMany',
-          pageId: activePageId,
-          updates: changes.map((change) => ({ elementId: change.elementId, patch: change.patch })),
-        });
+    const adapter = new FabricCanvasAdapter(
+      canvasElement,
+      {
+        onElementsModified: (changes) => {
+          const { activePageId, dispatch } = store.getState();
+          dispatch({
+            type: 'element.updateMany',
+            pageId: activePageId,
+            updates: changes.map((change) => ({
+              elementId: change.elementId,
+              patch: change.patch,
+            })),
+          });
+        },
+        onTextCommitted: (elementId, text, height) => {
+          const { activePageId, dispatch } = store.getState();
+          dispatch({
+            type: 'element.update',
+            pageId: activePageId,
+            elementId,
+            patch: { text, height },
+          });
+        },
+        onTextMeasured: (elementId, height) => {
+          const { activePageId, dispatch } = store.getState();
+          dispatch(
+            { type: 'element.update', pageId: activePageId, elementId, patch: { height } },
+            { recordHistory: false },
+          );
+        },
+        onSelectionChanged: (ids) => store.getState().setSelection(ids),
+        onZoomChanged: (zoom) => store.getState().setZoom(zoom),
+        onAssetError: (elementId, assetId, error) => {
+          const asset = store.getState().document.assets[assetId];
+          notifications.getState().show({
+            kind: 'error',
+            title: `Image "${asset?.name ?? elementId}" could not be displayed`,
+            message: error.message,
+          });
+        },
       },
-      onTextCommitted: (elementId, text, height) => {
-        const { activePageId, dispatch } = store.getState();
-        dispatch({
-          type: 'element.update',
-          pageId: activePageId,
-          elementId,
-          patch: { text, height },
-        });
+      {
+        resolveAssetUrl: assetServices.resolveAssetUrl,
+        ...(assetServices.loadImage ? { loadImage: assetServices.loadImage } : {}),
       },
-      onTextMeasured: (elementId, height) => {
-        const { activePageId, dispatch } = store.getState();
-        dispatch(
-          { type: 'element.update', pageId: activePageId, elementId, patch: { height } },
-          { recordHistory: false },
-        );
-      },
-      onSelectionChanged: (ids) => store.getState().setSelection(ids),
-      onZoomChanged: (zoom) => store.getState().setZoom(zoom),
-    });
+    );
 
     const renderScene = () => {
       const state = store.getState();
@@ -62,6 +87,7 @@ export function CanvasStage() {
         page: selectActivePage(state),
         size: state.document.size,
         selectedIds: state.selectedIds,
+        assets: state.document.assets,
       });
     };
 
@@ -103,15 +129,50 @@ export function CanvasStage() {
       controller.detach(adapter);
       adapter.dispose();
     };
-  }, [store, controller]);
+  }, [store, controller, notifications, assetServices]);
+
+  const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('Files');
+
+  const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    setDropActive(false);
+    const at =
+      Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+        ? controller.clientToPage(event.clientX, event.clientY)
+        : null;
+    void importFiles(Array.from(event.dataTransfer.files), at ? { at } : undefined);
+  };
 
   return (
     <div
       ref={containerRef}
       data-testid="canvas-stage"
-      className="relative h-full w-full overflow-hidden bg-workspace"
+      className={cn(
+        'relative h-full w-full overflow-hidden bg-workspace',
+        dropActive && 'ring-2 ring-ring ring-inset',
+      )}
+      onDragOver={(event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        setDropActive(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setDropActive(false);
+      }}
+      onDrop={onDrop}
     >
       <canvas ref={canvasRef} aria-label="Design canvas" />
+      {dropActive && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 grid place-items-center bg-background/40 text-sm font-medium"
+        >
+          Drop images to add them to the page
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 export interface CanvasControllerState {
   /** True once a Fabric adapter is mounted and can be driven by the toolbar. */
   ready: boolean;
+  /** Alignment guides and snapping while dragging; applied to every mounted adapter. */
+  snapping: boolean;
 }
 
 /**
@@ -21,11 +23,14 @@ export interface CanvasController {
   fitToScreen: () => void;
   beginTextEditing: (elementId: string) => void;
   isEditingText: () => boolean;
+  setSnapping: (enabled: boolean) => void;
+  /** Page coordinates under a viewport point, or `null` while the canvas is not mounted. */
+  clientToPage: (clientX: number, clientY: number) => { x: number; y: number } | null;
 }
 
 export function createCanvasController(store: EditorStore): CanvasController {
   let adapter: FabricCanvasAdapter | null = null;
-  const state = createStore<CanvasControllerState>(() => ({ ready: false }));
+  const state = createStore<CanvasControllerState>(() => ({ ready: false, snapping: true }));
 
   const withAdapter = (action: (instance: FabricCanvasAdapter) => void): void => {
     if (!adapter) {
@@ -38,6 +43,7 @@ export function createCanvasController(store: EditorStore): CanvasController {
     state,
     attach: (instance) => {
       adapter = instance;
+      instance.setSnapping(state.getState().snapping);
       state.setState({ ready: true });
     },
     detach: (instance) => {
@@ -56,5 +62,10 @@ export function createCanvasController(store: EditorStore): CanvasController {
       });
     },
     isEditingText: () => adapter?.isEditingText() ?? false,
+    setSnapping: (enabled) => {
+      state.setState({ snapping: enabled });
+      adapter?.setSnapping(enabled);
+    },
+    clientToPage: (clientX, clientY) => adapter?.clientToPage(clientX, clientY) ?? null,
   };
 }

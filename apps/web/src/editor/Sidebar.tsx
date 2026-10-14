@@ -1,15 +1,17 @@
 import { Button, cn } from '@opencanvas/ui';
-import { Circle, PaintBucket, Shapes, Square, Squircle, Type } from 'lucide-react';
+import { Circle, ImageIcon, PaintBucket, Shapes, Square, Squircle, Type } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 
 import { useEditorActions } from './actions';
 import { BackgroundPanel } from './panels/BackgroundPanel';
+import { UploadsPanel } from './panels/UploadsPanel';
 
-type SidebarTab = 'shapes' | 'text' | 'background';
+type SidebarTab = 'shapes' | 'text' | 'uploads' | 'background';
 
 const TABS: { id: SidebarTab; label: string; icon: ReactNode }[] = [
   { id: 'shapes', label: 'Shapes', icon: <Shapes /> },
   { id: 'text', label: 'Text', icon: <Type /> },
+  { id: 'uploads', label: 'Uploads', icon: <ImageIcon /> },
   { id: 'background', label: 'Background', icon: <PaintBucket /> },
 ];
 
@@ -115,6 +117,7 @@ export function Sidebar() {
         </h2>
         {active === 'shapes' && <ShapesPanel />}
         {active === 'text' && <TextPanel />}
+        {active === 'uploads' && <UploadsPanel />}
         {active === 'background' && <BackgroundPanel />}
       </section>
     </aside>
