@@ -231,10 +231,30 @@ export class FabricCanvasAdapter {
     return this.canvas;
   }
 
+  /**
+   * Re-measures every text box, e.g. after web fonts finish loading, and reports heights
+   * that changed as a result.
+   */
+  invalidateTextLayout(): void {
+    if (this.disposed) return;
+    for (const object of this.objects.values()) {
+      if (object instanceof Textbox) {
+        object.initDimensions();
+        object.setCoords();
+        object.dirty = true;
+      }
+    }
+    this.canvas.requestRenderAll();
+    this.reportMeasuredTextHeights(Array.from(this.elements.values()));
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.objects.clear();
+    // With no render pending, Fabric tears the DOM down synchronously, which keeps React
+    // StrictMode's mount -> unmount -> mount cycle (and fast navigation) free of races.
+    this.canvas.cancelRequestedRender();
     void this.canvas.dispose();
   }
 
