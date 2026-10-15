@@ -1,18 +1,29 @@
 import { Button, cn } from '@opencanvas/ui';
-import { Circle, ImageIcon, PaintBucket, Shapes, Square, Squircle, Type } from 'lucide-react';
+import {
+  Circle,
+  ImageIcon,
+  Layers,
+  PaintBucket,
+  Shapes,
+  Square,
+  Squircle,
+  Type,
+} from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 
 import { useEditorActions } from './actions';
 import { BackgroundPanel } from './panels/BackgroundPanel';
+import { LayersPanel } from './panels/LayersPanel';
 import { UploadsPanel } from './panels/UploadsPanel';
 
-type SidebarTab = 'shapes' | 'text' | 'uploads' | 'background';
+type SidebarTab = 'shapes' | 'text' | 'uploads' | 'background' | 'layers';
 
 const TABS: { id: SidebarTab; label: string; icon: ReactNode }[] = [
   { id: 'shapes', label: 'Shapes', icon: <Shapes /> },
   { id: 'text', label: 'Text', icon: <Type /> },
   { id: 'uploads', label: 'Uploads', icon: <ImageIcon /> },
   { id: 'background', label: 'Background', icon: <PaintBucket /> },
+  { id: 'layers', label: 'Layers', icon: <Layers /> },
 ];
 
 function ShapesPanel() {
@@ -79,7 +90,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-full border-r border-border bg-panel">
       <nav
-        aria-label="Insert"
+        aria-label="Panels"
         className="flex w-16 flex-col items-stretch gap-1 border-r border-border p-1.5"
       >
         {TABS.map((tab) => {
@@ -119,6 +130,7 @@ export function Sidebar() {
         {active === 'text' && <TextPanel />}
         {active === 'uploads' && <UploadsPanel />}
         {active === 'background' && <BackgroundPanel />}
+        {active === 'layers' && <LayersPanel />}
       </section>
     </aside>
   );

@@ -6,8 +6,14 @@ import {
   type Fill,
 } from '@opencanvas/document';
 import {
+  alignElements,
+  alignmentTarget,
+  distributeElements,
   selectActivePage,
+  selectSelectedElements,
+  type AlignMode,
   type DispatchOptions,
+  type DistributeAxis,
   type EditorCommand,
   type ElementPatch,
   type ReorderTarget,
@@ -29,7 +35,14 @@ export interface EditorActions {
   clearSelection: () => void;
   /** Patches every selected element; `mergeKey` coalesces rapid edits into one undo step. */
   updateSelection: (patch: ElementPatch, mergeKey?: string) => void;
+  /** Patches one element regardless of selection (layers panel toggles, rename). */
+  updateElement: (elementId: string, patch: ElementPatch, mergeKey?: string) => void;
   reorderSelection: (to: ReorderTarget) => void;
+  reorderElement: (elementId: string, to: ReorderTarget) => void;
+  /** Aligns the selection: to the page for one element, to the selection box for several. */
+  alignSelection: (mode: AlignMode) => void;
+  /** Equalizes gaps between three or more selected elements. */
+  distributeSelection: (axis: DistributeAxis) => void;
   renameDocument: (name: string) => void;
   resizeDocument: (width: number, height: number) => void;
   setPageBackground: (fill: Fill, mergeKey?: string) => void;
@@ -152,12 +165,45 @@ export function useEditorActions(): EditorActions {
         );
       },
 
+      updateElement: (elementId, patch, mergeKey) => {
+        dispatch(
+          { type: 'element.update', pageId: pageId(), elementId, patch },
+          mergeKey ? { mergeKey } : undefined,
+        );
+      },
+
       reorderSelection: (to) => {
         const ids = selected();
         // Reordering is defined per element; multi-selection reorders in a stable sequence.
         const ordered = to === 'front' || to === 'forward' ? ids : [...ids].reverse();
         for (const elementId of ordered) {
           dispatch({ type: 'element.reorder', pageId: pageId(), elementId, to });
+        }
+      },
+
+      reorderElement: (elementId, to) => {
+        dispatch({ type: 'element.reorder', pageId: pageId(), elementId, to });
+      },
+
+      alignSelection: (mode) => {
+        const state = store.getState();
+        const elements = selectSelectedElements(state);
+        if (elements.length === 0) return;
+        const updates = alignElements(
+          elements,
+          mode,
+          alignmentTarget(elements, state.document.size),
+        );
+        if (updates.length > 0) {
+          dispatch({ type: 'element.updateMany', pageId: state.activePageId, updates });
+        }
+      },
+
+      distributeSelection: (axis) => {
+        const state = store.getState();
+        const updates = distributeElements(selectSelectedElements(state), axis);
+        if (updates.length > 0) {
+          dispatch({ type: 'element.updateMany', pageId: state.activePageId, updates });
         }
       },
 

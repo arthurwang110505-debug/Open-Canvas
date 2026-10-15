@@ -48,6 +48,14 @@ export function useKeyboardShortcuts(): void {
         actions.selectAll();
         return;
       }
+      // Physical bracket keys so the shortcut survives Shift (which turns ] into } on US layouts).
+      if (modifier && (event.code === 'BracketRight' || event.code === 'BracketLeft')) {
+        event.preventDefault();
+        const forward = event.code === 'BracketRight';
+        if (event.shiftKey) actions.reorderSelection(forward ? 'front' : 'back');
+        else actions.reorderSelection(forward ? 'forward' : 'backward');
+        return;
+      }
       if (modifier && canvasReady && (key === '=' || key === '+')) {
         event.preventDefault();
         canvas.zoomIn();

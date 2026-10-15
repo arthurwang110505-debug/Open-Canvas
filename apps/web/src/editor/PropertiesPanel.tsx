@@ -8,13 +8,27 @@ import {
   type TextAlign,
   type TextElement,
 } from '@opencanvas/document';
-import { selectActivePage, selectSelectedElements } from '@opencanvas/editor-core';
+import {
+  movableElements,
+  selectActivePage,
+  selectSelectedElements,
+  type AlignMode,
+  type DistributeAxis,
+} from '@opencanvas/editor-core';
 import { Button, Label, Select, Separator, Textarea, Tooltip } from '@opencanvas/ui';
 import {
   AlignCenter,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignHorizontalDistributeCenter,
   AlignJustify,
   AlignLeft,
   AlignRight,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  AlignVerticalDistributeCenter,
   ArrowDown,
   ArrowDownToLine,
   ArrowUp,
@@ -32,6 +46,7 @@ import { useId } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { useEditorActions } from './actions';
+import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
 import { FONT_FAMILIES } from './fonts';
 import { useEditor } from './hooks';
 import { ColorField, FieldGroup, NumberField } from './panels/fields';
@@ -52,12 +67,23 @@ const TEXT_ALIGNMENTS: { value: TextAlign; label: string; icon: React.ReactNode 
   { value: 'justify', label: 'Justify', icon: <AlignJustify /> },
 ];
 
-const ELEMENT_LABELS: Record<DesignElement['type'], string> = {
-  rect: 'Rectangle',
-  ellipse: 'Ellipse',
-  text: 'Text',
-  image: 'Image',
-};
+const ALIGN_MODES: { mode: AlignMode; label: string; icon: React.ReactNode }[] = [
+  { mode: 'left', label: 'Align left', icon: <AlignStartVertical /> },
+  { mode: 'center', label: 'Align horizontal centers', icon: <AlignCenterVertical /> },
+  { mode: 'right', label: 'Align right', icon: <AlignEndVertical /> },
+  { mode: 'top', label: 'Align top', icon: <AlignStartHorizontal /> },
+  { mode: 'middle', label: 'Align vertical centers', icon: <AlignCenterHorizontal /> },
+  { mode: 'bottom', label: 'Align bottom', icon: <AlignEndHorizontal /> },
+];
+
+const DISTRIBUTE_AXES: { axis: DistributeAxis; label: string; icon: React.ReactNode }[] = [
+  {
+    axis: 'horizontal',
+    label: 'Distribute horizontally',
+    icon: <AlignHorizontalDistributeCenter />,
+  },
+  { axis: 'vertical', label: 'Distribute vertically', icon: <AlignVerticalDistributeCenter /> },
+];
 
 const IMAGE_FITS: { value: ImageFit; label: string; description: string }[] = [
   {
@@ -129,6 +155,53 @@ function PageProperties() {
         </div>
       </FieldGroup>
     </>
+  );
+}
+
+/** Align to the page (one element) or to the selection box (several); distribute needs three. */
+function AlignControls({ elements }: { elements: DesignElement[] }) {
+  const { alignSelection, distributeSelection } = useEditorActions();
+  const movable = movableElements(elements).length;
+  const single = elements.length === 1;
+  const target = single ? 'page' : 'selection';
+  const canDistribute = movable >= 3;
+
+  return (
+    <FieldGroup title={single ? 'Align to page' : 'Align selection'}>
+      <div className="grid grid-cols-6 gap-1">
+        {ALIGN_MODES.map(({ mode, label, icon }) => (
+          <Tooltip key={mode} content={`${label} (${target})`}>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label={label}
+              disabled={movable === 0}
+              onClick={() => alignSelection(mode)}
+            >
+              {icon}
+            </Button>
+          </Tooltip>
+        ))}
+      </div>
+      <div className="grid grid-cols-6 gap-1">
+        {DISTRIBUTE_AXES.map(({ axis, label, icon }) => (
+          <Tooltip
+            key={axis}
+            content={canDistribute ? label : `${label} (select at least 3 unlocked elements)`}
+          >
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label={label}
+              disabled={!canDistribute}
+              onClick={() => distributeSelection(axis)}
+            >
+              {icon}
+            </Button>
+          </Tooltip>
+        ))}
+      </div>
+    </FieldGroup>
   );
 }
 
@@ -405,6 +478,7 @@ function ImageProperties({ element }: { element: ImageElement }) {
 
 function ElementProperties({ element }: { element: DesignElement }) {
   const { updateSelection } = useEditorActions();
+  const assets = useEditor((state) => state.document.assets);
   const key = (field: string) => `${field}:${element.id}`;
   const hasStroke = element.type === 'rect' || element.type === 'ellipse';
   const stroke = hasStroke ? element.stroke : undefined;
@@ -412,13 +486,9 @@ function ElementProperties({ element }: { element: DesignElement }) {
   return (
     <>
       <div className="px-3 py-3">
-        <h2 className="text-sm font-semibold">{ELEMENT_LABELS[element.type]}</h2>
+        <h2 className="text-sm font-semibold">{ELEMENT_TYPE_LABELS[element.type]}</h2>
         <p className="truncate text-xs text-muted-foreground" title={element.id}>
-          {element.type === 'text'
-            ? element.text.split('\n')[0]
-            : element.type === 'image'
-              ? (element.name ?? `ID ${element.id}`)
-              : `ID ${element.id}`}
+          {describeElement(element, assets)}
         </p>
       </div>
       <Separator />
@@ -540,6 +610,7 @@ function ElementProperties({ element }: { element: DesignElement }) {
       )}
       {element.type === 'text' && <TextProperties element={element} />}
       {element.type === 'image' && <ImageProperties element={element} />}
+      <AlignControls elements={[element]} />
       <ArrangeControls elements={[element]} />
     </>
   );
@@ -569,6 +640,7 @@ function MultiSelectionProperties({ elements }: { elements: DesignElement[] }) {
           onCommit={(percent) => updateSelection({ opacity: percent / 100 }, 'multi-opacity')}
         />
       </FieldGroup>
+      <AlignControls elements={elements} />
       <ArrangeControls elements={elements} />
     </>
   );
