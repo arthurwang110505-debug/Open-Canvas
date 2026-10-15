@@ -97,6 +97,18 @@ with structural sharing (untouched pages/elements keep identity; no-ops return t
 - Inserting an upload dispatches `asset.register` and `element.add` with a shared `mergeKey`, so
   one Undo removes both.
 
+### Geometry and arrangement helpers
+
+- `packages/document/geometry.ts` computes axis-aligned bounds (`getElementBounds` for a rotated
+  element, `unionBounds`, `pageBounds`). Rotation is clockwise around the element's top-left
+  corner, exactly as the Fabric mapping renders it.
+- `packages/editor-core/arrange.ts` turns a selection into `element.updateMany` patches:
+  `alignElements(elements, mode, target)` moves elements by translation only (rotation and size
+  never change), `distributeElements(elements, axis)` equalizes the gaps between three or more
+  elements while the outer two stay put, and `alignmentTarget` picks the page for a single
+  element and the selection box otherwise. Locked elements are skipped and elements already in
+  place produce no patch, so the history never records a no-op.
+
 ## 4. Fabric adapter (`packages/canvas-fabric`)
 
 Fabric.js 7 positions objects by **center** (`left`/`top`, `originX/Y` are deprecated) and counts
@@ -164,9 +176,18 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 - `actions.ts` (`useEditorActions`) is the single place UI code turns intents into commands;
   `assets/useImageImport.ts` owns the upload flow (validate → store bytes → register → add).
 - `TopBar` (rename, undo/redo, change status, snapping toggle, zoom/fit), `Sidebar` (Shapes,
-  Text, Uploads, Background), `PropertiesPanel` (layout, fill & stroke, typography, crop & fit
-  for images, arrange; page size when nothing is selected), `useKeyboardShortcuts`,
-  `ErrorToast` for rejected commands and application failures (import, asset loading).
+  Text, Uploads, Background, Layers), `PropertiesPanel` (layout, fill & stroke, typography,
+  crop & fit for images, align/distribute, arrange; page size when nothing is selected),
+  `useKeyboardShortcuts`, `ErrorToast` for rejected commands and application failures (import,
+  asset loading).
+- `panels/LayersPanel` is a z-order view of the active page (top-most first, i.e. the reversed
+  element array). Rows are `role="option"` items: click / Ctrl-click / Shift-click drive
+  `setSelection`, HTML5 drag-and-drop dispatches `element.reorder { to: { index } }` (the index
+  is computed against the array without the dragged element, matching the reducer), per-row
+  eye/lock buttons dispatch `element.update`, and double-click (or F2) opens an inline rename
+  that commits `name` on Enter/blur and discards on Escape. Names fall back to
+  `describeElement` (text content, image file name, element type) and the same helper labels
+  the properties panel.
 - Removing an upload only drops the asset record; its bytes stay in the session store so Undo
   can restore it. Unreferenced blobs are pruned when projects are saved (Milestone 3).
 - Form fields commit validated values (clamped to schema limits) and follow external changes

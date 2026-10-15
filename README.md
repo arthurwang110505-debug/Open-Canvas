@@ -72,6 +72,7 @@ future autosave and AI edits all share one path. Details: [docs/architecture.md]
 | Duplicate                   | `Ctrl/⌘ D`                                        |
 | Select all / clear          | `Ctrl/⌘ A` · `Esc`                                |
 | Nudge (×10 with Shift)      | Arrow keys                                        |
+| Bring forward / send back   | `Ctrl/⌘ ]` · `Ctrl/⌘ [` (+ `Shift` = front/back)  |
 | Zoom in / out / fit / 100 % | `Ctrl/⌘ +` · `Ctrl/⌘ −` · `Ctrl/⌘ 0` · `Ctrl/⌘ 1` |
 | Zoom at pointer / pan       | `Ctrl/⌘ + wheel` · wheel / trackpad               |
 

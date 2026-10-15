@@ -18,8 +18,12 @@ its acceptance tests pass in CI.
 - [x] Image elements, uploads and asset references (document assets map, `image` element with
       cover/fill, `@opencanvas/storage` import pipeline, Uploads panel, drag-and-drop)
 - [x] Alignment guides and snapping (Fabric `AligningGuidelines`, toggle in the top bar)
-- [ ] Group / ungroup, alignment and distribution tools
-- [ ] Layers panel (ordering, lock, visibility, rename)
+- [x] Alignment and distribution tools (`alignElements` / `distributeElements` in `editor-core`;
+      align to the page for one element, to the selection box for several)
+- [x] Layers panel (top-most first; click / Ctrl-click / Shift-click selection, drag-and-drop
+      ordering, bracket shortcuts, per-element lock, visibility and inline rename)
+- [ ] Group / ungroup (needs nested element ids, relative coordinates and group transforms in
+      the document model — deliberately a separate slice)
 - [ ] Image polish: `contain` fit, manual crop, replace image, IndexedDB-backed blobs
 - [ ] Text polish: font registry, loading states, rich defaults
 
