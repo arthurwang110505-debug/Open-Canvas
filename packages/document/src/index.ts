@@ -1,5 +1,6 @@
 export * from './constants';
 export * from './factories';
+export * from './geometry';
 export * from './ids';
 export * from './migrations';
 export * from './queries';
