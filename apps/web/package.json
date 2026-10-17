@@ -19,6 +19,7 @@
     "@opencanvas/editor-core": "workspace:*",
     "@opencanvas/export": "workspace:^",
     "@opencanvas/storage": "workspace:*",
+    "@opencanvas/templates": "workspace:^",
     "@opencanvas/ui": "workspace:*",
     "lucide-react": "^1.57.0",
     "react": "^19.3.0",

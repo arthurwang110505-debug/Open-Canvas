@@ -175,7 +175,11 @@ describe('importing a project file', () => {
     expect(
       await screen.findByText('Imported as "Flyer copy" (a design with that id already exists).'),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(2);
+    expect(
+      within(screen.getByRole('list', { name: 'Saved designs' })).getAllByRole('heading', {
+        level: 2,
+      }),
+    ).toHaveLength(2);
     expect(screen.getByRole('heading', { name: 'Flyer copy' })).toBeInTheDocument();
 
     const original = await store.load('doc_file');
