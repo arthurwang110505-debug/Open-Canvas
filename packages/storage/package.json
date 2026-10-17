@@ -1,0 +1,25 @@
+{
+  "name": "@opencanvas/storage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCanvas persistence primitives: project store (IndexedDB via Dexie), asset blob stores, autosave scheduling, image import and asset URL resolution.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@opencanvas/document": "workspace:*",
+    "dexie": "^4.4.6",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.4"
+  }
+}

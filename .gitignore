@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+
+# Tooling caches
+.cache/
+.eslintcache
+.vite/
+.turbo/
+.vitest/
+
+# Test artifacts
+test-results/
+playwright-report/
+blob-report/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+*.log
