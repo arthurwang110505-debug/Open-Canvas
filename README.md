@@ -9,8 +9,9 @@ posters, social media graphics, presentation covers and other visual content.
 > **PNG, SVG or PDF**, and designs move between browsers as native **`.opencanvas` project
 > files** (validated and migrated on import). The editor works end to end for shapes, text,
 > uploaded images and layers (drag-and-drop, cover/fill, snapping guides, align and distribute)
-> with undo/redo and keyboard shortcuts. Templates, AI assistance and cloud sync are not
-> implemented yet.
+> with undo/redo and keyboard shortcuts, and **14 original starter templates** (social,
+> presentation, video, print, brand) create a fully editable design in one click — each gallery
+> card previews the real rendering. AI assistance and cloud sync are not implemented yet.
 > See [docs/roadmap.md](docs/roadmap.md) for what exists today and what comes next.
 
 ## Principles
@@ -57,9 +58,10 @@ pnpm check        # all of the above plus formatting
 | `packages/storage`       | Project store (IndexedDB + memory), asset blobs, autosave, image import, `.opencanvas` files.      |
 | `packages/export`        | Export renderers from the document model: SVG, PNG (canvas rasterization) and PDF (jsPDF).         |
 | `packages/ui`            | Shared accessible UI primitives (shadcn/ui-style, Tailwind CSS v4 design tokens).                  |
+| `templates`              | Original starter templates: declarative definitions, instantiation and their licensing notes.      |
 | `docs`                   | Architecture notes and roadmap.                                                                    |
 
-Planned (not yet present): `apps/api`, `packages/ai-core`, `templates`, `tests` (Playwright).
+Planned (not yet present): `apps/api`, `packages/ai-core`, `tests` (Playwright).
 
 ## Architecture in one paragraph
 
@@ -69,6 +71,25 @@ returns a new immutable document; the store keeps snapshots for undo/redo. The F
 subscribes to the store and reconciles canvas objects by element id. Canvas interactions
 (drag/resize/rotate/text edits) come back as commands — never as direct state writes — so history,
 future autosave and AI edits all share one path. Details: [docs/architecture.md](docs/architecture.md).
+
+## Templates
+
+`templates/` is a workspace package of **original** starter designs: each template is declarative
+data (canvas size, background colour, rectangles, ellipses and text runs) that
+`createDocumentFromTemplate(id)` turns into a validated document with `metadata.source = 'template'`
+and the template id recorded. No template ships a binary asset, so nothing here carries a
+third-party license — see [`templates/LICENSES.md`](templates/LICENSES.md).
+
+| Category          | Templates                                                       |
+| ----------------- | --------------------------------------------------------------- |
+| Social            | Sale announcement, Quote card, Event story, Product launch post |
+| Presentation      | Title slide, Content slide                                      |
+| Video             | YouTube thumbnail                                               |
+| Print (300 dpi)   | Event poster A4, Promo flyer A4, Business card, Café menu A4    |
+| Brand & marketing | Logo & brand mark, Announcement banner, Email header            |
+
+The dashboard gallery previews each template by rendering it with the same SVG renderer that powers
+export, so the thumbnail is the design rather than a stand-in image.
 
 ## Keyboard shortcuts
 
