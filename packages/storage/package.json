@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@opencanvas/document": "workspace:*",
-    "dexie": "^4.4.6"
+    "dexie": "^4.4.6",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.2.5",

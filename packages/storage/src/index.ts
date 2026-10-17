@@ -7,5 +7,6 @@ export * from './dexieProjectStore';
 export * from './importImage';
 export * from './memoryProjectStore';
 export * from './objectUrlCache';
+export * from './projectFile';
 export * from './projectStore';
 export * from './sniff';
