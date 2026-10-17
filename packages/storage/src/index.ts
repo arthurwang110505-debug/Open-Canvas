@@ -1,6 +1,7 @@
 export * from './assetBlobStore';
 export * from './assetResolver';
 export * from './autosave';
+export * from './dataUrl';
 export * from './decode';
 export * from './dexieProjectStore';
 export * from './importImage';
