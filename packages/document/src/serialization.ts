@@ -1,6 +1,8 @@
-import { DocumentSchema, type DesignDocument } from './schema';
+import { LIMITS } from './constants';
+import { generateId } from './ids';
 import { migrateDocument, readSchemaVersion, type MigrateOptions } from './migrations';
 import { err, ok, type Result } from './result';
+import { DocumentSchema, type DesignDocument } from './schema';
 
 export interface ValidationIssue {
   path: string;
@@ -106,4 +108,36 @@ export function serializeDocument(
 /** Structural deep clone that keeps the document plain and JSON-safe. */
 export function cloneDocument(document: DesignDocument): DesignDocument {
   return structuredClone(document);
+}
+
+export interface CloneDocumentAsOptions {
+  /** Identity of the copy; generated when omitted. */
+  id?: string;
+  /** Name of the copy; defaults to `duplicateName(document.name)`. */
+  name?: string;
+  now?: Date;
+}
+
+/** "Poster" → "Poster copy", truncated so the result still satisfies the name limit. */
+export function duplicateName(name: string): string {
+  const suffix = ' copy';
+  return `${name.slice(0, LIMITS.maxNameLength - suffix.length).trimEnd()}${suffix}`;
+}
+
+/**
+ * Deep copy of a document under a new identity ("Duplicate design"). Page, element and asset
+ * ids are scoped to a document, so they are kept; only the id, name and timestamps change.
+ */
+export function cloneDocumentAs(
+  document: DesignDocument,
+  options: CloneDocumentAsOptions = {},
+): DesignDocument {
+  const now = (options.now ?? new Date()).toISOString();
+  const copy = cloneDocument(document);
+  return {
+    ...copy,
+    id: options.id ?? generateId('doc'),
+    name: options.name ?? duplicateName(document.name),
+    metadata: { ...copy.metadata, createdAt: now, updatedAt: now },
+  };
 }

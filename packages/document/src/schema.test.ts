@@ -8,7 +8,14 @@ import {
   createTextElement,
 } from './factories';
 import { DocumentSchema, ElementSchema, HexColorSchema } from './schema';
-import { cloneDocument, parseDocument, serializeDocument, validateDocument } from './serialization';
+import {
+  cloneDocument,
+  cloneDocumentAs,
+  duplicateName,
+  parseDocument,
+  serializeDocument,
+  validateDocument,
+} from './serialization';
 
 const fixedDate = new Date('2026-01-02T03:04:05.000Z');
 
@@ -199,5 +206,29 @@ describe('serialization', () => {
     expect(copy).toEqual(doc);
     expect(copy).not.toBe(doc);
     expect(copy.pages[0]).not.toBe(doc.pages[0]);
+  });
+});
+
+describe('cloneDocumentAs', () => {
+  it('copies a document under a new identity without sharing state', () => {
+    const now = new Date('2026-03-04T05:06:07.000Z');
+    const doc = createBlankDocument({ id: 'doc_src', name: 'Poster' });
+    doc.pages[0]?.elements.push(createRectElement({ id: 'r1' }));
+    const copy = cloneDocumentAs(doc, { id: 'doc_copy', now });
+    expect(copy.id).toBe('doc_copy');
+    expect(copy.name).toBe('Poster copy');
+    expect(copy.metadata.createdAt).toBe(now.toISOString());
+    expect(copy.metadata.updatedAt).toBe(now.toISOString());
+    expect(copy.pages[0]?.elements[0]?.id).toBe('r1');
+    copy.pages[0]?.elements.push(createRectElement({ id: 'r2' }));
+    expect(doc.pages[0]?.elements).toHaveLength(1);
+    expect(validateDocument(copy).ok).toBe(true);
+  });
+
+  it('keeps duplicate names within the length limit', () => {
+    const long = 'x'.repeat(LIMITS.maxNameLength);
+    expect(duplicateName(long)).toHaveLength(LIMITS.maxNameLength);
+    expect(duplicateName(long).endsWith(' copy')).toBe(true);
+    expect(duplicateName('Flyer')).toBe('Flyer copy');
   });
 });

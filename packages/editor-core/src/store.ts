@@ -45,8 +45,12 @@ export interface EditorActions {
   clearSelection: () => void;
   setActivePage: (pageId: string) => void;
   setZoom: (zoom: number) => void;
-  /** Marks the current document as persisted; `dirty` becomes true again on the next change. */
-  markSaved: () => void;
+  /**
+   * Records which document snapshot is persisted. Pass the snapshot that was actually written:
+   * when the user kept editing while the save ran, the store stays dirty and undoing back to
+   * that snapshot reports clean. Defaults to the current document.
+   */
+  markSaved: (saved?: DesignDocument) => void;
   /** Replaces the document (open project, import, AI result) and resets history. */
   loadDocument: (document: DesignDocument) => void;
   clearError: () => void;
@@ -243,9 +247,10 @@ export function createEditorStore(
       if (clamped !== get().zoom) set({ zoom: clamped });
     },
 
-    markSaved: () => {
-      savedDocument = get().document;
-      set({ dirty: false });
+    markSaved: (saved = get().document) => {
+      savedDocument = saved;
+      const dirty = get().document !== savedDocument;
+      if (dirty !== get().dirty) set({ dirty });
     },
 
     loadDocument: (document) => {

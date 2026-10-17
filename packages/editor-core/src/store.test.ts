@@ -192,6 +192,19 @@ describe('createEditorStore', () => {
     expect(store.getState().dirty).toBe(false);
   });
 
+  it('keeps the store dirty when an older snapshot is marked saved', () => {
+    const { store, pageId } = makeStore();
+    const { dispatch, undo, markSaved } = store.getState();
+    dispatch({ type: 'element.add', pageId, element: createRectElement({ id: 'r1' }) });
+    const snapshot = store.getState().document;
+    // The user keeps editing while the (async) save of `snapshot` is in flight.
+    dispatch({ type: 'element.update', pageId, elementId: 'r1', patch: { x: 5 } });
+    markSaved(snapshot);
+    expect(store.getState().dirty).toBe(true);
+    undo();
+    expect(store.getState().dirty).toBe(false);
+  });
+
   it('only selects elements that exist on the active page', () => {
     const { store, pageId } = makeStore();
     const { dispatch, setSelection } = store.getState();
