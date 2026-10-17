@@ -3,10 +3,12 @@
 OpenCanvas is an open-source, self-hostable visual design studio — an alternative to Canva for
 posters, social media graphics, presentation covers and other visual content.
 
-> **Status: Milestone 2 (Core editor) — early development.**
-> The editor works end to end for shapes, text and uploaded images (drag-and-drop, cover/fill,
-> snapping guides) with undo/redo and keyboard shortcuts. Uploads live in memory for the session:
-> persistence, export, templates, AI assistance and cloud sync are not implemented yet.
+> **Status: Milestone 3 (Projects and export) — early development.**
+> Designs are saved locally in the browser (IndexedDB) with debounced autosave, and a project
+> dashboard creates, opens, renames, duplicates and deletes them. The editor works end to end for
+> shapes, text, uploaded images and layers (drag-and-drop, cover/fill, snapping guides, align and
+> distribute) with undo/redo and keyboard shortcuts. File import/export (`.opencanvas`, PNG, SVG,
+> PDF), templates, AI assistance and cloud sync are not implemented yet.
 > See [docs/roadmap.md](docs/roadmap.md) for what exists today and what comes next.
 
 ## Principles
@@ -24,8 +26,11 @@ Requirements: Node.js ≥ 22.12 and pnpm 9 (`corepack enable` installs the pinne
 
 ```bash
 pnpm install
-pnpm dev          # editor at http://localhost:5173
+pnpm dev          # http://localhost:5173 — project dashboard, then the editor
 ```
+
+Designs are stored in this browser only (IndexedDB via Dexie, with a volatile in-memory fallback
+when IndexedDB is unavailable). Nothing is uploaded anywhere.
 
 Quality gates (the CI definition lives in [`docs/ci/github-actions-ci.yml`](docs/ci/github-actions-ci.yml);
 copy it to `.github/workflows/ci.yml` — the automation account that opened the first PR is not
@@ -43,11 +48,11 @@ pnpm check        # all of the above plus formatting
 
 | Path                     | Purpose                                                                                            |
 | ------------------------ | -------------------------------------------------------------------------------------------------- |
-| `apps/web`               | React + Vite application: editor shell, canvas workspace, properties panel.                        |
+| `apps/web`               | React + Vite application: project dashboard, hash routing, editor shell, canvas workspace, panels. |
 | `packages/document`      | Canonical document model: Zod schemas, factories, serialization, explicit schema migrations.       |
 | `packages/editor-core`   | Editing engine: command vocabulary, pure reducer, undo/redo history, selection, zoom helpers.      |
 | `packages/canvas-fabric` | Fabric.js 7 adapter: renders a page, syncs selection/ordering, translates interactions to patches. |
-| `packages/storage`       | Asset blob stores, image import (sniffing, decoding, limits) and safe asset URL resolution.        |
+| `packages/storage`       | Project store (IndexedDB + memory), asset blob stores, autosave scheduling, image import.          |
 | `packages/ui`            | Shared accessible UI primitives (shadcn/ui-style, Tailwind CSS v4 design tokens).                  |
 | `docs`                   | Architecture notes and roadmap.                                                                    |
 
@@ -67,6 +72,7 @@ future autosave and AI edits all share one path. Details: [docs/architecture.md]
 
 | Action                      | Keys                                              |
 | --------------------------- | ------------------------------------------------- |
+| Save now                    | `Ctrl/⌘ S` (autosave runs on its own)             |
 | Undo / Redo                 | `Ctrl/⌘ Z` · `Ctrl/⌘ Shift Z`, `Ctrl Y`           |
 | Delete selection            | `Delete` / `Backspace`                            |
 | Duplicate                   | `Ctrl/⌘ D`                                        |

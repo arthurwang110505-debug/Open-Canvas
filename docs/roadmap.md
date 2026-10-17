@@ -3,7 +3,7 @@
 Milestones are delivered as small, reviewable pull requests. A milestone is complete only when
 its acceptance tests pass in CI.
 
-## Milestone 1 — Foundation (in progress)
+## Milestone 1 — Foundation (done)
 
 - [x] pnpm monorepo, strict TypeScript, type-aware ESLint, Prettier, Vitest projects, CI
 - [x] Document model with validation, serialization and an explicit migration registry
@@ -24,13 +24,14 @@ its acceptance tests pass in CI.
       ordering, bracket shortcuts, per-element lock, visibility and inline rename)
 - [ ] Group / ungroup (needs nested element ids, relative coordinates and group transforms in
       the document model — deliberately a separate slice)
-- [ ] Image polish: `contain` fit, manual crop, replace image, IndexedDB-backed blobs
+- [x] IndexedDB-backed image blobs (asset bytes live next to their project and survive reloads)
+- [ ] Image polish: `contain` fit, manual crop, replace image
 - [ ] Text polish: font registry, loading states, rich defaults
 
-## Milestone 3 — Projects and export
+## Milestone 3 — Projects and export (in progress)
 
-- [ ] IndexedDB persistence (Dexie) with debounced autosave and explicit save status
-- [ ] Project dashboard: create, open, rename, duplicate, delete
+- [x] IndexedDB persistence (Dexie) with debounced autosave and explicit save status
+- [x] Project dashboard: create (canvas presets), open, rename, duplicate, delete
 - [ ] Native `.opencanvas` import/export with validation and migrations
 - [ ] PNG, SVG and PDF export from the document model
 - [ ] Template registry seeded with ≥ 12 original templates and documented licenses

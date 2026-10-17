@@ -153,9 +153,9 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 
 ## 4a. Storage (`packages/storage`)
 
-- `AssetBlobStore { put, get, has, delete, keys }` is the only storage contract the editor
-  knows. `MemoryAssetBlobStore` backs the current session; a Dexie/IndexedDB implementation
-  arrives with project persistence in Milestone 3.
+- `AssetBlobStore { put, get, has, delete, keys }` is the only blob contract the editor knows.
+  `MemoryAssetBlobStore` backs a session; `DexieAssetBlobStore` persists bytes in IndexedDB under
+  `[projectId+assetId]`, so image data is scoped to the design that references it.
 - `importImageFile(file, { maxBytes, allowedTypes, decode })` returns a `Result`: it enforces the
   size cap, sniffs the real format from the bytes (PNG/JPEG/GIF/WebP magic numbers — `File.type`
   is never trusted), decodes to learn the pixel size (`createImageBitmap`, `<img>` fallback,
@@ -164,8 +164,37 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   release; `createAssetResolver` maps `local` assets through it and allows `url` assets only
   over http(s) (`isSafeAssetUrl` rejects `javascript:`, `data:`, `blob:`, `file:`).
 
+### Project store and autosave
+
+- `ProjectStore { list, load, save, duplicate, remove, assetBlobStore }` returns
+  `Result<…, ProjectStoreError>` for every operation: `not-found`, `invalid-project`,
+  `quota-exceeded` and `storage-unavailable` are distinguished so the UI can say what went wrong.
+- `SharedProjectStore` owns the rules — validate before writing, `parseDocument` (validate +
+  migrate) after reading, summaries derived from the document, duplicate naming, newest-first
+  ordering — and both backends (`DexieProjectStore`, `createMemoryProjectStore`) only implement raw
+  record access, so they cannot drift. Documents are stored as canonical JSON with denormalized
+  summary columns for cheap listing.
+- `Autosaver` is a backend-free debounce: it coalesces changes, re-arms when an edit lands during a
+  write, and exposes `flush()` / `saveNow()` / `cancel()` / `dispose()` plus
+  `idle | scheduled | saving | error` status transitions. The timer is injectable for tests.
+
 ## 5. Web app (`apps/web`)
 
+- `App` routes on the location hash (`router.ts`): `#/` renders the `Dashboard`,
+  `#/design/<id>` renders `ProjectEditor`, anything else renders an explanation with a way back.
+  A hash router needs no server rewrites, so a static build works anywhere.
+- `Dashboard` lists projects newest first (size, page/element counts, saved timestamp) and
+  creates/opens/renames/duplicates/deletes them. Renaming goes through the `document.rename`
+  command so the same validation and `updatedAt` rules apply as inside the editor; failures are
+  shown in an alert with a retry.
+- `ProjectEditor` loads the stored document (validated and migrated on read), builds the
+  project-scoped blob store and creates the persistence controller. It flushes pending writes on
+  `pagehide`, on `visibilitychange → hidden` and when it unmounts.
+- `editor/persistence.ts` bridges the editor store and a `save(document)` callback: it schedules a
+  write whenever the store becomes dirty, captures the snapshot _before_ awaiting the write, calls
+  `markSaved(snapshot)` only after success, and publishes status for the top bar. `detach()` keeps
+  the last attached store so a final flush still works; the editor without a backend reports
+  `disabled` and behaves exactly as before.
 - `EditorProvider` creates one store, one `CanvasController` and one notification store per
   document. `AssetProvider` (outside it) owns the blob store, object URL cache, resolver and
   decoder; tests inject deterministic implementations through `EditorPage`'s `assetServices`.
@@ -195,13 +224,14 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 
 ## 6. Testing strategy
 
-| Layer         | Tool                          | What is covered                                                     |
-| ------------- | ----------------------------- | ------------------------------------------------------------------- |
-| document      | Vitest (node)                 | Schema limits, defaults, round-trips, migration pipeline, failures. |
-| editor-core   | Vitest (node)                 | Reducer semantics, immutability, history/merge/limit, selection.    |
-| canvas-fabric | Vitest (jsdom + context stub) | Mapping math, reconciliation, ordering, selection sync, events.     |
-| web           | Vitest + Testing Library      | Real store + real adapter: insert, edit, undo/redo, shortcuts.      |
-| E2E (planned) | Playwright                    | Pointer interactions, rendering, persistence, export.               |
+| Layer         | Tool                           | What is covered                                                                                                                      |
+| ------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| document      | Vitest (node)                  | Schema limits, defaults, round-trips, cloning, migration pipeline, failures.                                                         |
+| editor-core   | Vitest (node)                  | Reducer semantics, immutability, history/merge/limit, selection, arrange helpers.                                                    |
+| canvas-fabric | Vitest (jsdom + context stub)  | Mapping math, reconciliation, ordering, selection sync, events.                                                                      |
+| storage       | Vitest (node + fake-indexeddb) | Project-store contract against **both** backends, corrupted/mismatched records, quota mapping, blob scoping, autosave timing.        |
+| web           | Vitest + Testing Library       | Real store + real adapter: insert, edit, undo/redo, shortcuts, dashboard CRUD, autosave end to end (edit → saved → reopen), routing. |
+| E2E (planned) | Playwright                     | Pointer interactions, rendering, persistence, export.                                                                                |
 
 ## 7. Decisions and constraints
 
@@ -217,10 +247,9 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 
 ## 8. Extension points reserved for later milestones
 
-- `packages/storage`: `ProjectRepository` interface over Dexie/IndexedDB (documents + asset
-  blobs) and a remote implementation; autosave subscribes to the store's `dirty` flag
-  (Milestone 3). `contain` fit and manual crop offsets for images extend `ImageElement`
-  additively.
+- `packages/storage`: `ProjectStore` (delivered) is the seam for a remote implementation —
+  a cloud backend only has to satisfy the same `Result`-returning contract. `contain` fit and
+  manual crop offsets for images extend `ImageElement` additively.
 - `packages/export`: renderers from the document model to SVG/PNG/PDF (Milestone 3).
 - `packages/ai-core`: structured generation validated with `DocumentSchema`/`ElementSchema`,
   applied through `element.add`/`element.update` so AI edits are undoable (Milestone 4).
