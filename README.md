@@ -4,11 +4,12 @@ OpenCanvas is an open-source, self-hostable visual design studio — an alternat
 posters, social media graphics, presentation covers and other visual content.
 
 > **Status: Milestone 3 (Projects and export) — early development.**
-> Designs are saved locally in the browser (IndexedDB) with debounced autosave, and a project
-> dashboard creates, opens, renames, duplicates and deletes them. The editor works end to end for
-> shapes, text, uploaded images and layers (drag-and-drop, cover/fill, snapping guides, align and
-> distribute) with undo/redo and keyboard shortcuts. File import/export (`.opencanvas`, PNG, SVG,
-> PDF), templates, AI assistance and cloud sync are not implemented yet.
+> Designs are saved locally in the browser (IndexedDB) with debounced autosave, a project
+> dashboard creates, opens, renames, duplicates and deletes them, and any design downloads as
+> **PNG, SVG or PDF**. The editor works end to end for shapes, text, uploaded images and layers
+> (drag-and-drop, cover/fill, snapping guides, align and distribute) with undo/redo and keyboard
+> shortcuts. Native `.opencanvas` project files, templates, AI assistance and cloud sync are not
+> implemented yet.
 > See [docs/roadmap.md](docs/roadmap.md) for what exists today and what comes next.
 
 ## Principles
@@ -53,6 +54,7 @@ pnpm check        # all of the above plus formatting
 | `packages/editor-core`   | Editing engine: command vocabulary, pure reducer, undo/redo history, selection, zoom helpers.      |
 | `packages/canvas-fabric` | Fabric.js 7 adapter: renders a page, syncs selection/ordering, translates interactions to patches. |
 | `packages/storage`       | Project store (IndexedDB + memory), asset blob stores, autosave scheduling, image import.          |
+| `packages/export`        | Export renderers from the document model: SVG, PNG (canvas rasterization) and PDF (jsPDF).         |
 | `packages/ui`            | Shared accessible UI primitives (shadcn/ui-style, Tailwind CSS v4 design tokens).                  |
 | `docs`                   | Architecture notes and roadmap.                                                                    |
 
@@ -73,6 +75,7 @@ future autosave and AI edits all share one path. Details: [docs/architecture.md]
 | Action                      | Keys                                              |
 | --------------------------- | ------------------------------------------------- |
 | Save now                    | `Ctrl/⌘ S` (autosave runs on its own)             |
+| Export PNG / SVG / PDF      | Top bar **Export** buttons                        |
 | Undo / Redo                 | `Ctrl/⌘ Z` · `Ctrl/⌘ Shift Z`, `Ctrl Y`           |
 | Delete selection            | `Delete` / `Backspace`                            |
 | Duplicate                   | `Ctrl/⌘ D`                                        |

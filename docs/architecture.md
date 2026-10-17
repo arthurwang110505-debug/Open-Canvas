@@ -1,7 +1,7 @@
 # OpenCanvas architecture
 
-This document describes the system as it exists after Milestone 1 and the contracts later
-milestones build on. It is intentionally concrete: file names, types and invariants.
+This document describes the system as it exists today and the contracts later milestones build
+on. It is intentionally concrete: file names, types and invariants.
 
 ## 1. Packages and dependency direction
 
@@ -9,7 +9,8 @@ milestones build on. It is intentionally concrete: file names, types and invaria
 apps/web ──► packages/editor-core ──► packages/document
    │                                        ▲
    ├────────► packages/canvas-fabric ───────┤
-   ├────────► packages/storage ─────────────┘
+   ├────────► packages/storage ─────────────┤
+   ├────────► packages/export ──────────────┘
    └────────► packages/ui
 ```
 
@@ -18,9 +19,11 @@ apps/web ──► packages/editor-core ──► packages/document
   Node, tests, the future API server and AI tooling.
 - `packages/canvas-fabric` depends on `document` and `fabric`. It never imports `editor-core`:
   the adapter communicates through callbacks and a `render(scene)` method.
-- `packages/storage` depends only on `document`: asset blob stores, image import and asset URL
-  resolution (project persistence joins it in Milestone 3).
-- `apps/web` is the only place where React, the store, the adapter and storage meet.
+- `packages/storage` depends only on `document` (+ `dexie`): project store (IndexedDB and
+  memory), asset blob stores, autosave scheduling, image import, data URLs.
+- `packages/export` depends only on `document` (+ `jspdf`): it renders the model to SVG, PNG and
+  PDF without the canvas adapter, so exports work headlessly and are unit-testable in node.
+- `apps/web` is the only place where React, the store, the adapter, storage and export meet.
 
 Internal packages are consumed as TypeScript source (`exports` → `src/index.ts`); Vite, Vitest
 and `tsc` resolve them through the pnpm workspace. A compiled build step will be added when a
@@ -178,6 +181,26 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   write, and exposes `flush()` / `saveNow()` / `cancel()` / `dispose()` plus
   `idle | scheduled | saving | error` status transitions. The timer is injectable for tests.
 
+## 4b. Export (`packages/export`)
+
+- `renderPageToSvg(document, options)` is a pure string renderer: `translate(x y) rotate(r)` per
+  element (the documented geometry convention), clamped corner radii, `cover` →
+  `preserveAspectRatio="xMidYMid slice"`, `fill` → `none`, hidden elements skipped, and every
+  value XML-escaped with XML-illegal control characters stripped so no document content can
+  inject markup.
+- Text uses Fabric's metrics — first baseline `1.13 * (1 - 0.222)` em below the line top, line
+  advance `fontSize * lineHeight` — so exported text sits where the canvas draws it. SVG has no
+  automatic wrapping, so an optional `measureText` (canvas 2D in the browser) wraps lines to the
+  element width; without it only hard breaks are applied.
+- Images are embedded through an injected `resolveImageHref` (the app passes base64 data URLs from
+  the project blob store, because object URLs die with the tab). A missing asset record, an absent
+  resolver and a resolver rejection are distinct typed errors.
+- `createSvgRasterizer()` draws the SVG into a canvas (injectable `loadImage`/`createCanvas`) and
+  returns a PNG data URL, refusing sizes beyond `LIMITS.maxCanvasDimension`.
+- `renderDocumentToPdf()` renders each page to SVG, rasterizes it (default 2×) and places it on a
+  PDF page sized in jsPDF `px` units (1/96 inch). The PDF is therefore raster; vector text would
+  need font embedding, which is tracked as a follow-up.
+
 ## 5. Web app (`apps/web`)
 
 - `App` routes on the location hash (`router.ts`): `#/` renders the `Dashboard`,
@@ -202,6 +225,10 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   `activePageId`) and re-renders the scene; adapter callbacks dispatch commands. It is also the
   drop target: files dropped on the canvas are imported and centered on the drop point
   (`controller.clientToPage`).
+- `ExportControls` (top bar) downloads the design as PNG, SVG or PDF via `useDesignExport`, which
+  renders from the document model — never from the Fabric canvas — and reports failures as
+  notifications instead of handing over a broken file. Browser-only steps (rasterize, measure
+  text, download) come from `ExportProvider` and are injectable in tests.
 - `actions.ts` (`useEditorActions`) is the single place UI code turns intents into commands;
   `assets/useImageImport.ts` owns the upload flow (validate → store bytes → register → add).
 - `TopBar` (rename, undo/redo, change status, snapping toggle, zoom/fit), `Sidebar` (Shapes,
@@ -224,14 +251,15 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 
 ## 6. Testing strategy
 
-| Layer         | Tool                           | What is covered                                                                                                                      |
-| ------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| document      | Vitest (node)                  | Schema limits, defaults, round-trips, cloning, migration pipeline, failures.                                                         |
-| editor-core   | Vitest (node)                  | Reducer semantics, immutability, history/merge/limit, selection, arrange helpers.                                                    |
-| canvas-fabric | Vitest (jsdom + context stub)  | Mapping math, reconciliation, ordering, selection sync, events.                                                                      |
-| storage       | Vitest (node + fake-indexeddb) | Project-store contract against **both** backends, corrupted/mismatched records, quota mapping, blob scoping, autosave timing.        |
-| web           | Vitest + Testing Library       | Real store + real adapter: insert, edit, undo/redo, shortcuts, dashboard CRUD, autosave end to end (edit → saved → reopen), routing. |
-| E2E (planned) | Playwright                     | Pointer interactions, rendering, persistence, export.                                                                                |
+| Layer         | Tool                           | What is covered                                                                                                                                        |
+| ------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| document      | Vitest (node)                  | Schema limits, defaults, round-trips, cloning, migration pipeline, failures.                                                                           |
+| editor-core   | Vitest (node)                  | Reducer semantics, immutability, history/merge/limit, selection, arrange helpers.                                                                      |
+| canvas-fabric | Vitest (jsdom + context stub)  | Mapping math, reconciliation, ordering, selection sync, events.                                                                                        |
+| storage       | Vitest (node + fake-indexeddb) | Project-store contract against **both** backends, corrupted/mismatched records, quota mapping, blob scoping, autosave timing.                          |
+| export        | Vitest (node)                  | SVG markup/geometry/escaping/failure modes, rasterizer with fakes, PDF bytes and page count.                                                           |
+| web           | Vitest + Testing Library       | Real store + real adapter: insert, edit, undo/redo, shortcuts, dashboard CRUD, autosave end to end (edit → saved → reopen), routing, export downloads. |
+| E2E (planned) | Playwright                     | Pointer interactions, rendering, persistence, export.                                                                                                  |
 
 ## 7. Decisions and constraints
 
@@ -250,7 +278,8 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 - `packages/storage`: `ProjectStore` (delivered) is the seam for a remote implementation —
   a cloud backend only has to satisfy the same `Result`-returning contract. `contain` fit and
   manual crop offsets for images extend `ImageElement` additively.
-- `packages/export`: renderers from the document model to SVG/PNG/PDF (Milestone 3).
+- `packages/export`: delivered for SVG/PNG/PDF. Open follow-ups: vector PDF text (font
+  embedding), `contain` fit, and multi-page SVG sheets.
 - `packages/ai-core`: structured generation validated with `DocumentSchema`/`ElementSchema`,
   applied through `element.add`/`element.update` so AI edits are undoable (Milestone 4).
 - Collaboration: commands are serializable; a future op log can replay them.

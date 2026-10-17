@@ -33,7 +33,7 @@ its acceptance tests pass in CI.
 - [x] IndexedDB persistence (Dexie) with debounced autosave and explicit save status
 - [x] Project dashboard: create (canvas presets), open, rename, duplicate, delete
 - [ ] Native `.opencanvas` import/export with validation and migrations
-- [ ] PNG, SVG and PDF export from the document model
+- [x] PNG, SVG and PDF export from the document model (`packages/export`; raster PDF, vector SVG)
 - [ ] Template registry seeded with ≥ 12 original templates and documented licenses
 
 ## Milestone 4 — AI assistant
