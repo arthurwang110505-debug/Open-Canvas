@@ -4,7 +4,13 @@ import { Magnet, Maximize, Minus, Plus, Redo2, Undo2 } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 
 import { useEditorActions } from './actions';
-import { useCanvasController, useCanvasReady, useEditor, useSnappingEnabled } from './hooks';
+import {
+  useCanvasController,
+  useCanvasReady,
+  useEditor,
+  usePersistenceState,
+  useSnappingEnabled,
+} from './hooks';
 
 function DocumentTitle() {
   const name = useEditor((state) => state.document.name);
@@ -128,17 +134,51 @@ function SnapToggle() {
   );
 }
 
-function ChangeStatus() {
+function SaveStatus() {
   const dirty = useEditor((state) => state.dirty);
+  const status = usePersistenceState((state) => state.status);
+  const lastSavedAt = usePersistenceState((state) => state.lastSavedAt);
+  const errorMessage = usePersistenceState((state) => state.errorMessage);
+  const saveNow = usePersistenceState((state) => state.saveNow);
+
+  let label: string;
+  let title: string;
+  if (status === 'saving') {
+    label = 'Saving…';
+    title = 'Writing this design to local storage.';
+  } else if (status === 'error') {
+    label = 'Save failed';
+    title = errorMessage ?? 'The write to local storage failed.';
+  } else if (dirty) {
+    label = 'Unsaved changes';
+    title =
+      status === 'disabled'
+        ? 'This editor runs without local persistence; changes live in memory only.'
+        : 'Changes are written to local storage a moment after you stop editing (Ctrl S saves now).';
+  } else if (lastSavedAt) {
+    label = 'All changes saved';
+    title = `Saved at ${new Date(lastSavedAt).toLocaleTimeString()}`;
+  } else {
+    label = 'No unsaved changes';
+    title = 'Nothing to save yet.';
+  }
+
   return (
-    <span
-      role="status"
-      aria-live="polite"
-      className="text-xs text-muted-foreground"
-      title="Local autosave and export arrive in the next milestone; changes currently live in memory."
-    >
-      {dirty ? 'Unsaved changes' : 'No unsaved changes'}
-    </span>
+    <div className="flex items-center gap-2">
+      <span
+        role="status"
+        aria-live="polite"
+        className="text-xs text-muted-foreground"
+        title={title}
+      >
+        {label}
+      </span>
+      {status === 'error' ? (
+        <Button variant="outline" size="sm" onClick={() => void saveNow()}>
+          Save now
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -149,7 +189,11 @@ export function TopBar() {
 
   return (
     <header className="flex h-12 items-center gap-3 border-b border-border bg-panel px-3">
-      <a href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+      <a
+        href="#/"
+        aria-label="OpenCanvas: back to your designs"
+        className="flex items-center gap-2 font-semibold tracking-tight"
+      >
         <span
           aria-hidden="true"
           className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground"
@@ -188,7 +232,7 @@ export function TopBar() {
         </Tooltip>
       </div>
       <div className="ml-auto flex items-center gap-3">
-        <ChangeStatus />
+        <SaveStatus />
         <Separator orientation="vertical" className="h-6" />
         <SnapToggle />
         <ZoomControls />

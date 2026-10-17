@@ -1,0 +1,29 @@
+import {
+  createDexieProjectStore,
+  createMemoryProjectStore,
+  indexedDbAvailable,
+  openProjectDatabase,
+  type ProjectStore,
+} from '@opencanvas/storage';
+import { createContext } from 'react';
+
+export type ProjectsBackend = 'indexeddb' | 'memory';
+
+export interface ProjectsServices {
+  store: ProjectStore;
+  backend: ProjectsBackend;
+}
+
+/**
+ * Picks the best local backend available. IndexedDB keeps designs (and their image bytes)
+ * across reloads; the volatile store is the fallback for private-mode browsers so the editor
+ * still works, with the limitation stated in the dashboard.
+ */
+export function createProjectsServices(): ProjectsServices {
+  if (indexedDbAvailable()) {
+    return { store: createDexieProjectStore(openProjectDatabase()), backend: 'indexeddb' };
+  }
+  return { store: createMemoryProjectStore(), backend: 'memory' };
+}
+
+export const ProjectsContext = createContext<ProjectsServices | null>(null);

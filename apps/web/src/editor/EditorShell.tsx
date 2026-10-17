@@ -3,9 +3,11 @@ import { ErrorToast } from './ErrorToast';
 import { PropertiesPanel } from './PropertiesPanel';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { useAutosave } from './useAutosave';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 
 export function EditorShell() {
+  useAutosave();
   useKeyboardShortcuts();
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_1fr] bg-background text-foreground">

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 import { useEditorActions } from './actions';
-import { useCanvasController, useCanvasReady } from './hooks';
+import { useCanvasController, useCanvasReady, usePersistence } from './hooks';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -18,14 +18,23 @@ export function useKeyboardShortcuts(): void {
   const actions = useEditorActions();
   const canvas = useCanvasController();
   const canvasReady = useCanvasReady();
+  const persistence = usePersistence();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
-      if (isTypingTarget(event.target) || canvas.isEditingText()) return;
 
       const modifier = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
+
+      // Saving is allowed everywhere, including while typing in a field or on the canvas.
+      if (modifier && key === 's') {
+        event.preventDefault();
+        void persistence.state.getState().saveNow();
+        return;
+      }
+
+      if (isTypingTarget(event.target) || canvas.isEditingText()) return;
 
       if (modifier && key === 'z') {
         event.preventDefault();
@@ -105,5 +114,5 @@ export function useKeyboardShortcuts(): void {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [actions, canvas, canvasReady]);
+  }, [actions, canvas, canvasReady, persistence]);
 }

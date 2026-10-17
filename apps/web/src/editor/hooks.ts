@@ -5,6 +5,7 @@ import { useStore } from 'zustand';
 import type { CanvasController } from './canvasController';
 import { EditorContext, type EditorContextValue } from './EditorContext';
 import type { NotificationState, NotificationStore } from './notifications';
+import type { PersistenceController, PersistenceState } from './persistence';
 
 function useEditorContext(): EditorContextValue {
   const context = useContext(EditorContext);
@@ -39,4 +40,13 @@ export function useNotification<T>(selector: (state: NotificationState) => T): T
 
 export function useSnappingEnabled(): boolean {
   return useStore(useEditorContext().canvas.state, (state) => state.snapping);
+}
+
+export function usePersistence(): PersistenceController {
+  return useEditorContext().persistence;
+}
+
+/** Subscribes to autosave status (idle, scheduled, saving, error). */
+export function usePersistenceState<T>(selector: (state: PersistenceState) => T): T {
+  return useStore(useEditorContext().persistence.state, selector);
 }
