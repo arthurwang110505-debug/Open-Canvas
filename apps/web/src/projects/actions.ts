@@ -1,6 +1,7 @@
 import { createBlankDocument, err, type DesignDocument, type Result } from '@opencanvas/document';
 import { applyCommand } from '@opencanvas/editor-core';
 import type { ProjectStore, ProjectStoreError, ProjectSummary } from '@opencanvas/storage';
+import { createDocumentFromTemplate } from '@opencanvas/templates';
 
 /** A rename can also be rejected by the reducer (empty name), which is not a storage failure. */
 export type ProjectActionError =
@@ -20,6 +21,27 @@ export async function createProject(
 ): Promise<Result<ProjectSummary, ProjectActionError>> {
   const document = createBlankDocument(options);
   return store.save(document);
+}
+
+export interface CreateProjectFromTemplateOptions {
+  name?: string;
+  now?: Date;
+}
+
+/**
+ * Creates a design from one of the shipped templates and persists it. The document records
+ * `source: 'template'` and the template id, so a design can say where it started.
+ */
+export async function createProjectFromTemplate(
+  store: ProjectStore,
+  templateId: string,
+  options: CreateProjectFromTemplateOptions = {},
+): Promise<Result<ProjectSummary, ProjectActionError>> {
+  const created = createDocumentFromTemplate(templateId, options);
+  if (!created.ok) {
+    return err({ code: 'command-rejected', message: created.error.message, projectId: '' });
+  }
+  return store.save(created.value);
 }
 
 /**

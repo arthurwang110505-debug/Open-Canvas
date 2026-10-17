@@ -1,0 +1,22 @@
+{
+  "name": "@opencanvas/templates",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Original OpenCanvas starter templates: declarative definitions plus instantiation into validated documents.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@opencanvas/document": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.4"
+  }
+}

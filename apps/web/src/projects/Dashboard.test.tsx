@@ -85,7 +85,10 @@ describe('Dashboard', () => {
     ]);
     renderDashboard(servicesFor(store));
 
-    const cards = await screen.findAllByRole('listitem');
+    await screen.findByRole('list', { name: 'Saved designs' });
+    const cards = within(screen.getByRole('list', { name: 'Saved designs' })).getAllByRole(
+      'listitem',
+    );
     expect(cards).toHaveLength(2);
     const first = cards[0];
     const second = cards[1];

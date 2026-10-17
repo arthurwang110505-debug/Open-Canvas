@@ -12,9 +12,18 @@ import {
   type KeyboardEvent,
 } from 'react';
 
+import type { TemplateDefinition } from '@opencanvas/templates';
+
 import { navigate } from '../router';
-import { createProject, deleteProject, duplicateProject, renameProject } from './actions';
+import {
+  createProject,
+  createProjectFromTemplate,
+  deleteProject,
+  duplicateProject,
+  renameProject,
+} from './actions';
 import { exportProjectFile, importProjectFile } from './projectFiles';
+import { TemplateGallery } from './TemplateGallery';
 import { describeProjectContents, formatCanvasSize, formatTimestamp } from './format';
 import { useProjects } from './useProjects';
 
@@ -141,6 +150,20 @@ export function Dashboard() {
       return;
     }
     setNotice(`${exported.value} was downloaded.`);
+  };
+
+  /** Creates and opens a design that starts from one of the shipped templates. */
+  const onUseTemplate = async (template: TemplateDefinition) => {
+    setBusy(`template:${template.id}`);
+    setActionError(null);
+    setNotice(null);
+    const created = await createProjectFromTemplate(store, template.id);
+    setBusy(null);
+    if (!created.ok) {
+      setActionError(`The "${template.name}" template could not be used: ${created.error.message}`);
+      return;
+    }
+    navigate({ name: 'editor', projectId: created.value.id });
   };
 
   /** Reads a `.opencanvas` file into the store; an existing id becomes a copy. */
@@ -287,7 +310,7 @@ export function Dashboard() {
         ) : null}
 
         {list.status === 'ready' && list.projects.length > 0 ? (
-          <ul className="grid gap-3 sm:grid-cols-2">
+          <ul aria-label="Saved designs" className="grid gap-3 sm:grid-cols-2">
             {list.projects.map((project) => {
               const isRenaming = renaming?.projectId === project.id;
               const isBusy = busy !== null;
@@ -405,6 +428,13 @@ export function Dashboard() {
               );
             })}
           </ul>
+        ) : null}
+
+        {list.status === 'ready' ? (
+          <TemplateGallery
+            busy={busy !== null}
+            onUse={(template) => void onUseTemplate(template)}
+          />
         ) : null}
       </main>
     </div>

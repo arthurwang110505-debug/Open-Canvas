@@ -10,7 +10,8 @@ apps/web ──► packages/editor-core ──► packages/document
    │                                        ▲
    ├────────► packages/canvas-fabric ───────┤
    ├────────► packages/storage ─────────────┤
-   ├────────► packages/export ──────────────┘
+   ├────────► packages/export ──────────────┤
+   ├────────► templates ────────────────────┘
    └────────► packages/ui
 ```
 
@@ -23,7 +24,10 @@ apps/web ──► packages/editor-core ──► packages/document
   memory), asset blob stores, autosave scheduling, image import, data URLs.
 - `packages/export` depends only on `document` (+ `jspdf`): it renders the model to SVG, PNG and
   PDF without the canvas adapter, so exports work headlessly and are unit-testable in node.
-- `apps/web` is the only place where React, the store, the adapter, storage and export meet.
+- `templates` depends only on `document`: declarative template definitions plus the pure function
+  that instantiates them into validated documents.
+- `apps/web` is the only place where React, the store, the adapter, storage, export and templates
+  meet.
 
 Internal packages are consumed as TypeScript source (`exports` → `src/index.ts`); Vite, Vitest
 and `tsc` resolve them through the pnpm workspace. A compiled build step will be added when a
@@ -220,6 +224,27 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   PDF page sized in jsPDF `px` units (1/96 inch). The PDF is therefore raster; vector text would
   need font embedding, which is tracked as a follow-up.
 
+## 4c. Templates (`templates/`)
+
+- A `TemplateDefinition` is data, not code: id, name, category, description, canvas size, an
+  optional matching `CANVAS_PRESETS` id, a background colour and an ordered list of `rect` /
+  `ellipse` / `text` elements with their geometry and typography. There is deliberately **no image
+  element kind**: a template that needs a raster would have to ship and license a binary asset.
+- `instantiateTemplate(definition, { id?, name?, now? })` builds a document through the same
+  factories the editor uses, sets `metadata.source = 'template'` and `metadata.templateId`, gives
+  the single page a stable id (`page_1`) so identical inputs produce a byte-identical document, and
+  runs the result through `validateDocument` — a definition that cannot produce a valid document is
+  reported as `invalid-document` instead of reaching the editor.
+- `createDocumentFromTemplate(id)` is the lookup + instantiate path the app calls; `findTemplate`
+  reports `unknown-template` instead of throwing.
+- `templates.test.ts` treats the registry as data that must stay legal: unique kebab-case ids,
+  every category populated, sizes inside `LIMITS` and consistent with the referenced preset,
+  element ids/colours/fonts/weights/line-heights/letter-spacing inside the schema's ranges, no
+  binary assets, and every template instantiating into a schema-valid document.
+- Licensing lives in `templates/LICENSES.md`: all templates are original and AGPL-3.0-only like the
+  rest of the repository, fonts are referenced by family name only (Inter is bundled under SIL OFL
+  1.1, the rest are system families), and placeholder copy and names are invented.
+
 ## 5. Web app (`apps/web`)
 
 - `App` routes on the location hash (`router.ts`): `#/` renders the `Dashboard`,
@@ -250,6 +275,11 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   renders from the document model — never from the Fabric canvas — and reports failures as
   notifications instead of handing over a broken file. Browser-only steps (rasterize, measure
   text, download) come from `ExportProvider` and are injectable in tests.
+- `projects/TemplateGallery` renders one card per template. The thumbnail is the real rendering:
+  the template is instantiated once (memoized per id) and passed through `renderPageToSvg` +
+  `svgDataUrl`, so the gallery shows what the design will look like and reuses the export renderer
+  instead of shipping preview images. Clicking a card calls `createProjectFromTemplate(store, id)`
+  and opens the new design; a save failure is reported inline and does not navigate.
 - `actions.ts` (`useEditorActions`) is the single place UI code turns intents into commands;
   `assets/useImageImport.ts` owns the upload flow (validate → store bytes → register → add).
 - `TopBar` (rename, undo/redo, change status, snapping toggle, zoom/fit), `Sidebar` (Shapes,
@@ -273,15 +303,16 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 
 ## 6. Testing strategy
 
-| Layer         | Tool                           | What is covered                                                                                                                                                                          |
-| ------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| document      | Vitest (node)                  | Schema limits, defaults, round-trips, cloning, migration pipeline, failures.                                                                                                             |
-| editor-core   | Vitest (node)                  | Reducer semantics, immutability, history/merge/limit, selection, arrange helpers.                                                                                                        |
-| canvas-fabric | Vitest (jsdom + context stub)  | Mapping math, reconciliation, ordering, selection sync, events.                                                                                                                          |
-| storage       | Vitest (node + fake-indexeddb) | Project-store contract against **both** backends, corrupted/mismatched records, quota mapping, blob scoping, autosave timing, project-file container guards.                             |
-| export        | Vitest (node)                  | SVG markup/geometry/escaping/failure modes, rasterizer with fakes, PDF bytes and page count.                                                                                             |
-| web           | Vitest + Testing Library       | Real store + real adapter: insert, edit, undo/redo, shortcuts, dashboard CRUD, autosave end to end (edit → saved → reopen), routing, PNG/SVG/PDF downloads, `.opencanvas` import/export. |
-| E2E (planned) | Playwright                     | Pointer interactions, rendering, persistence, export.                                                                                                                                    |
+| Layer         | Tool                           | What is covered                                                                                                                                                                                                                  |
+| ------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| document      | Vitest (node)                  | Schema limits, defaults, round-trips, cloning, migration pipeline, failures.                                                                                                                                                     |
+| editor-core   | Vitest (node)                  | Reducer semantics, immutability, history/merge/limit, selection, arrange helpers.                                                                                                                                                |
+| canvas-fabric | Vitest (jsdom + context stub)  | Mapping math, reconciliation, ordering, selection sync, events.                                                                                                                                                                  |
+| storage       | Vitest (node + fake-indexeddb) | Project-store contract against **both** backends, corrupted/mismatched records, quota mapping, blob scoping, autosave timing, project-file container guards.                                                                     |
+| export        | Vitest (node)                  | SVG markup/geometry/escaping/failure modes, rasterizer with fakes, PDF bytes and page count.                                                                                                                                     |
+| templates     | Vitest (node)                  | Registry legality (ids, sizes, presets, colours, fonts, limits, no binary assets), instantiation, determinism, lookup failures.                                                                                                  |
+| web           | Vitest + Testing Library       | Real store + real adapter: insert, edit, undo/redo, shortcuts, dashboard CRUD, autosave end to end (edit → saved → reopen), routing, PNG/SVG/PDF downloads, `.opencanvas` import/export, template gallery previews and creation. |
+| E2E (planned) | Playwright                     | Pointer interactions, rendering, persistence, export.                                                                                                                                                                            |
 
 ## 7. Decisions and constraints
 
@@ -306,4 +337,7 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   embedding), `contain` fit, and multi-page SVG sheets.
 - `packages/ai-core`: structured generation validated with `DocumentSchema`/`ElementSchema`,
   applied through `element.add`/`element.update` so AI edits are undoable (Milestone 4).
+- `templates`: adding a template is a data change plus a registry entry, and the tests enforce its
+  legality, so a community template pack only has to satisfy `TemplateDefinition`. Image-bearing
+  templates stay out until there is an asset-licensing story for them.
 - Collaboration: commands are serializable; a future op log can replay them.

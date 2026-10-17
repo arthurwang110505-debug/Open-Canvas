@@ -35,7 +35,8 @@ its acceptance tests pass in CI.
 - [x] Native `.opencanvas` import/export with validation and migrations (ZIP container: manifest,
       canonical `document.json`, asset bytes; id collisions import as a copy)
 - [x] PNG, SVG and PDF export from the document model (`packages/export`; raster PDF, vector SVG)
-- [ ] Template registry seeded with ≥ 12 original templates and documented licenses
+- [x] Template registry seeded with ≥ 12 original templates and documented licenses (14 templates
+      in 5 categories; `templates/LICENSES.md` records why nothing needs a third-party license)
 
 ## Milestone 4 — AI assistant
 
