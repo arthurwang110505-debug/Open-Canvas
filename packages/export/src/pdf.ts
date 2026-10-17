@@ -24,7 +24,7 @@ export interface PdfOptions {
 export async function renderDocumentToPdf(
   document: DesignDocument,
   options: PdfOptions,
-): Promise<Result<Uint8Array, ExportError>> {
+): Promise<Result<Uint8Array<ArrayBuffer>, ExportError>> {
   const pageIds = options.pageIds ?? document.pages.map((page) => page.id);
   if (pageIds.length === 0) {
     return err({ code: 'page-not-found', message: 'The document has no pages to export.' });

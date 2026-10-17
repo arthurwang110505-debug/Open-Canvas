@@ -17,6 +17,7 @@
     "@opencanvas/canvas-fabric": "workspace:*",
     "@opencanvas/document": "workspace:*",
     "@opencanvas/editor-core": "workspace:*",
+    "@opencanvas/export": "workspace:^",
     "@opencanvas/storage": "workspace:*",
     "@opencanvas/ui": "workspace:*",
     "lucide-react": "^1.57.0",

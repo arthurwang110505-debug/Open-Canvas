@@ -4,6 +4,7 @@ import { Magnet, Maximize, Minus, Plus, Redo2, Undo2 } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 
 import { useEditorActions } from './actions';
+import { ExportControls } from './ExportControls';
 import {
   useCanvasController,
   useCanvasReady,
@@ -232,6 +233,8 @@ export function TopBar() {
         </Tooltip>
       </div>
       <div className="ml-auto flex items-center gap-3">
+        <ExportControls />
+        <Separator orientation="vertical" className="h-6" />
         <SaveStatus />
         <Separator orientation="vertical" className="h-6" />
         <SnapToggle />
