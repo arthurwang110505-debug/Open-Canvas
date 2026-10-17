@@ -5,10 +5,11 @@ posters, social media graphics, presentation covers and other visual content.
 
 > **Status: Milestone 3 (Projects and export) — early development.**
 > Designs are saved locally in the browser (IndexedDB) with debounced autosave, a project
-> dashboard creates, opens, renames, duplicates and deletes them, and any design downloads as
-> **PNG, SVG or PDF**. The editor works end to end for shapes, text, uploaded images and layers
-> (drag-and-drop, cover/fill, snapping guides, align and distribute) with undo/redo and keyboard
-> shortcuts. Native `.opencanvas` project files, templates, AI assistance and cloud sync are not
+> dashboard creates, opens, renames, duplicates and deletes them, any design downloads as
+> **PNG, SVG or PDF**, and designs move between browsers as native **`.opencanvas` project
+> files** (validated and migrated on import). The editor works end to end for shapes, text,
+> uploaded images and layers (drag-and-drop, cover/fill, snapping guides, align and distribute)
+> with undo/redo and keyboard shortcuts. Templates, AI assistance and cloud sync are not
 > implemented yet.
 > See [docs/roadmap.md](docs/roadmap.md) for what exists today and what comes next.
 
@@ -53,13 +54,12 @@ pnpm check        # all of the above plus formatting
 | `packages/document`      | Canonical document model: Zod schemas, factories, serialization, explicit schema migrations.       |
 | `packages/editor-core`   | Editing engine: command vocabulary, pure reducer, undo/redo history, selection, zoom helpers.      |
 | `packages/canvas-fabric` | Fabric.js 7 adapter: renders a page, syncs selection/ordering, translates interactions to patches. |
-| `packages/storage`       | Project store (IndexedDB + memory), asset blob stores, autosave scheduling, image import.          |
+| `packages/storage`       | Project store (IndexedDB + memory), asset blobs, autosave, image import, `.opencanvas` files.      |
 | `packages/export`        | Export renderers from the document model: SVG, PNG (canvas rasterization) and PDF (jsPDF).         |
 | `packages/ui`            | Shared accessible UI primitives (shadcn/ui-style, Tailwind CSS v4 design tokens).                  |
 | `docs`                   | Architecture notes and roadmap.                                                                    |
 
-Planned (not yet present): `apps/api`, `packages/export`, `packages/ai-core`, `templates`,
-`tests` (Playwright).
+Planned (not yet present): `apps/api`, `packages/ai-core`, `templates`, `tests` (Playwright).
 
 ## Architecture in one paragraph
 
@@ -76,6 +76,7 @@ future autosave and AI edits all share one path. Details: [docs/architecture.md]
 | --------------------------- | ------------------------------------------------- |
 | Save now                    | `Ctrl/⌘ S` (autosave runs on its own)             |
 | Export PNG / SVG / PDF      | Top bar **Export** buttons                        |
+| Import / export design file | Dashboard **Import design** / **Export** buttons  |
 | Undo / Redo                 | `Ctrl/⌘ Z` · `Ctrl/⌘ Shift Z`, `Ctrl Y`           |
 | Delete selection            | `Delete` / `Backspace`                            |
 | Duplicate                   | `Ctrl/⌘ D`                                        |

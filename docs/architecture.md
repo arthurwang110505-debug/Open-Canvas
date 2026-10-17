@@ -181,6 +181,25 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   write, and exposes `flush()` / `saveNow()` / `cancel()` / `dispose()` plus
   `idle | scheduled | saving | error` status transitions. The timer is injectable for tests.
 
+### Native project files
+
+- A `.opencanvas` file is a ZIP (fflate, 8 kB, no dependencies) with `manifest.json`
+  (`format`, `formatVersion`, `schemaVersion`, `assetCount`, `createdAt`), `document.json`
+  (canonical serialized document) and `assets/<assetId>.<ext>` for every **local** asset. Binary
+  assets stay binary instead of inflating 33 % as base64, and the archive opens with standard
+  tools. Remote (`url`) assets are referenced by URL and not embedded.
+- `packProject()` validates the document before writing and refuses assets whose bytes are gone —
+  a file that would open with broken images is a worse outcome than a reported failure.
+- `unpackProject()` guards the container (input size, entry count, unpacked total), checks the
+  manifest format and version (a newer version says "update OpenCanvas" rather than guessing),
+  then runs `parseDocument()` so schema migrations apply on import, and finally verifies that
+  every declared local asset is present. Asset entries the document no longer references are
+  ignored: the document is authoritative. All failures are typed `ProjectFileError` values.
+- `apps/web` owns the policy around it: `exportProjectFile()` streams the project's blob store
+  into the archive and downloads it, `importProjectFile()` writes asset bytes before the project
+  record (rolling them back on failure) and turns an id collision into a copy instead of
+  overwriting what is already in the browser.
+
 ## 4b. Export (`packages/export`)
 
 - `renderPageToSvg(document, options)` is a pure string renderer: `translate(x y) rotate(r)` per
@@ -209,7 +228,9 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 - `Dashboard` lists projects newest first (size, page/element counts, saved timestamp) and
   creates/opens/renames/duplicates/deletes them. Renaming goes through the `document.rename`
   command so the same validation and `updatedAt` rules apply as inside the editor; failures are
-  shown in an alert with a retry.
+  shown in an alert with a retry. It also exports a project to a `.opencanvas` file and imports
+  one back (`projectFiles.ts`), reporting the outcome inline — including why an import was
+  rejected or copied.
 - `ProjectEditor` loads the stored document (validated and migrated on read), builds the
   project-scoped blob store and creates the persistence controller. It flushes pending writes on
   `pagehide`, on `visibilitychange → hidden` and when it unmounts.
@@ -244,22 +265,23 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   that commits `name` on Enter/blur and discards on Escape. Names fall back to
   `describeElement` (text content, image file name, element type) and the same helper labels
   the properties panel.
-- Removing an upload only drops the asset record; its bytes stay in the session store so Undo
-  can restore it. Unreferenced blobs are pruned when projects are saved (Milestone 3).
+- Removing an upload only drops the asset record; its bytes stay in the project blob store so
+  Undo can restore it. Pruning unreferenced blobs is **not implemented yet**; deleting a project
+  is what removes its bytes today.
 - Form fields commit validated values (clamped to schema limits) and follow external changes
   unless focused.
 
 ## 6. Testing strategy
 
-| Layer         | Tool                           | What is covered                                                                                                                                        |
-| ------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| document      | Vitest (node)                  | Schema limits, defaults, round-trips, cloning, migration pipeline, failures.                                                                           |
-| editor-core   | Vitest (node)                  | Reducer semantics, immutability, history/merge/limit, selection, arrange helpers.                                                                      |
-| canvas-fabric | Vitest (jsdom + context stub)  | Mapping math, reconciliation, ordering, selection sync, events.                                                                                        |
-| storage       | Vitest (node + fake-indexeddb) | Project-store contract against **both** backends, corrupted/mismatched records, quota mapping, blob scoping, autosave timing.                          |
-| export        | Vitest (node)                  | SVG markup/geometry/escaping/failure modes, rasterizer with fakes, PDF bytes and page count.                                                           |
-| web           | Vitest + Testing Library       | Real store + real adapter: insert, edit, undo/redo, shortcuts, dashboard CRUD, autosave end to end (edit → saved → reopen), routing, export downloads. |
-| E2E (planned) | Playwright                     | Pointer interactions, rendering, persistence, export.                                                                                                  |
+| Layer         | Tool                           | What is covered                                                                                                                                                                          |
+| ------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| document      | Vitest (node)                  | Schema limits, defaults, round-trips, cloning, migration pipeline, failures.                                                                                                             |
+| editor-core   | Vitest (node)                  | Reducer semantics, immutability, history/merge/limit, selection, arrange helpers.                                                                                                        |
+| canvas-fabric | Vitest (jsdom + context stub)  | Mapping math, reconciliation, ordering, selection sync, events.                                                                                                                          |
+| storage       | Vitest (node + fake-indexeddb) | Project-store contract against **both** backends, corrupted/mismatched records, quota mapping, blob scoping, autosave timing, project-file container guards.                             |
+| export        | Vitest (node)                  | SVG markup/geometry/escaping/failure modes, rasterizer with fakes, PDF bytes and page count.                                                                                             |
+| web           | Vitest + Testing Library       | Real store + real adapter: insert, edit, undo/redo, shortcuts, dashboard CRUD, autosave end to end (edit → saved → reopen), routing, PNG/SVG/PDF downloads, `.opencanvas` import/export. |
+| E2E (planned) | Playwright                     | Pointer interactions, rendering, persistence, export.                                                                                                                                    |
 
 ## 7. Decisions and constraints
 
@@ -277,7 +299,9 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 
 - `packages/storage`: `ProjectStore` (delivered) is the seam for a remote implementation —
   a cloud backend only has to satisfy the same `Result`-returning contract. `contain` fit and
-  manual crop offsets for images extend `ImageElement` additively.
+  manual crop offsets for images extend `ImageElement` additively. The project-file format
+  version is separate from the document schema version, so container changes (compression,
+  layout) do not force a document migration.
 - `packages/export`: delivered for SVG/PNG/PDF. Open follow-ups: vector PDF text (font
   embedding), `contain` fit, and multi-page SVG sheets.
 - `packages/ai-core`: structured generation validated with `DocumentSchema`/`ElementSchema`,
