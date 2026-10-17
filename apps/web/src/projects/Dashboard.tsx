@@ -2,11 +2,19 @@ import { CANVAS_PRESETS, LIMITS } from '@opencanvas/document';
 import type { ProjectStoreError, ProjectSummary } from '@opencanvas/storage';
 import type { Result } from '@opencanvas/document';
 import { Button, Input, Select } from '@opencanvas/ui';
-import { Copy, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import { Copy, Download, FileUp, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from 'react';
 
 import { navigate } from '../router';
 import { createProject, deleteProject, duplicateProject, renameProject } from './actions';
+import { exportProjectFile, importProjectFile } from './projectFiles';
 import { describeProjectContents, formatCanvasSize, formatTimestamp } from './format';
 import { useProjects } from './useProjects';
 
@@ -16,6 +24,7 @@ type ListState =
   | { status: 'error'; message: string };
 
 const DEFAULT_NAME = 'Untitled design';
+const PROJECT_FILE_ACCEPT = '.opencanvas,application/zip,application/octet-stream';
 
 function Logo() {
   return (
@@ -36,13 +45,15 @@ function Logo() {
  * browser. Every action reports its failure instead of degrading silently.
  */
 export function Dashboard() {
-  const { store, backend } = useProjects();
+  const { store, backend, download } = useProjects();
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [presetId, setPresetId] = useState(() => CANVAS_PRESETS[0]?.id ?? '');
   const [renaming, setRenaming] = useState<{ projectId: string; draft: string } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement | null>(null);
 
   const applyListResult = useCallback((listed: Result<ProjectSummary[], ProjectStoreError>) => {
     if (listed.ok) setList({ status: 'ready', projects: listed.value });
@@ -118,6 +129,44 @@ export function Dashboard() {
     await refresh();
   };
 
+  /** Writes the project to a `.opencanvas` file and hands it to the browser to download. */
+  const onExportFile = async (projectId: string, name: string) => {
+    setBusy(`export:${projectId}`);
+    setActionError(null);
+    setNotice(null);
+    const exported = await exportProjectFile(store, projectId, { download });
+    setBusy(null);
+    if (!exported.ok) {
+      setActionError(`"${name}" could not be exported: ${exported.error}`);
+      return;
+    }
+    setNotice(`${exported.value} was downloaded.`);
+  };
+
+  /** Reads a `.opencanvas` file into the store; an existing id becomes a copy. */
+  const onImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    // Reset so choosing the same file again still fires a change event.
+    event.currentTarget.value = '';
+    if (!file) return;
+
+    setBusy('import');
+    setActionError(null);
+    setNotice(null);
+    const imported = await importProjectFile(store, file);
+    setBusy(null);
+    if (!imported.ok) {
+      setActionError(`"${file.name}" could not be imported: ${imported.error}`);
+      return;
+    }
+    setNotice(
+      imported.value.copied
+        ? `Imported as "${imported.value.name}" (a design with that id already exists).`
+        : `Imported "${imported.value.name}".`,
+    );
+    await refresh();
+  };
+
   const onRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const draft = event.currentTarget.value;
     const projectId = renaming?.projectId;
@@ -176,8 +225,35 @@ export function Dashboard() {
               <Plus />
               New design
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy !== null}
+              onClick={() => fileInput.current?.click()}
+            >
+              <FileUp />
+              Import design
+            </Button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept={PROJECT_FILE_ACCEPT}
+              className="sr-only"
+              aria-label="OpenCanvas project file"
+              tabIndex={-1}
+              onChange={(event) => void onImportFile(event)}
+            />
           </form>
         </div>
+
+        {notice ? (
+          <p
+            role="status"
+            className="rounded-md border border-border bg-panel px-3 py-2 text-sm text-muted-foreground"
+          >
+            {notice}
+          </p>
+        ) : null}
 
         {actionError ? (
           <p
@@ -275,6 +351,16 @@ export function Dashboard() {
                     >
                       <Copy />
                       Duplicate
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Export ${project.name}`}
+                      disabled={isBusy}
+                      onClick={() => void onExportFile(project.id, project.name)}
+                    >
+                      <Download />
+                      Export
                     </Button>
                     <div className="ml-auto flex items-center gap-1">
                       {confirmingDelete === project.id ? (

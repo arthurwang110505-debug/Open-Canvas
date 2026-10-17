@@ -26,7 +26,8 @@ export interface ImageImport {
   insertAsset: (assetId: string, options?: InsertOptions) => void;
   /**
    * Removes an unused asset record from the document. Its bytes stay in the session store
-   * so Undo can bring the upload back; unreferenced blobs are pruned when a project is saved.
+   * so Undo can bring the upload back. Nothing prunes unreferenced blobs yet; deleting the project
+   * is what removes them.
    */
   removeAsset: (assetId: string) => void;
   /** Number of files currently being decoded. */

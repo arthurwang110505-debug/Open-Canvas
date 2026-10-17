@@ -28,8 +28,17 @@ function makeDocument(id: string, name: string, updatedAt: string): DesignDocume
   return document;
 }
 
-function servicesFor(store: ProjectStore): ProjectsServices {
-  return { store, backend: 'memory' };
+function servicesFor(store: ProjectStore, downloads: Download[] = []): ProjectsServices {
+  return {
+    store,
+    backend: 'memory',
+    download: (blob, filename) => downloads.push({ blob, filename }),
+  };
+}
+
+interface Download {
+  blob: Blob;
+  filename: string;
 }
 
 async function seededStore(documents: readonly DesignDocument[]): Promise<ProjectStore> {

@@ -18,7 +18,14 @@ const PROJECT_ID = 'doc_persist';
 const SAVE_TIMEOUT = 5000;
 
 function servicesFor(store: ProjectStore): ProjectsServices {
-  return { store, backend: 'memory' };
+  return {
+    store,
+    backend: 'memory',
+    // The dashboard is not exercised here; a no-op keeps the services complete.
+    download: () => {
+      /* not used by these tests */
+    },
+  };
 }
 
 async function persistedStore(): Promise<ProjectStore> {

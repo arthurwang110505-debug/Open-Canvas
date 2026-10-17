@@ -7,11 +7,15 @@ import {
 } from '@opencanvas/storage';
 import { createContext } from 'react';
 
+import { downloadBlob } from '../download';
+
 export type ProjectsBackend = 'indexeddb' | 'memory';
 
 export interface ProjectsServices {
   store: ProjectStore;
   backend: ProjectsBackend;
+  /** Hands a finished file to the browser's download UI; injectable in tests. */
+  download: (blob: Blob, filename: string) => void;
 }
 
 /**
@@ -21,9 +25,13 @@ export interface ProjectsServices {
  */
 export function createProjectsServices(): ProjectsServices {
   if (indexedDbAvailable()) {
-    return { store: createDexieProjectStore(openProjectDatabase()), backend: 'indexeddb' };
+    return {
+      store: createDexieProjectStore(openProjectDatabase()),
+      backend: 'indexeddb',
+      download: downloadBlob,
+    };
   }
-  return { store: createMemoryProjectStore(), backend: 'memory' };
+  return { store: createMemoryProjectStore(), backend: 'memory', download: downloadBlob };
 }
 
 export const ProjectsContext = createContext<ProjectsServices | null>(null);

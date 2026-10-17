@@ -7,7 +7,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useAssetServices } from '../assets/useAssetServices';
 import { useEditorStore, useNotificationStore } from '../hooks';
 import { useExportServices } from './useExportServices';
-import { exportFileName, type ExportExtension } from './fileNames';
+import { exportFileName, type ExportExtension } from '../../fileNames';
 
 export type ExportKind = ExportExtension;
 
