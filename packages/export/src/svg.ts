@@ -126,13 +126,32 @@ ${spans}
     </text>`;
 }
 
+function imageFilterStyle(filters: ImageElement['filters'] | undefined): string {
+  if (!filters) return '';
+  const parts: string[] = [];
+  if (filters.brightness !== 100) parts.push(`brightness(${filters.brightness}%)`);
+  if (filters.contrast !== 100) parts.push(`contrast(${filters.contrast}%)`);
+  if (filters.saturate !== 100) parts.push(`saturate(${filters.saturate}%)`);
+  if (filters.blur) parts.push(`blur(${formatNumber(filters.blur)}px)`);
+  if (parts.length === 0) return '';
+  return ` style="filter: ${parts.join(' ')};"`;
+}
+
 function renderImage(element: ImageElement, hrefs: ReadonlyMap<string, string>): string {
   const href = hrefs.get(element.assetId) ?? '';
-  // `slice` is the centred crop of `cover`; `none` stretches like `fill`.
   const aspect = element.fit === 'fill' ? 'none' : 'xMidYMid slice';
-  return `    <image href="${escapeXml(href)}" width="${formatNumber(
-    element.width,
-  )}" height="${formatNumber(element.height)}" preserveAspectRatio="${aspect}"/>`;
+  const flipH = element.flipH ?? false;
+  const flipV = element.flipV ?? false;
+  let transform = '';
+  if (flipH || flipV) {
+    const sx = flipH ? -1 : 1;
+    const sy = flipV ? -1 : 1;
+    const tx = flipH ? -element.width : 0;
+    const ty = flipV ? -element.height : 0;
+    transform = ` transform="scale(${sx} ${sy}) translate(${formatNumber(tx)} ${formatNumber(ty)})"`;
+  }
+  const filter = imageFilterStyle(element.filters);
+  return `    <image href="${escapeXml(href)}" width="${formatNumber(element.width)}" height="${formatNumber(element.height)}" preserveAspectRatio="${aspect}"${transform}${filter}/>`;
 }
 
 function renderPath(element: PathElement): string {

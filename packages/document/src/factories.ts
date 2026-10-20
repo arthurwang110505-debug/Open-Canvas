@@ -128,6 +128,10 @@ export function createImageElement(
     ...(overrides.name !== undefined ? { name: overrides.name } : {}),
     assetId: overrides.assetId,
     fit: overrides.fit ?? 'cover',
+    flipH: overrides.flipH ?? false,
+    flipV: overrides.flipV ?? false,
+    filters: overrides.filters ?? { brightness: 100, contrast: 100, saturate: 100, blur: 0 },
+    ...(overrides.crop !== undefined ? { crop: overrides.crop } : {}),
   };
 }
 

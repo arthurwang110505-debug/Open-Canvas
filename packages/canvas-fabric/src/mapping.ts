@@ -196,6 +196,8 @@ export interface ImageFabricProps
   extends Omit<CommonFabricProps, 'scaleX' | 'scaleY'>, ImageFitProps {
   /** Images never draw a stroke; a non-zero default would inflate the bounding box. */
   strokeWidth: 0;
+  flipX: boolean;
+  flipY: boolean;
 }
 
 export interface PathFabricProps extends CommonFabricProps {
@@ -309,19 +311,42 @@ export function textToFabricProps(element: TextElement): TextFabricProps {
   };
 }
 
+export function imageCssFilter(filters: { brightness: number; contrast: number; saturate: number; blur: number }): string {
+  const parts: string[] = [];
+  if (filters.brightness !== 100) parts.push(`brightness(${filters.brightness}%)`);
+  if (filters.contrast !== 100) parts.push(`contrast(${filters.contrast}%)`);
+  if (filters.saturate !== 100) parts.push(`saturate(${filters.saturate}%)`);
+  if (filters.blur) parts.push(`blur(${filters.blur}px)`);
+  return parts.join(' ') || 'none';
+}
+
 /**
  * Computes the crop window and scale that place a `natural`-sized bitmap into `box`.
  *
  * - `cover`: scale uniformly until the box is filled, crop the overflow symmetrically.
  * - `fill`: stretch the whole bitmap to the box (non-uniform scale, no crop).
+ * When `crop` is present (normalized 0-1 rect), it selects a sub-rect of the natural image
+ * first; the fit is then applied inside that cropped region.
  */
 export function computeImageFit(
   box: { width: number; height: number },
   natural: { width: number; height: number },
   fit: ImageFit,
+  crop?: { x: number; y: number; width: number; height: number },
 ): ImageFitProps {
-  const naturalWidth = Math.max(1, natural.width);
-  const naturalHeight = Math.max(1, natural.height);
+  // If a user crop is present, derive the effective natural size + offset
+  let naturalWidth = Math.max(1, natural.width);
+  let naturalHeight = Math.max(1, natural.height);
+  let cropOffsetX = 0;
+  let cropOffsetY = 0;
+  if (crop) {
+    const cw = Math.max(1, Math.round(naturalWidth * crop.width));
+    const ch = Math.max(1, Math.round(naturalHeight * crop.height));
+    cropOffsetX = Math.round(naturalWidth * crop.x);
+    cropOffsetY = Math.round(naturalHeight * crop.y);
+    naturalWidth = cw;
+    naturalHeight = ch;
+  }
   const boxWidth = Math.max(1, box.width);
   const boxHeight = Math.max(1, box.height);
 
@@ -329,8 +354,8 @@ export function computeImageFit(
     return {
       width: naturalWidth,
       height: naturalHeight,
-      cropX: 0,
-      cropY: 0,
+      cropX: cropOffsetX,
+      cropY: cropOffsetY,
       scaleX: boxWidth / naturalWidth,
       scaleY: boxHeight / naturalHeight,
     };
@@ -342,8 +367,8 @@ export function computeImageFit(
   return {
     width: visibleWidth,
     height: visibleHeight,
-    cropX: (naturalWidth - visibleWidth) / 2,
-    cropY: (naturalHeight - visibleHeight) / 2,
+    cropX: cropOffsetX + (naturalWidth - visibleWidth) / 2,
+    cropY: cropOffsetY + (naturalHeight - visibleHeight) / 2,
     scaleX: scale,
     scaleY: scale,
   };
@@ -360,7 +385,13 @@ export function imageToFabricProps(
   fit: ImageFit = element.fit,
 ): ImageFabricProps {
   const { scaleX: _sx, scaleY: _sy, ...common } = commonProps(element);
-  return { ...common, strokeWidth: 0, ...computeImageFit(element, natural, fit) };
+  return {
+    ...common,
+    strokeWidth: 0,
+    flipX: element.flipH ?? false,
+    flipY: element.flipV ?? false,
+    ...computeImageFit(element, natural, fit, element.crop),
+  };
 }
 
 export interface ElementToFabricContext {

@@ -37,6 +37,12 @@ export const MIGRATIONS: readonly Migration[] = [
     description: 'Add path element for freehand drawing',
     migrate: (raw) => ({ ...raw }),
   },
+  {
+    from: 3,
+    to: 4,
+    description: 'Add image flip, filters and crop',
+    migrate: (raw) => ({ ...raw }),
+  },
 ];
 
 export interface MigrateOptions {

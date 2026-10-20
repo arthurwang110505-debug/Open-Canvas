@@ -105,6 +105,20 @@ export const TextElementSchema = ElementBaseSchema.extend({
 
 export const ImageFitSchema = z.enum(['cover', 'fill']);
 
+export const ImageFiltersSchema = z.object({
+  brightness: z.number().min(0).max(300).default(100),
+  contrast: z.number().min(0).max(300).default(100),
+  saturate: z.number().min(0).max(300).default(100),
+  blur: z.number().min(0).max(32).default(0),
+});
+
+export const ImageCropSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  width: z.number().min(0.05).max(1),
+  height: z.number().min(0.05).max(1),
+});
+
 /**
  * Images reference an asset record (see `ImageAssetSchema`); the bytes themselves live in an
  * asset store, never inside the document JSON.
@@ -114,6 +128,10 @@ export const ImageElementSchema = ElementBaseSchema.extend({
   assetId: IdSchema,
   /** `cover` crops to fill the box (default); `fill` stretches to the box. */
   fit: ImageFitSchema.default('cover'),
+  flipH: z.boolean().default(false),
+  flipV: z.boolean().default(false),
+  filters: ImageFiltersSchema.default({ brightness: 100, contrast: 100, saturate: 100, blur: 0 }),
+  crop: ImageCropSchema.optional(),
 });
 
 export const PathPointSchema = z.object({
@@ -144,6 +162,8 @@ export type EllipseElement = z.infer<typeof EllipseElementSchema>;
 export type TextElement = z.infer<typeof TextElementSchema>;
 export type ImageElement = z.infer<typeof ImageElementSchema>;
 export type ImageFit = z.infer<typeof ImageFitSchema>;
+export type ImageFilters = z.infer<typeof ImageFiltersSchema>;
+export type ImageCrop = z.infer<typeof ImageCropSchema>;
 export type PathPoint = z.infer<typeof PathPointSchema>;
 export type PathElement = z.infer<typeof PathElementSchema>;
 

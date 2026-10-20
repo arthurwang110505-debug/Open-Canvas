@@ -21,6 +21,7 @@ import {
   Rect,
   Shadow,
   Textbox,
+  filters,
   util,
   type TMat2D,
 } from 'fabric';
@@ -120,6 +121,27 @@ class AssetLoadFailure extends Error {
 
 const defaultImageLoader: ImageSourceLoader = (url, { signal }) =>
   util.loadImage(url, { signal, crossOrigin: 'anonymous' });
+
+function buildFabricFilters(filtersConfig: { brightness: number; contrast: number; saturate: number; blur: number }): InstanceType<typeof filters.BaseFilter>[] {
+  const out: InstanceType<typeof filters.BaseFilter>[] = [];
+  if (filtersConfig.brightness !== 100) {
+    const b = (filtersConfig.brightness - 100) / 100;
+    out.push(new filters.Brightness({ brightness: Math.max(-1, Math.min(1, b)) }));
+  }
+  if (filtersConfig.contrast !== 100) {
+    const c = (filtersConfig.contrast - 100) / 100;
+    out.push(new filters.Contrast({ contrast: Math.max(-1, Math.min(1, c)) }));
+  }
+  if (filtersConfig.saturate !== 100) {
+    const s = (filtersConfig.saturate - 100) / 100;
+    out.push(new filters.Saturation({ saturation: Math.max(-1, Math.min(1, s)) }));
+  }
+  if (filtersConfig.blur) {
+    const blurVal = Math.min(1, filtersConfig.blur / 50);
+    out.push(new filters.Blur({ blur: blurVal }));
+  }
+  return out;
+}
 
 function sourceSize(source: ImageSource): { width: number; height: number } {
   if (source instanceof HTMLImageElement) {
@@ -702,6 +724,19 @@ export class FabricCanvasAdapter {
     }
     if (element.type === 'image' && object instanceof FabricImage) {
       this.ensureImageLoading(object, element);
+      // Apply flip/filters; FabricImage uses flipX/flipY from mapping, but filters need applyFilters()
+      const f = element.filters ?? { brightness: 100, contrast: 100, saturate: 100, blur: 0 };
+      const desired = buildFabricFilters(f as { brightness: number; contrast: number; saturate: number; blur: number });
+      const cur = (object as unknown as { filters: unknown[] }).filters as unknown[] | undefined;
+      const same = cur?.length === desired.length && cur?.every((_, i) => (cur[i] as { type?: string })?.type === (desired[i] as { type?: string })?.type);
+      if (!same) {
+        (object as unknown as { filters: unknown[] }).filters = desired as unknown[];
+        try {
+          (object as unknown as { applyFilters: () => void }).applyFilters();
+        } catch {
+          // filter backend may not be ready (e.g. in tests without node-canvas) — ignore
+        }
+      }
     }
     // Groups have no mapping; non-group elements go through the standard path
     if (element.type === 'group') return;
