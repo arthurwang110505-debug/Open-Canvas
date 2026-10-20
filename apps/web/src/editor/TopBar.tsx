@@ -189,7 +189,7 @@ export function TopBar() {
   const { undo, redo } = useEditorActions();
 
   return (
-    <header className="flex h-12 items-center gap-3 border-b border-border bg-panel px-3">
+    <header className="flex h-14 items-center gap-3 border-b border-border bg-panel px-3 shadow-sm">
       <a
         href="#/"
         aria-label="OpenCanvas: back to your designs"

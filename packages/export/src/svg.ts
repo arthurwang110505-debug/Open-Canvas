@@ -9,6 +9,7 @@ import {
   type ImageAsset,
   type ImageElement,
   type Page,
+  type PathElement,
   type RectElement,
   type Result,
   type Stroke,
@@ -134,6 +135,30 @@ function renderImage(element: ImageElement, hrefs: ReadonlyMap<string, string>):
   )}" height="${formatNumber(element.height)}" preserveAspectRatio="${aspect}"/>`;
 }
 
+function renderPath(element: PathElement): string {
+  if (element.points.length === 0) return '';
+  const [first, ...rest] = element.points;
+  if (!first) return '';
+  let d = `M ${formatNumber(first.x)} ${formatNumber(first.y)}`;
+  for (const p of rest) d += ` L ${formatNumber(p.x)} ${formatNumber(p.y)}`;
+  if (element.closed) d += ' Z';
+  const stroke = element.stroke.width > 0 ? ` stroke="${escapeXml(element.stroke.color)}" stroke-width="${formatNumber(element.stroke.width)}" stroke-linecap="round" stroke-linejoin="round"` : '';
+  const fill = fillAttributes(element.fill);
+  return `    <path d="${d}"${fill}${stroke}/>`;
+}
+
+function collectImages(elements: readonly DesignElement[]): ImageElement[] {
+  const out: ImageElement[] = [];
+  const walk = (list: readonly DesignElement[]) => {
+    for (const el of list) {
+      if (el.type === 'image') out.push(el);
+      else if (el.type === 'group') walk(el.children);
+    }
+  };
+  walk(elements);
+  return out;
+}
+
 function renderElement(
   element: DesignElement,
   hrefs: ReadonlyMap<string, string>,
@@ -141,6 +166,13 @@ function renderElement(
 ): string {
   const rotation = element.rotation !== 0 ? ` rotate(${formatNumber(element.rotation)})` : '';
   const opacity = element.opacity < 1 ? ` opacity="${formatNumber(element.opacity)}"` : '';
+  if (element.type === 'group') {
+    const inner = element.children
+      .map((child) => renderElement(child, hrefs, measure))
+      .join('\n');
+    // Group itself is a container; its children are already positioned relative to group's origin
+    return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(element.y)})${rotation}"${opacity}>\n${inner}\n  </g>`;
+  }
   let shape: string;
   switch (element.type) {
     case 'rect':
@@ -154,6 +186,9 @@ function renderElement(
       break;
     case 'image':
       shape = renderImage(element, hrefs);
+      break;
+    case 'path':
+      shape = renderPath(element);
       break;
   }
   return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(
@@ -187,7 +222,7 @@ export async function renderPageToSvg(
     (element) => element.visible || options.includeHidden === true,
   );
   const hrefs = new Map<string, string>();
-  const images = elements.filter((element): element is ImageElement => element.type === 'image');
+  const images = collectImages(elements);
   if (images.length > 0) {
     if (!options.resolveImageHref) {
       return err({

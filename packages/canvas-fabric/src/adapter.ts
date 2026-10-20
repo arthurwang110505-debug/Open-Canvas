@@ -14,9 +14,12 @@ import {
   FabricImage,
   type FabricObject,
   type ImageSource,
+  Group,
   InteractiveFabricObject,
+  Path,
   Point,
   Rect,
+  Shadow,
   Textbox,
   util,
   type TMat2D,
@@ -28,6 +31,7 @@ import {
   fillToFabric,
   patchFromTransform,
   roundTo,
+  topLeftToCenter,
   type BoxGeometry,
 } from './mapping';
 import { PLACEHOLDER_SIZE, createPlaceholderBitmap } from './placeholder';
@@ -89,12 +93,12 @@ export interface CanvasAdapterOptions {
   snapping?: boolean;
 }
 
-const DEFAULT_ACCENT = '#4f46e5';
+const DEFAULT_ACCENT = '#7a5cf9';
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 8;
 const SNAP_MARGIN = 6;
 
-type ElementObject = Rect | Ellipse | Textbox | FabricImage;
+type ElementObject = Rect | Ellipse | Textbox | FabricImage | Path | Group;
 
 interface ImageEntry {
   assetId: string;
@@ -171,6 +175,7 @@ export class FabricCanvasAdapter {
   private pageSize: DocumentSize = { width: 1, height: 1 };
   private applying = false;
   private disposed = false;
+  private previewPath: Path | null = null;
 
   constructor(
     element: HTMLCanvasElement,
@@ -207,6 +212,12 @@ export class FabricCanvasAdapter {
       hoverCursor: 'default',
       excludeFromExport: true,
       objectCaching: false,
+      shadow: new Shadow({
+        color: 'rgba(15, 23, 42, 0.12)',
+        blur: 24,
+        offsetX: 0,
+        offsetY: 8,
+      }),
     });
     this.clip = new Rect({ left: 0, top: 0, width: 1, height: 1, strokeWidth: 0 });
     this.canvas.clipPath = this.clip;
@@ -228,6 +239,10 @@ export class FabricCanvasAdapter {
 
   getViewportSize(): { width: number; height: number } {
     return { width: this.canvas.getWidth(), height: this.canvas.getHeight() };
+  }
+
+  getViewportTransform(): TMat2D {
+    return this.canvas.viewportTransform as TMat2D;
   }
 
   getZoom(): number {
@@ -349,6 +364,61 @@ export class FabricCanvasAdapter {
     return this.images.get(elementId)?.status;
   }
 
+  /** Shows a temporary freehand preview while the user is drawing. */
+  setPreviewPath(points: readonly { x: number; y: number }[] | null, stroke: string, strokeWidth: number): void {
+    if (this.disposed) return;
+    if (this.previewPath) {
+      this.canvas.remove(this.previewPath);
+      this.previewPath = null;
+    }
+    if (!points || points.length < 2) {
+      this.canvas.requestRenderAll();
+      return;
+    }
+    // Build preview as a polyline in page coordinates — same as Path element but not persisted
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of points) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    const w = Math.max(1, maxX - minX);
+    const h = Math.max(1, maxY - minY);
+    const rel = points.map((p) => ({ x: p.x - minX, y: p.y - minY }));
+    const [first, ...rest] = rel;
+    if (!first) return;
+    let d = `M ${first.x} ${first.y}`;
+    for (const p of rest) d += ` L ${p.x} ${p.y}`;
+    const center = { x: minX + w / 2, y: minY + h / 2 };
+    // Top-left to center conversion without rotation
+    const fabricCenter = { x: center.x, y: center.y }; // No rotation for preview
+    // Use Path with center origin: shift points by -w/2, -h/2
+    const cx = w / 2;
+    const cy = h / 2;
+    const centered = rel.map((p) => ({ x: p.x - cx, y: p.y - cy }));
+    let centeredD = `M ${centered[0]?.x ?? 0} ${centered[0]?.y ?? 0}`;
+    for (const p of centered.slice(1)) centeredD += ` L ${p.x} ${p.y}`;
+    const preview = new Path(centeredD, {
+      left: fabricCenter.x,
+      top: fabricCenter.y,
+      stroke,
+      strokeWidth,
+      fill: '',
+      strokeLineCap: 'round',
+      strokeLineJoin: 'round',
+      selectable: false,
+      evented: false,
+      objectCaching: false,
+    });
+    this.previewPath = preview;
+    this.canvas.add(preview);
+    this.canvas.requestRenderAll();
+  }
+
   /** Escape hatch for tests and advanced integrations. Prefer the typed API above. */
   getFabricCanvas(): Canvas {
     return this.canvas;
@@ -374,6 +444,10 @@ export class FabricCanvasAdapter {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.previewPath) {
+      this.canvas.remove(this.previewPath);
+      this.previewPath = null;
+    }
     for (const entry of this.images.values()) entry.abort?.abort();
     this.images.clear();
     this.guidelines?.dispose();
@@ -455,6 +529,9 @@ export class FabricCanvasAdapter {
   }
 
   private createObject(element: DesignElement): ElementObject {
+    if (element.type === 'group') {
+      return this.createGroupObject(element);
+    }
     const mapped = elementToFabricProps(element, this.fabricContext);
     switch (mapped.kind) {
       case 'rect':
@@ -465,7 +542,100 @@ export class FabricCanvasAdapter {
         return new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
       case 'image':
         return new FabricImage(this.loadingBitmap, mapped.props);
+      case 'path': {
+        const { path, ...rest } = mapped.props;
+        return new Path(path, rest);
+      }
     }
+  }
+
+  private createGroupObject(group: DesignElement & { type: 'group' }): Group {
+    const groupCenter = topLeftToCenter(group);
+    const childObjects: FabricObject[] = (group.children as DesignElement[]).map((child) => {
+      // Image inside group not yet fully supported (placeholder)
+      if (child.type === 'group') {
+        // Nested group: recursively create
+        const nested = this.createGroupObject(child as DesignElement & { type: 'group' });
+        // nested is already a Group with absolute positioning? Need to offset to parent group center
+        // For nested, its center absolute is topLeftToCenter(child absolute) -> compute relative
+        const childAbsCenter = topLeftToCenter({
+          x: group.x + child.x,
+          y: group.y + child.y,
+          width: child.width,
+          height: child.height,
+          rotation: child.rotation,
+        });
+        // Reposition nested group to be relative to parent
+        nested.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
+        return nested;
+      }
+      if (child.type === 'image') {
+        // For v1, render image as rect placeholder inside group
+        const mapped = elementToFabricProps(child, this.fabricContext);
+        let obj: FabricObject;
+        if (mapped.kind === 'image') obj = new FabricImage(this.loadingBitmap, mapped.props);
+        else obj = new Rect({ width: child.width, height: child.height, fill: '#e5e7eb' });
+        const childAbsCenter = topLeftToCenter({
+          x: group.x + child.x,
+          y: group.y + child.y,
+          width: child.width,
+          height: child.height,
+          rotation: child.rotation,
+        });
+        obj.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
+        return obj;
+      }
+      const mapped = elementToFabricProps(child as DesignElement, this.fabricContext);
+      let fabricObj: FabricObject;
+      switch (mapped.kind) {
+        case 'rect':
+          fabricObj = new Rect(mapped.props);
+          break;
+        case 'ellipse':
+          fabricObj = new Ellipse(mapped.props);
+          break;
+        case 'text':
+          fabricObj = new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
+          break;
+        case 'image':
+          fabricObj = new FabricImage(this.loadingBitmap, mapped.props);
+          break;
+        case 'path': {
+          const { path, ...rest } = mapped.props;
+          fabricObj = new Path(path, rest);
+          break;
+        }
+      }
+      const childAbsCenter = topLeftToCenter({
+        x: group.x + child.x,
+        y: group.y + child.y,
+        width: child.width,
+        height: child.height,
+        rotation: child.rotation,
+      });
+      // Override to group-relative coordinates (Fabric Group expects children relative to group center)
+      fabricObj.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
+      // Individual children inside a group should not be interactive
+      fabricObj.set({ selectable: false, evented: false, hasControls: false, hasBorders: false });
+      return fabricObj;
+    });
+
+    const commonCenter = topLeftToCenter(group);
+    return new Group(childObjects, {
+      left: commonCenter.x,
+      top: commonCenter.y,
+      angle: group.rotation,
+      opacity: group.opacity,
+      visible: group.visible,
+      selectable: !group.locked,
+      evented: !group.locked,
+      hasControls: !group.locked,
+      lockMovementX: group.locked,
+      lockMovementY: group.locked,
+      lockRotation: group.locked,
+      lockScalingX: group.locked,
+      lockScalingY: group.locked,
+    });
   }
 
   private readonly fabricContext = {
@@ -481,9 +651,60 @@ export class FabricCanvasAdapter {
   };
 
   private applyElement(object: ElementObject, element: DesignElement): void {
+    if (element.type === 'group' && object instanceof Group) {
+      const center = topLeftToCenter(element);
+      const props: Record<string, unknown> = {
+        left: center.x,
+        top: center.y,
+        angle: element.rotation,
+        opacity: element.opacity,
+        visible: element.visible,
+        selectable: !element.locked,
+        evented: !element.locked,
+        hasControls: !element.locked,
+        lockMovementX: element.locked,
+        lockMovementY: element.locked,
+        lockRotation: element.locked,
+        lockScalingX: element.locked,
+        lockScalingY: element.locked,
+      };
+      let changed = false;
+      for (const [key, value] of Object.entries(props)) {
+        if (object.get(key) !== value) {
+          object.set(key, value);
+          changed = true;
+        }
+      }
+      if (changed) object.setCoords();
+      return;
+    }
+    if (element.type === 'path' && object instanceof Path) {
+      const mapped = elementToFabricProps(element, this.fabricContext);
+      // Path's `path` is the SVG data — set separately
+      const { path, ...rest } = (mapped as { kind: 'path'; props: import('./mapping').PathFabricProps }).props;
+      const props: Record<string, unknown> = { ...rest, path };
+      // Fabric Path stores path as array internally, but constructor uses string; updating path
+      // requires setting `path` property and re-calculating dimensions.
+      if ((object as unknown as { path: unknown }).path !== path) {
+        (object as unknown as { set: (k: string, v: unknown) => void }).set('path', path);
+        (object as unknown as { set: (k: string, v: unknown) => void }).set('pathOffset', { x: 0, y: 0 });
+      }
+      let changed = false;
+      for (const [key, value] of Object.entries(props)) {
+        if (key === 'path') continue;
+        if (object.get(key) !== value) {
+          object.set(key, value);
+          changed = true;
+        }
+      }
+      if (changed || object.get('path') !== path) object.setCoords();
+      return;
+    }
     if (element.type === 'image' && object instanceof FabricImage) {
       this.ensureImageLoading(object, element);
     }
+    // Groups have no mapping; non-group elements go through the standard path
+    if (element.type === 'group') return;
     const mapped = elementToFabricProps(element, this.fabricContext);
     const props: Record<string, unknown> = { ...mapped.props };
     // Never overwrite text the user is currently typing; it is committed on exit.
@@ -737,5 +958,9 @@ function objectMatchesType(object: ElementObject, type: DesignElement['type']): 
       return object instanceof Textbox;
     case 'image':
       return object instanceof FabricImage;
+    case 'path':
+      return object instanceof Path;
+    case 'group':
+      return object instanceof Group;
   }
 }

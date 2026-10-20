@@ -3,6 +3,7 @@ import type { DesignDocument } from '@opencanvas/document';
 import { AssetProvider, type AssetProviderProps } from './assets/AssetProvider';
 import { EditorProvider } from './EditorProvider';
 import { EditorShell } from './EditorShell';
+import { DrawProvider } from './draw/DrawContext';
 import { ExportProvider } from './export/ExportProvider';
 import type { ExportServices } from './export/ExportServices';
 import type { PersistenceController } from './persistence';
@@ -27,7 +28,9 @@ export function EditorPage({
     <AssetProvider services={assetServices}>
       <ExportProvider services={exportServices}>
         <EditorProvider document={document} persistence={persistence}>
-          <EditorShell />
+          <DrawProvider>
+            <EditorShell />
+          </DrawProvider>
         </EditorProvider>
       </ExportProvider>
     </AssetProvider>

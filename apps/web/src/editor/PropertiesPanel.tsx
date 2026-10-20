@@ -37,12 +37,14 @@ import {
   Eye,
   EyeOff,
   Italic,
+  Link,
   Lock,
   LockOpen,
   Trash2,
   Underline,
+  Unlink,
 } from 'lucide-react';
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { useEditorActions } from './actions';
@@ -480,19 +482,21 @@ function ElementProperties({ element }: { element: DesignElement }) {
   const { updateSelection } = useEditorActions();
   const assets = useEditor((state) => state.document.assets);
   const key = (field: string) => `${field}:${element.id}`;
-  const hasStroke = element.type === 'rect' || element.type === 'ellipse';
-  const stroke = hasStroke ? element.stroke : undefined;
+  const hasStroke = element.type === 'rect' || element.type === 'ellipse' || element.type === 'path';
+  const stroke = hasStroke ? (element as { stroke?: { color: string; width: number } }).stroke : undefined;
+  const [aspectLocked, setAspectLocked] = useState(false);
+  const aspect = element.height !== 0 ? element.width / element.height : 1;
 
   return (
     <>
-      <div className="px-3 py-3">
+      <div className="px-3 py-4">
         <h2 className="text-sm font-semibold">{ELEMENT_TYPE_LABELS[element.type]}</h2>
         <p className="truncate text-xs text-muted-foreground" title={element.id}>
           {describeElement(element, assets)}
         </p>
       </div>
       <Separator />
-      <FieldGroup title="Layout">
+      <FieldGroup title="Position & size">
         <div className="grid grid-cols-2 gap-2">
           <NumberField
             label="X"
@@ -516,7 +520,14 @@ function ElementProperties({ element }: { element: DesignElement }) {
             unit="px"
             min={LIMITS.minElementDimension}
             max={LIMITS.maxElementDimension}
-            onCommit={(width) => updateSelection({ width }, key('width'))}
+            onCommit={(width) => {
+              if (aspectLocked) {
+                const newHeight = Math.round(width / aspect);
+                updateSelection({ width, height: newHeight }, key('width'));
+              } else {
+                updateSelection({ width }, key('width'));
+              }
+            }}
           />
           <NumberField
             label="Height"
@@ -525,7 +536,14 @@ function ElementProperties({ element }: { element: DesignElement }) {
             min={LIMITS.minElementDimension}
             max={LIMITS.maxElementDimension}
             disabled={element.type === 'text'}
-            onCommit={(height) => updateSelection({ height }, key('height'))}
+            onCommit={(height) => {
+              if (aspectLocked) {
+                const newWidth = Math.round(height * aspect);
+                updateSelection({ width: newWidth, height }, key('height'));
+              } else {
+                updateSelection({ height }, key('height'));
+              }
+            }}
           />
           <NumberField
             label="Rotation"
@@ -546,34 +564,51 @@ function ElementProperties({ element }: { element: DesignElement }) {
             onCommit={(percent) => updateSelection({ opacity: percent / 100 }, key('opacity'))}
           />
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={aspectLocked ? 'secondary' : 'outline'}
+            size="sm"
+            aria-pressed={aspectLocked}
+            onClick={() => setAspectLocked((v) => !v)}
+            className="rounded-full gap-1.5"
+          >
+            {aspectLocked ? <Link className="size-3.5" /> : <Unlink className="size-3.5" />}
+            {aspectLocked ? 'Aspect locked' : 'Lock aspect'}
+          </Button>
+          {aspectLocked ? <span className="text-xs text-muted-foreground">W/H stays proportional</span> : null}
+        </div>
       </FieldGroup>
-      {(element.type === 'rect' || element.type === 'ellipse') && (
-        <FieldGroup title="Fill & stroke">
-          <ColorField
-            label={element.fill.type === 'none' ? 'Fill (none)' : 'Fill'}
-            value={element.fill.type === 'solid' ? element.fill.color : '#ffffff'}
-            onCommit={(color) => updateSelection({ fill: { type: 'solid', color } }, key('fill'))}
-          />
-          <label className="flex items-center gap-2 text-xs text-foreground">
-            <input
-              type="checkbox"
-              checked={element.fill.type === 'none'}
-              onChange={(event) =>
-                updateSelection({
-                  fill: event.target.checked
-                    ? { type: 'none' }
-                    : { type: 'solid', color: '#4f46e5' },
-                })
-              }
-              className="accent-primary"
-            />
-            No fill
-          </label>
+      {(element.type === 'rect' || element.type === 'ellipse' || element.type === 'path') && (
+        <FieldGroup title={element.type === 'path' ? 'Stroke & fill' : 'Fill & stroke'}>
+          {element.type !== 'path' && (
+            <>
+              <ColorField
+                label={element.fill.type === 'none' ? 'Fill (none)' : 'Fill'}
+                value={element.fill.type === 'solid' ? element.fill.color : '#ffffff'}
+                onCommit={(color) => updateSelection({ fill: { type: 'solid', color } }, key('fill'))}
+              />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  checked={element.fill.type === 'none'}
+                  onChange={(event) =>
+                    updateSelection({
+                      fill: event.target.checked
+                        ? { type: 'none' }
+                        : { type: 'solid', color: '#4f46e5' },
+                    })
+                  }
+                  className="accent-primary"
+                />
+                No fill
+              </label>
+            </>
+          )}
           <div className="grid grid-cols-[1fr_auto] items-end gap-2">
             <ColorField
               label="Stroke"
               value={stroke?.color ?? '#111827'}
-              disabled={!stroke}
+              disabled={!stroke && element.type !== 'path'}
               onCommit={(color) =>
                 updateSelection({ stroke: { color, width: stroke?.width ?? 4 } }, key('stroke'))
               }
@@ -587,15 +622,35 @@ function ElementProperties({ element }: { element: DesignElement }) {
               precision={1}
               className="w-24"
               onCommit={(width) =>
-                updateSelection(
-                  width <= 0
-                    ? { stroke: undefined }
-                    : { stroke: { color: stroke?.color ?? '#111827', width } },
-                  key('strokeWidth'),
-                )
+                element.type === 'path'
+                  ? updateSelection({ stroke: { color: stroke?.color ?? '#111827', width: Math.max(1, width) } }, key('strokeWidth'))
+                  : updateSelection(
+                      width <= 0
+                        ? { stroke: undefined }
+                        : { stroke: { color: stroke?.color ?? '#111827', width } },
+                      key('strokeWidth'),
+                    )
               }
             />
           </div>
+          {element.type === 'path' && (
+            <ColorField
+              label={element.fill.type === 'none' ? 'Fill (none)' : 'Fill'}
+              value={element.fill.type === 'solid' ? element.fill.color : '#ffffff'}
+              onCommit={(color) => updateSelection({ fill: { type: 'solid', color } }, key('fill'))}
+            />
+          )}
+          {element.type === 'path' && (
+            <label className="flex items-center gap-2 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={(element as any).closed}
+                onChange={(event) => updateSelection({ closed: event.target.checked } as any)}
+                className="accent-primary"
+              />
+              Closed shape
+            </label>
+          )}
           {element.type === 'rect' && (
             <NumberField
               label="Corner radius"

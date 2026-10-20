@@ -4,6 +4,8 @@ import type {
   Fill,
   ImageElement,
   ImageFit,
+  PathElement,
+  PathPoint,
   RectElement,
   TextElement,
 } from '@opencanvas/document';
@@ -196,11 +198,22 @@ export interface ImageFabricProps
   strokeWidth: 0;
 }
 
+export interface PathFabricProps extends CommonFabricProps {
+  path: string;
+  stroke: string;
+  strokeWidth: number;
+  strokeUniform: true;
+  strokeLineCap: 'round';
+  strokeLineJoin: 'round';
+  fill: string;
+}
+
 export type ElementFabricProps =
   | { kind: 'rect'; props: RectFabricProps }
   | { kind: 'ellipse'; props: EllipseFabricProps }
   | { kind: 'text'; props: TextFabricProps }
-  | { kind: 'image'; props: ImageFabricProps };
+  | { kind: 'image'; props: ImageFabricProps }
+  | { kind: 'path'; props: PathFabricProps };
 
 function commonProps(element: DesignElement): CommonFabricProps {
   const center = topLeftToCenter(element);
@@ -233,6 +246,35 @@ export function rectToFabricProps(element: RectElement): RectFabricProps {
     strokeUniform: true,
     rx: radius,
     ry: radius,
+  };
+}
+
+export function pathPointsToData(points: readonly PathPoint[], closed: boolean): string {
+  if (points.length === 0) return '';
+  const [first, ...rest] = points;
+  if (!first) return '';
+  let d = `M ${first.x} ${first.y}`;
+  for (const p of rest) d += ` L ${p.x} ${p.y}`;
+  if (closed) d += ' Z';
+  return d;
+}
+
+export function pathToFabricProps(element: PathElement): PathFabricProps {
+  // Points are relative to element's top-left; Fabric Path with center origin needs them centered.
+  // Shift so that path's center is at (0,0) in object space: subtract half width/height.
+  const cx = element.width / 2;
+  const cy = element.height / 2;
+  const centered = element.points.map((p) => ({ x: p.x - cx, y: p.y - cy }));
+  const d = pathPointsToData(centered, element.closed);
+  return {
+    ...commonProps(element),
+    path: d,
+    stroke: element.stroke.color,
+    strokeWidth: element.stroke.width,
+    strokeUniform: true,
+    strokeLineCap: 'round',
+    strokeLineJoin: 'round',
+    fill: fillToFabric(element.fill),
   };
 }
 
@@ -344,22 +386,38 @@ export function elementToFabricProps(
       const source = context?.imageSource(element) ?? { natural: element, fit: 'fill' as const };
       return { kind: 'image', props: imageToFabricProps(element, source.natural, source.fit) };
     }
+    case 'path':
+      return { kind: 'path', props: pathToFabricProps(element) };
+    case 'group':
+      throw new Error('Group elements are handled by FabricCanvasAdapter directly, not via elementToFabricProps.');
   }
 }
 
 /**
  * Builds the document patch for an element after Fabric reports a transform. For text,
  * corner scaling changes the font size (as design tools do) instead of stretching glyphs.
+ * For paths, points are scaled to match the new bounds.
  */
 export function patchFromTransform(
   element: DesignElement,
   transform: DecomposedTransform,
   unscaledSize: { width: number; height: number },
-): Partial<BoxGeometry> & { fontSize?: number } {
+): Partial<BoxGeometry> & { fontSize?: number; points?: PathPoint[] } {
   const geometry = geometryFromTransform(transform, unscaledSize);
   if (element.type === 'text') {
     const fontSize = roundTo(Math.max(1, element.fontSize * transform.scaleY));
     return { ...geometry, fontSize };
+  }
+  if (element.type === 'path') {
+    const scaleX = transform.scaleX;
+    const scaleY = transform.scaleY;
+    // Points are relative to top-left; scaling stretches them from (0,0) origin.
+    // For Fabric centered path, scaling is around center, but we approximate by scaling points.
+    const points = element.points.map((p) => ({
+      x: roundTo(p.x * scaleX),
+      y: roundTo(p.y * scaleY),
+    }));
+    return { ...geometry, points };
   }
   return geometry;
 }
