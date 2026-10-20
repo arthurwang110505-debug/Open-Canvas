@@ -1,6 +1,6 @@
 import { formatZoom, selectCanRedo, selectCanUndo } from '@opencanvas/editor-core';
 import { Button, Input, Separator, Tooltip } from '@opencanvas/ui';
-import { Magnet, Maximize, Minus, Plus, Redo2, Undo2 } from 'lucide-react';
+import { Magnet, Maximize, Minus, MonitorPlay, Plus, Redo2, Share2, Undo2 } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 
 import { useEditorActions } from './actions';
@@ -12,6 +12,8 @@ import {
   usePersistenceState,
   useSnappingEnabled,
 } from './hooks';
+import { ShareDialog } from '../share/ShareDialog';
+import { PresentMode } from '../share/PresentMode';
 
 function DocumentTitle() {
   const name = useEditor((state) => state.document.name);
@@ -187,59 +189,61 @@ export function TopBar() {
   const canUndo = useEditor(selectCanUndo);
   const canRedo = useEditor(selectCanRedo);
   const { undo, redo } = useEditorActions();
+  const document = useEditor((s) => s.document);
+  const [showShare, setShowShare] = useState(false);
+  const [showPresent, setShowPresent] = useState(false);
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b border-border bg-panel px-3 shadow-sm">
-      <a
-        href="#/"
-        aria-label="OpenCanvas: back to your designs"
-        className="flex items-center gap-2 font-semibold tracking-tight"
-      >
-        <span
-          aria-hidden="true"
-          className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground"
+    <>
+      <header className="flex h-14 items-center gap-3 border-b border-border bg-panel px-3 shadow-sm">
+        <a
+          href="#/"
+          aria-label="OpenCanvas: back to your designs"
+          className="flex items-center gap-2 font-semibold tracking-tight"
         >
-          <svg viewBox="0 0 32 32" className="size-4" fill="currentColor">
-            <rect x="5" y="5" width="12" height="12" rx="2" />
-            <circle cx="21" cy="21" r="7" opacity="0.7" />
-          </svg>
-        </span>
-        <span className="hidden sm:inline">OpenCanvas</span>
-      </a>
-      <Separator orientation="vertical" className="h-6" />
-      <DocumentTitle />
-      <div className="flex items-center gap-0.5" role="group" aria-label="History">
-        <Tooltip content="Undo (Ctrl Z)">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Undo"
-            disabled={!canUndo}
-            onClick={undo}
+          <span
+            aria-hidden="true"
+            className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground"
           >
-            <Undo2 />
-          </Button>
-        </Tooltip>
-        <Tooltip content="Redo (Ctrl Shift Z)">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Redo"
-            disabled={!canRedo}
-            onClick={redo}
-          >
-            <Redo2 />
-          </Button>
-        </Tooltip>
-      </div>
-      <div className="ml-auto flex items-center gap-3">
-        <ExportControls />
+            <svg viewBox="0 0 32 32" className="size-4" fill="currentColor">
+              <rect x="5" y="5" width="12" height="12" rx="2" />
+              <circle cx="21" cy="21" r="7" opacity="0.7" />
+            </svg>
+          </span>
+          <span className="hidden sm:inline">OpenCanvas</span>
+        </a>
         <Separator orientation="vertical" className="h-6" />
-        <SaveStatus />
-        <Separator orientation="vertical" className="h-6" />
-        <SnapToggle />
-        <ZoomControls />
-      </div>
-    </header>
+        <DocumentTitle />
+        <div className="flex items-center gap-0.5" role="group" aria-label="History">
+          <Tooltip content="Undo (Ctrl Z)">
+            <Button variant="ghost" size="icon-sm" aria-label="Undo" disabled={!canUndo} onClick={undo}>
+              <Undo2 />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Redo (Ctrl Shift Z)">
+            <Button variant="ghost" size="icon-sm" aria-label="Redo" disabled={!canRedo} onClick={redo}>
+              <Redo2 />
+            </Button>
+          </Tooltip>
+        </div>
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <Button variant="outline" size="sm" className="hidden rounded-full sm:inline-flex" onClick={() => setShowPresent(true)}>
+            <MonitorPlay className="size-4" /> Present
+          </Button>
+          <Button size="sm" className="rounded-full shadow-sm" onClick={() => setShowShare(true)}>
+            <Share2 className="size-4" /> Share
+          </Button>
+          <Separator orientation="vertical" className="hidden h-6 sm:block" />
+          <ExportControls />
+          <Separator orientation="vertical" className="hidden h-6 sm:block" />
+          <SaveStatus />
+          <Separator orientation="vertical" className="h-6" />
+          <SnapToggle />
+          <ZoomControls />
+        </div>
+      </header>
+      {showShare ? <ShareDialog document={document} onClose={() => setShowShare(false)} onPresent={() => { setShowShare(false); setShowPresent(true); }} /> : null}
+      {showPresent ? <PresentMode document={document} onClose={() => setShowPresent(false)} /> : null}
+    </>
   );
 }

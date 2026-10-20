@@ -5,6 +5,7 @@ import { ProjectEditor } from './projects/ProjectEditor';
 import type { ProjectsServices } from './projects/ProjectsContext';
 import { ProjectsProvider } from './projects/ProjectsProvider';
 import { navigate, useRoute } from './router';
+import { ShareViewer } from './share/ShareViewer';
 
 function UnknownRoute({ path }: { path: string }) {
   return (
@@ -30,6 +31,8 @@ function Routes() {
     case 'editor':
       // Keyed by project so switching designs remounts the editor with a fresh store.
       return <ProjectEditor key={route.projectId} projectId={route.projectId} />;
+    case 'share':
+      return <ShareViewer shareId={route.shareId} />;
     case 'not-found':
       return <UnknownRoute path={route.path} />;
   }

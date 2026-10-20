@@ -24,11 +24,13 @@ import {
 } from 'react';
 
 import { navigate } from '../router';
-import { createProject, deleteProject, duplicateProject, renameProject } from './actions';
+import { createProject, createProjectFromTemplate, deleteProject, duplicateProject, renameProject } from './actions';
 import { exportProjectFile, importProjectFile } from './projectFiles';
 import { describeProjectContents, formatCanvasSize, formatTimestamp } from './format';
 import { useProjects } from './useProjects';
 import { ProjectThumbnail } from './ProjectThumbnail';
+import { getTemplate } from '../templates/catalog';
+import { TemplateGallery } from '../templates/TemplateGallery';
 
 type ListState =
   | { status: 'loading' }
@@ -137,6 +139,25 @@ export function Dashboard() {
       name: DEFAULT_NAME,
       ...(preset ? { width: preset.width, height: preset.height } : {}),
     });
+    setBusy(null);
+    if (!created.ok) {
+      setActionError(created.error.message);
+      return;
+    }
+    navigate({ name: 'editor', projectId: created.value.id });
+  };
+
+  const onUseTemplate = async (templateId: string) => {
+    setBusy('create');
+    setActionError(null);
+    const tpl = getTemplate(templateId);
+    if (!tpl) {
+      setBusy(null);
+      setActionError(`Unknown template ${templateId}`);
+      return;
+    }
+    const doc = tpl.build();
+    const created = await createProjectFromTemplate(store, doc);
     setBusy(null);
     if (!created.ok) {
       setActionError(created.error.message);
@@ -347,6 +368,11 @@ export function Dashboard() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Template gallery — Canva-like discovery */}
+          <div className="mt-6">
+            <TemplateGallery onUse={(id) => void onUseTemplate(id)} />
           </div>
 
           {/* Search + filter bar */}
