@@ -2,6 +2,7 @@ import { Button, Input, cn } from '@opencanvas/ui';
 import {
   Circle,
   Hexagon,
+  Heart,
   ImageIcon,
   Layers,
   LayoutTemplate,
@@ -21,17 +22,20 @@ import { useId, useMemo, useState, type ReactNode } from 'react';
 
 import { useEditorActions, type ShapeKind } from './actions';
 import { BackgroundPanel } from './panels/BackgroundPanel';
+import { IconPicker } from './panels/IconPicker';
 import { LayersPanel } from './panels/LayersPanel';
 import { UploadsPanel } from './panels/UploadsPanel';
 import { useDraw } from './draw/DrawContext';
 import { TemplateGallery } from '../templates/TemplateGallery';
 import { getTemplate } from '../templates/catalog';
 
-type SidebarTab = 'design' | 'shapes' | 'text' | 'draw' | 'uploads' | 'background' | 'layers';
+type SidebarTab =
+  'design' | 'shapes' | 'icons' | 'text' | 'draw' | 'uploads' | 'background' | 'layers';
 
 const TABS: { id: SidebarTab; label: string; icon: ReactNode }[] = [
   { id: 'design', label: 'Design', icon: <LayoutTemplate /> },
   { id: 'shapes', label: 'Shapes', icon: <Shapes /> },
+  { id: 'icons', label: 'Icons', icon: <Heart /> },
   { id: 'text', label: 'Text', icon: <Type /> },
   { id: 'draw', label: 'Draw', icon: <PenTool /> },
   { id: 'uploads', label: 'Uploads', icon: <ImageIcon /> },
@@ -133,6 +137,19 @@ function ShapesPanel() {
         Tip: Press <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">R</kbd> for
         rectangle, <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">O</kbd> for
         ellipse.
+      </p>
+    </div>
+  );
+}
+
+function IconsPanel() {
+  const { addIcon } = useEditorActions();
+  return (
+    <div className="flex flex-col gap-3">
+      <IconPicker onPick={addIcon} />
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Icons are vectors, not images: they stay sharp at any size, take the colour you choose, and
+        add nothing to the document but an id and a size.
       </p>
     </div>
   );
@@ -313,6 +330,7 @@ export function Sidebar() {
         </h2>
         {active === 'design' && <DesignPanel />}
         {active === 'shapes' && <ShapesPanel />}
+        {active === 'icons' && <IconsPanel />}
         {active === 'text' && <TextPanel />}
         {active === 'draw' && <DrawPanel />}
         {active === 'uploads' && <UploadsPanel />}

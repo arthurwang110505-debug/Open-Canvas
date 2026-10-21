@@ -2,11 +2,13 @@ import {
   CANVAS_PRESETS,
   LIMITS,
   type DesignElement,
+  type IconElement,
   type ImageElement,
   type ImageFit,
   type TextAlign,
   type TextElement,
 } from '@opencanvas/document';
+import { getIcon } from '@opencanvas/icons';
 import {
   movableElements,
   selectActivePage,
@@ -51,6 +53,7 @@ import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
 import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
 import { useEditor } from './hooks';
 import { ColorField, FieldGroup, NumberField } from './panels/fields';
+import { IconPicker, IconPreview } from './panels/IconPicker';
 
 /** Names for the weights the bundled families expose; anything else shows its number. */
 const FONT_WEIGHT_LABELS: Record<number, string> = {
@@ -457,6 +460,65 @@ function TextProperties({ element }: { element: TextElement }) {
             updateSelection({ letterSpacing }, `letterSpacing:${element.id}`)
           }
         />
+      </div>
+      <ColorField
+        label="Color"
+        value={element.color}
+        onCommit={(color) => updateSelection({ color }, `color:${element.id}`)}
+      />
+    </FieldGroup>
+  );
+}
+
+function IconProperties({ element }: { element: IconElement }) {
+  const { updateSelection } = useEditorActions();
+  const [picking, setPicking] = useState(false);
+  const icon = getIcon(element.iconId);
+
+  return (
+    <FieldGroup title="Icon">
+      <div className="flex items-center gap-2">
+        <span className="flex size-9 items-center justify-center rounded-lg border border-border bg-muted/40">
+          <IconPreview
+            iconId={element.iconId}
+            color={element.color}
+            strokeWidth={2}
+            className="size-5"
+          />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium capitalize">
+            {element.iconId.replace(/-/g, ' ')}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            {icon ? 'Vector icon' : 'Not in this version of OpenCanvas'}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setPicking((open) => !open)}>
+          {picking ? 'Close' : 'Replace'}
+        </Button>
+      </div>
+      {picking && (
+        <IconPicker
+          selectedId={element.iconId}
+          onPick={(iconId) => {
+            updateSelection({ iconId });
+            setPicking(false);
+          }}
+        />
+      )}
+      <div className="flex flex-col gap-1">
+        <NumberField
+          label="Stroke width"
+          value={element.strokeWidth}
+          min={0.25}
+          max={6}
+          precision={2}
+          onCommit={(strokeWidth) => updateSelection({ strokeWidth }, `strokeWidth:${element.id}`)}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Measured on the icon&apos;s own 24-unit grid, so it scales with the box.
+        </p>
       </div>
       <ColorField
         label="Color"
@@ -885,6 +947,7 @@ function ElementProperties({ element }: { element: DesignElement }) {
         </FieldGroup>
       )}
       {element.type === 'text' && <TextProperties element={element} />}
+      {element.type === 'icon' && <IconProperties element={element} />}
       {element.type === 'image' && <ImageProperties element={element} />}
       <AlignControls elements={[element]} />
       <ArrangeControls elements={[element]} />

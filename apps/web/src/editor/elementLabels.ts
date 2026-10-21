@@ -6,6 +6,7 @@ export const ELEMENT_TYPE_LABELS: Record<DesignElement['type'], string> = {
   text: 'Text',
   image: 'Image',
   path: 'Draw',
+  icon: 'Icon',
   group: 'Group',
 };
 
@@ -37,6 +38,11 @@ export function describeElement(
       return ELEMENT_TYPE_LABELS[element.type];
     case 'path':
       return element.name?.trim() ? element.name.trim() : 'Draw';
+    case 'icon': {
+      // Icons carry no text, so the catalogue id is the most useful label: `heart` → `Heart`.
+      const label = element.iconId.replace(/-/g, ' ');
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    }
     case 'group':
       return element.name?.trim() ? element.name.trim() : `${element.children.length} selected`;
   }

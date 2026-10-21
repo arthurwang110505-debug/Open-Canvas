@@ -10,7 +10,8 @@ apps/web ──► packages/editor-core ──► packages/document
    │                                        ▲
    ├────────► packages/canvas-fabric ───────┤
    ├────────► packages/storage ─────────────┤
-   ├────────► packages/export ──────────────┘
+   ├────────► packages/export ──────────────┤
+   ├────────► packages/icons ───────────────┤ (data only, no dependencies)
    └────────► packages/ui
 ```
 
@@ -21,8 +22,13 @@ apps/web ──► packages/editor-core ──► packages/document
   the adapter communicates through callbacks and a `render(scene)` method.
 - `packages/storage` depends only on `document` (+ `dexie`): project store (IndexedDB and
   memory), asset blob stores, autosave scheduling, image import, data URLs.
-- `packages/export` depends only on `document` (+ `jspdf`): it renders the model to SVG, PNG and
-  PDF without the canvas adapter, so exports work headlessly and are unit-testable in node.
+- `packages/export` depends only on `document` and `icons` (+ `jspdf`): it renders the model to
+  SVG, PNG and PDF without the canvas adapter, so exports work headlessly and are unit-testable
+  in node.
+- `packages/icons` is a pure data package: a 24×24 catalogue (372 Lucide icons, ISC licence) with
+  search, id lookup and path-data conversion. It imports nothing, so the canvas, the exporters and
+  any future server can all agree on what `heart` means. `scripts/generate-icons.mjs` regenerates
+  it from the installed icon set; the output is committed, so no build step or network is needed.
 - `apps/web` is the only place where React, the store, the adapter, storage and export meet.
 
 Internal packages are consumed as TypeScript source (`exports` → `src/index.ts`); Vite, Vitest
@@ -31,10 +37,11 @@ Node consumer (`apps/api`) needs it.
 
 ## 2. Document model (`packages/document`)
 
-- **Schema version** `1` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
+- **Schema version** `5` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
 - **Structure**: `DesignDocument { id, name, size, pages[], assets, metadata }` →
   `Page { id, background, elements[] }` → `DesignElement` (discriminated union on `type`:
-  `rect`, `ellipse`, `text`, `image`). Z-order is array order (index 0 = back).
+  `rect`, `ellipse`, `text`, `image`, `path`, `icon`, `group`). Z-order is array order (index 0
+  = back).
 - **Assets**: `assets` is a record of `ImageAsset { id, kind, name?, mimeType, width, height,
 byteSize?, source, createdAt }`. It carries **metadata only** — bytes live in an asset store
   keyed by id (`source: { type: 'local' }`) or behind an http(s) URL (`source: { type: 'url' }`).
@@ -44,6 +51,10 @@ byteSize?, source, createdAt }`. It carries **metadata only** — bytes live in 
 - **Geometry convention**: `x`/`y` is the top-left corner of the un-rotated element; `rotation`
   (degrees, clockwise) is applied around that corner. This equals SVG
   `translate(x y) rotate(r)` and is what exporters will implement.
+- **Icons** store `{ iconId, color, strokeWidth }` rather than shape data: the geometry lives in
+  `@opencanvas/icons`, so an icon costs ~80 bytes in the document, recolours and scales without
+  loss. `iconId` is validated as a slug, and an id from a newer build renders as nothing while
+  keeping the element intact (the document still round-trips).
 - **Styling**: `Fill` (`solid` | `none`), optional `Stroke`, `opacity`, text typography
   (`fontFamily`, `fontSize`, `fontWeight` 100–900, `fontStyle`, `textAlign`, `lineHeight`
   multiplier, `letterSpacing` px, `underline`, `color`).
@@ -125,6 +136,10 @@ Fabric.js 7 positions objects by **center** (`left`/`top`, `originX/Y` are depre
   updates (only changed props), replaces on type change, removes, re-orders (index 0 is the page
   background rect; the canvas `clipPath` hides content outside the page), and syncs selection
   (single object or `ActiveSelection`).
+- **Icons** become a `Group` of paths on their 24×24 grid, scaled onto the element box by one
+  `scaleX`/`scaleY`. An invisible 24×24 frame child makes the group's box exactly the grid, so a
+  resize maps 1:1 to `width`/`height`; the geometry is baked into the child paths, so a changed
+  icon or colour rebuilds the object (a pure move keeps it).
 - **Loop prevention**: `applying` is true during `render()`; every Fabric event handler returns
   early while it is set, so programmatic updates never echo back as commands.
 - **Interactions → patches**: `object:modified` reads `util.qrDecompose(calcTransformMatrix())`
@@ -214,6 +229,8 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 - Images are embedded through an injected `resolveImageHref` (the app passes base64 data URLs from
   the project blob store, because object URLs die with the tab). A missing asset record, an absent
   resolver and a resolver rejection are distinct typed errors.
+- Icons are emitted as the same 24×24 shapes the canvas draws, wrapped in
+  `scale(width / 24, height / 24)` — vector all the way into the SVG, no rasterization.
 - `createSvgRasterizer()` draws the SVG into a canvas (injectable `loadImage`/`createCanvas`) and
   returns a PNG data URL, refusing sizes beyond `LIMITS.maxCanvasDimension`.
 - `renderPageToSvg(..., { fontFaces })` embeds the page's typefaces as `@font-face` rules with
@@ -257,9 +274,10 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   text, download) come from `ExportProvider` and are injectable in tests.
 - `actions.ts` (`useEditorActions`) is the single place UI code turns intents into commands;
   `assets/useImageImport.ts` owns the upload flow (validate → store bytes → register → add).
-- `TopBar` (rename, undo/redo, change status, snapping toggle, zoom/fit), `Sidebar` (Shapes,
-  Text, Uploads, Background, Layers), `PropertiesPanel` (layout, fill & stroke, typography,
-  crop & fit for images, align/distribute, arrange; page size when nothing is selected),
+- `TopBar` (rename, undo/redo, change status, snapping toggle, zoom/fit), `Sidebar` (Design,
+  Shapes, Icons, Text, Draw, Uploads, Background, Layers), `PropertiesPanel` (layout, fill &
+  stroke, typography, icon colour/stroke/replace, crop & fit for images, align/distribute,
+  arrange; page size when nothing is selected),
   `useKeyboardShortcuts`, `ErrorToast` for rejected commands and application failures (import,
   asset loading).
 - `panels/LayersPanel` is a z-order view of the active page (top-most first, i.e. the reversed

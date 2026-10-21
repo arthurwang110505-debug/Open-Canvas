@@ -3,6 +3,7 @@ import type {
   DesignDocument,
   DesignElement,
   DocumentSize,
+  IconElement,
   ImageElement,
   ImageFit,
   Page,
@@ -27,9 +28,13 @@ import {
 } from 'fabric';
 import { AligningGuidelines } from 'fabric/extensions';
 
+import { ICON_VIEWBOX } from '@opencanvas/icons';
+
 import {
   elementToFabricProps,
   fillToFabric,
+  iconPaths,
+  iconToFabricProps,
   patchFromTransform,
   roundTo,
   topLeftToCenter,
@@ -202,6 +207,11 @@ export class FabricCanvasAdapter {
   private readonly canvas: Canvas;
   private readonly callbacks: CanvasAdapterCallbacks;
   private readonly objects = new Map<string, ElementObject>();
+  /**
+   * Which icon (and which colour/stroke) each icon group was built for. The geometry is baked into
+   * its child paths, so a changed icon needs a new object rather than a property update.
+   */
+  private readonly iconSignatures = new WeakMap<FabricObject, string>();
   private readonly idsByObject = new WeakMap<FabricObject, string>();
   private readonly pageBackground: Rect;
   private readonly clip: Rect;
@@ -562,7 +572,7 @@ export class FabricCanvasAdapter {
 
       const existing = this.objects.get(element.id);
       const object =
-        existing && objectMatchesType(existing, element.type)
+        existing && this.objectMatchesElement(existing, element)
           ? existing
           : this.replaceObject(element, existing);
       this.applyElement(object, element);
@@ -576,6 +586,17 @@ export class FabricCanvasAdapter {
       }
     }
     this.elements = nextElements;
+  }
+
+  /**
+   * Whether an existing Fabric object can be updated in place. Type alone is not enough for icons
+   * (their geometry is baked into child paths) or for groups (an icon is also a `Group`).
+   */
+  private objectMatchesElement(object: ElementObject, element: DesignElement): boolean {
+    if (!objectMatchesType(object, element.type)) return false;
+    const signature = this.iconSignatures.get(object);
+    if (element.type === 'icon') return signature === iconSignature(element);
+    return signature === undefined;
   }
 
   private replaceObject(
@@ -597,6 +618,11 @@ export class FabricCanvasAdapter {
     if (element.type === 'group') {
       return this.createGroupObject(element);
     }
+    // Icons carry their own shape data, so they are built before the generic property mapping
+    // (which narrows the element type for the renderers below).
+    if (element.type === 'icon') {
+      return this.createIconObject(element);
+    }
     const mapped = elementToFabricProps(element, this.fabricContext);
     switch (mapped.kind) {
       case 'rect':
@@ -611,7 +637,56 @@ export class FabricCanvasAdapter {
         const { path, ...rest } = mapped.props;
         return new Path(path, rest);
       }
+      case 'icon':
+        throw new Error('Icon elements are built before property mapping.');
     }
+  }
+
+  /**
+   * Builds the icon as one group of paths in grid units, scaled onto the element box. An invisible
+   * 24×24 frame is included so the group's intrinsic size is exactly the grid: that keeps
+   * `geometryFromTransform` (and therefore every resize) exact, and makes the canvas transform
+   * identical to the exporter's `scale(width / 24, height / 24)`.
+   */
+  private createIconObject(element: IconElement): Group {
+    const props = iconToFabricProps(element);
+    const children: FabricObject[] = iconPaths(element).map(({ d, filled }) => {
+      return new Path(d, {
+        fill: filled ? element.color : 'none',
+        stroke: filled ? undefined : element.color,
+        strokeWidth: element.strokeWidth,
+        strokeLineCap: 'round',
+        strokeLineJoin: 'round',
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+      });
+    });
+    children.push(
+      new Rect({
+        width: ICON_VIEWBOX,
+        height: ICON_VIEWBOX,
+        // Fabric positions a grouped child by its centre, so the frame sits at (12, 12) — the
+        // middle of the grid — and the group's box ends up exactly 24×24.
+        left: ICON_VIEWBOX / 2,
+        top: ICON_VIEWBOX / 2,
+        fill: 'transparent',
+        strokeWidth: 0,
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+      }),
+    );
+    const group = new Group(children, {
+      ...props,
+      selectable: !element.locked,
+      evented: !element.locked,
+      subTargetCheck: false,
+    });
+    this.iconSignatures.set(group, iconSignature(element));
+    return group;
   }
 
   private createGroupObject(group: DesignElement & { type: 'group' }): Group {
@@ -673,6 +748,10 @@ export class FabricCanvasAdapter {
           fabricObj = new Path(path, rest);
           break;
         }
+        case 'icon':
+          if (child.type !== 'icon') throw new Error('Icon props require an icon element.');
+          fabricObj = this.createIconObject(child);
+          break;
       }
       const childAbsCenter = topLeftToCenter({
         x: group.x + child.x,
@@ -1064,7 +1143,15 @@ function objectMatchesType(object: ElementObject, type: DesignElement['type']): 
       return object instanceof FabricImage;
     case 'path':
       return object instanceof Path;
+    case 'icon':
+      // An icon is a group of paths; `iconSignatures` tells it apart from a group element.
+      return object instanceof Group;
     case 'group':
       return object instanceof Group;
   }
+}
+
+/** Everything baked into an icon's child paths, so a change to any of it means a rebuild. */
+function iconSignature(element: { iconId: string; color: string; strokeWidth: number }): string {
+  return `${element.iconId}\u0000${element.color}\u0000${element.strokeWidth}`;
 }

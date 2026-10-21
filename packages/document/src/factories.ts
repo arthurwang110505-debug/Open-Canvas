@@ -7,6 +7,7 @@ import type {
   EllipseElement,
   Fill,
   GroupElement,
+  IconElement,
   ImageAsset,
   ImageElement,
   Page,
@@ -186,6 +187,23 @@ export function createGroupElement(
     visible: overrides.visible ?? true,
     type: 'group',
     children,
+  };
+}
+
+/**
+ * Icons default to a square box on the 24-unit grid they are drawn on, so a fresh icon is
+ * stroke-for-stroke what the catalogue defines until the user scales it.
+ */
+export function createIconElement(
+  overrides: Partial<Omit<IconElement, 'type' | 'iconId'>> & Pick<IconElement, 'iconId'>,
+): IconElement {
+  return {
+    ...baseDefaults({ width: 192, height: 192, ...overrides }),
+    type: 'icon',
+    ...(overrides.name !== undefined ? { name: overrides.name } : {}),
+    iconId: overrides.iconId,
+    color: overrides.color ?? '#111827',
+    strokeWidth: overrides.strokeWidth ?? 2,
   };
 }
 

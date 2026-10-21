@@ -6,6 +6,7 @@ import {
   type DesignElement,
   type EllipseElement,
   type Fill,
+  type IconElement,
   type ImageAsset,
   type ImageElement,
   type Page,
@@ -15,6 +16,7 @@ import {
   type Stroke,
   type TextElement,
 } from '@opencanvas/document';
+import { getIcon, ICON_VIEWBOX, type IconShape } from '@opencanvas/icons';
 
 import { buildFontFaceCss, type EmbeddedFontFace } from './fonts';
 import { TEXT_BASELINE_EM, wrapTextLines, type TextMeasurer } from './textLayout';
@@ -108,6 +110,38 @@ function textAnchor(alignment: TextElement['textAlign']): 'start' | 'middle' | '
   if (alignment === 'right') return 'end';
   // SVG has no justified text; it falls back to the start edge like the canvas does for one line.
   return 'start';
+}
+
+/**
+ * The icon's shapes scaled from its 24×24 grid into the element box. Stroke width is a document
+ * property expressed in grid units, so it scales with the icon exactly as it does on the canvas
+ * (Fabric applies the same scale to a stroked path).
+ */
+export function iconSvgMarkup(element: IconElement): string {
+  const icon = getIcon(element.iconId);
+  // An id from a newer build cannot be drawn; the element stays in the document untouched so the
+  // icon reappears when that build opens the file.
+  if (!icon) return '';
+  const shapes = icon.shapes
+    .map(([tag, attributes]: IconShape) => {
+      // Lucide marks the few solid details (e.g. the dots in `dice-5`) with `fill="currentColor"`.
+      const filled = attributes['fill'] === 'currentColor';
+      const attrs: Record<string, string> = {
+        ...attributes,
+        fill: filled ? element.color : 'none',
+        stroke: filled ? 'none' : element.color,
+        'stroke-width': String(element.strokeWidth),
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+      };
+      return `      <${tag} ${Object.entries(attrs)
+        .map(([key, value]) => `${key}="${escapeXml(value)}"`)
+        .join(' ')}/>`;
+    })
+    .join('\n');
+  const scaleX = element.width / ICON_VIEWBOX;
+  const scaleY = element.height / ICON_VIEWBOX;
+  return `    <g transform="scale(${formatNumber(scaleX)} ${formatNumber(scaleY)})">\n${shapes}\n    </g>`;
 }
 
 function renderText(element: TextElement, measure?: TextMeasurer): string {
@@ -216,6 +250,9 @@ function renderElement(
       break;
     case 'path':
       shape = renderPath(element);
+      break;
+    case 'icon':
+      shape = iconSvgMarkup(element);
       break;
   }
   return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(

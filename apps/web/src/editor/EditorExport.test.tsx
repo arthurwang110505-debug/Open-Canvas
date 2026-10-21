@@ -2,6 +2,7 @@ import {
   createBlankDocument,
   createImageAsset,
   createImageElement,
+  createIconElement,
   createRectElement,
   createTextElement,
   err,
@@ -152,6 +153,29 @@ describe('exporting a design', () => {
     expect(await screen.findByText('No 2D context in this browser.')).toBeInTheDocument();
     expect(screen.getByText('Export failed')).toBeInTheDocument();
     expect(downloads).toEqual([]);
+  });
+
+  it('exports an icon as vector paths, not as an image', async () => {
+    const document = createBlankDocument({ id: 'doc_icon', name: 'Badge', now: fixedDate });
+    document.pages[0]?.elements.push(
+      createIconElement({
+        id: 'i1',
+        x: 100,
+        y: 100,
+        iconId: 'heart',
+        color: '#ef4444',
+        width: 96,
+        height: 96,
+      }),
+    );
+    const { user, downloads } = renderEditor(document);
+
+    await exportFormat(user, 'SVG');
+
+    const svg = await downloads[0]?.blob.text();
+    expect(svg).toContain('<g transform="scale(4 4)">');
+    expect(svg).toContain('stroke="#ef4444"');
+    expect(svg).not.toContain('<image');
   });
 
   it('embeds the fonts the page uses so the file keeps its typeface', async () => {

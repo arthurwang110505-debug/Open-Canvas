@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import { CURRENT_SCHEMA_VERSION } from './constants';
@@ -110,6 +113,25 @@ describe('registry integrity', () => {
       expected += 1;
     }
     expect(expected).toBe(CURRENT_SCHEMA_VERSION);
+  });
+
+  it('upgrades the v4 fixture to exactly the committed v5 fixture', () => {
+    const read = (name: string): Record<string, unknown> =>
+      JSON.parse(
+        readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)), 'utf8'),
+      ) as Record<string, unknown>;
+    const before = read('schema-v4.json');
+    // The pair is the contract: a v4 document opened today must produce this exact v5 document.
+    // Regenerate schema-v5.json only when a migration deliberately changes existing content.
+    const result = migrateDocument(before);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.document).toEqual(read('schema-v5.json'));
+    expect(result.value.appliedMigrations.map((step) => step.from)).toEqual([4]);
+
+    // And the migrated document passes the same validation a stored one does.
+    const parsed = parseDocument(result.value.document);
+    expect(parsed.ok).toBe(true);
   });
 
   it('is used by parseDocument so migrated files are validated', () => {

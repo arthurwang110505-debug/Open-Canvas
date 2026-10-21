@@ -10,6 +10,7 @@ import {
   Lock,
   LockOpen,
   PenTool,
+  Shapes,
   Square,
   Type,
   Users,
@@ -33,6 +34,7 @@ const TYPE_ICONS: Record<DesignElement['type'], ReactNode> = {
   ellipse: <Circle />,
   text: <Type />,
   image: <ImageIcon />,
+  icon: <Shapes />,
   path: <PenTool />,
   group: <Users />,
 };

@@ -3,6 +3,7 @@ import type {
   DesignElement,
   EllipseElement,
   Fill,
+  IconElement,
   ImageElement,
   PathElement,
   RectElement,
@@ -20,7 +21,8 @@ export type ElementPatch = Partial<
     EditableProps<EllipseElement> &
     EditableProps<TextElement> &
     EditableProps<ImageElement> &
-    EditableProps<PathElement>
+    EditableProps<PathElement> &
+    EditableProps<IconElement>
 >;
 
 export type ReorderTarget = 'front' | 'back' | 'forward' | 'backward' | { index: number };

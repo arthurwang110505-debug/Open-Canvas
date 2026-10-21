@@ -2,6 +2,7 @@ import type {
   DesignElement,
   EllipseElement,
   Fill,
+  IconElement,
   ImageElement,
   ImageFit,
   PathElement,
@@ -9,6 +10,7 @@ import type {
   RectElement,
   TextElement,
 } from '@opencanvas/document';
+import { getIcon, ICON_VIEWBOX, iconShapeToPathData, type IconShape } from '@opencanvas/icons';
 
 /**
  * Pure conversion helpers between the OpenCanvas geometry convention and Fabric.js.
@@ -210,12 +212,23 @@ export interface PathFabricProps extends CommonFabricProps {
   fill: string;
 }
 
+/**
+ * An icon is drawn on a fixed 24×24 grid and mapped onto the element box with one scale, which is
+ * exactly what the SVG exporter emits. Fabric describes that as a group of paths whose intrinsic
+ * size is the grid plus `scaleX`/`scaleY`; see `iconPaths`.
+ */
+export interface IconFabricProps extends Omit<CommonFabricProps, 'scaleX' | 'scaleY'> {
+  scaleX: number;
+  scaleY: number;
+}
+
 export type ElementFabricProps =
   | { kind: 'rect'; props: RectFabricProps }
   | { kind: 'ellipse'; props: EllipseFabricProps }
   | { kind: 'text'; props: TextFabricProps }
   | { kind: 'image'; props: ImageFabricProps }
-  | { kind: 'path'; props: PathFabricProps };
+  | { kind: 'path'; props: PathFabricProps }
+  | { kind: 'icon'; props: IconFabricProps };
 
 function commonProps(element: DesignElement): CommonFabricProps {
   const center = topLeftToCenter(element);
@@ -277,6 +290,30 @@ export function pathToFabricProps(element: PathElement): PathFabricProps {
     strokeLineCap: 'round',
     strokeLineJoin: 'round',
     fill: fillToFabric(element.fill),
+  };
+}
+
+/**
+ * One drawable path per catalogue shape, in grid units. `filled` marks the handful of shapes the
+ * set draws solid (`fill="currentColor"`), so the caller can give them a fill instead of a stroke.
+ */
+export function iconPaths(element: IconElement): { d: string; filled: boolean }[] {
+  const icon = getIcon(element.iconId);
+  if (!icon) return [];
+  return icon.shapes
+    .map(([tag, attributes]: IconShape) => ({
+      d: iconShapeToPathData([tag, attributes]),
+      filled: attributes['fill'] === 'currentColor',
+    }))
+    .filter((path) => path.d.length > 0);
+}
+
+export function iconToFabricProps(element: IconElement): IconFabricProps {
+  return {
+    ...commonProps(element),
+    // The element box is the grid scaled by these factors; `commonProps` centred it already.
+    scaleX: element.width / ICON_VIEWBOX,
+    scaleY: element.height / ICON_VIEWBOX,
   };
 }
 
@@ -424,6 +461,8 @@ export function elementToFabricProps(
     }
     case 'path':
       return { kind: 'path', props: pathToFabricProps(element) };
+    case 'icon':
+      return { kind: 'icon', props: iconToFabricProps(element) };
     case 'group':
       throw new Error(
         'Group elements are handled by FabricCanvasAdapter directly, not via elementToFabricProps.',

@@ -134,6 +134,24 @@ export const ImageElementSchema = ElementBaseSchema.extend({
   crop: ImageCropSchema.optional(),
 });
 
+/**
+ * An icon is vector data, not an image asset: the document stores which icon it is, and the
+ * renderer looks the geometry up in `@opencanvas/icons`. That keeps documents small, makes colour
+ * and stroke width live properties, and lets an icon scale without losing sharpness.
+ */
+export const IconElementSchema = ElementBaseSchema.extend({
+  type: z.literal('icon'),
+  /** Key in the bundled catalogue, e.g. `heart`. Unknown ids render as nothing (see below). */
+  iconId: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Icon ids look like "heart" or "arrow-right"'),
+  color: HexColorSchema.default('#111827'),
+  /** Stroke width in the icon's own 24×24 units; scales with the element. */
+  strokeWidth: z.number().min(0.25).max(6).default(2),
+});
+
 export const PathPointSchema = z.object({
   x: CoordinateSchema,
   y: CoordinateSchema,
@@ -166,6 +184,7 @@ export type ImageFilters = z.infer<typeof ImageFiltersSchema>;
 export type ImageCrop = z.infer<typeof ImageCropSchema>;
 export type PathPoint = z.infer<typeof PathPointSchema>;
 export type PathElement = z.infer<typeof PathElementSchema>;
+export type IconElement = z.infer<typeof IconElementSchema>;
 
 export interface GroupElement {
   id: string;
@@ -182,7 +201,13 @@ export interface GroupElement {
   children: DesignElement[];
 }
 export type DesignElement =
-  RectElement | EllipseElement | TextElement | ImageElement | PathElement | GroupElement;
+  | RectElement
+  | EllipseElement
+  | TextElement
+  | ImageElement
+  | PathElement
+  | IconElement
+  | GroupElement;
 export type ElementType = DesignElement['type'];
 
 // Group — recursive container. Children are stored relative to the group's origin (x,y).
@@ -201,6 +226,7 @@ export const ElementSchema: z.ZodType<DesignElement> = z.lazy(() =>
     TextElementSchema,
     ImageElementSchema,
     PathElementSchema,
+    IconElementSchema,
     GroupElementSchema,
   ]),
 );

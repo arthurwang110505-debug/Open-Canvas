@@ -43,6 +43,15 @@ export const MIGRATIONS: readonly Migration[] = [
     description: 'Add image flip, filters and crop',
     migrate: (raw) => ({ ...raw }),
   },
+  {
+    from: 4,
+    to: 5,
+    description: 'Add icon element',
+    // Purely additive: existing elements are valid unchanged, and a document that has no icons
+    // looks the same in both versions. The bump exists so an older build rejects a document
+    // containing an icon it cannot draw instead of rendering it as a blank space.
+    migrate: (raw) => ({ ...raw }),
+  },
 ];
 
 export interface MigrateOptions {

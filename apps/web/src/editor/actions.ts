@@ -1,5 +1,6 @@
 import {
   createEllipseElement,
+  createIconElement,
   createPathElement,
   createRectElement,
   createTextElement,
@@ -33,6 +34,8 @@ export type TextPreset = 'heading' | 'subheading' | 'body';
 export interface EditorActions {
   addShape: (kind: ShapeKind) => void;
   addText: (preset: TextPreset) => void;
+  /** Places a bundled icon, centred on the page; the id comes from `@opencanvas/icons`. */
+  addIcon: (iconId: string) => void;
   deleteSelection: () => void;
   duplicateSelection: () => void;
   nudgeSelection: (dx: number, dy: number) => void;
@@ -194,6 +197,19 @@ export function useEditorActions(): EditorActions {
             }),
           );
         }
+      },
+
+      addIcon: (iconId) => {
+        const { size } = store.getState().document;
+        const side = Math.round(Math.min(size.width, size.height) * 0.2);
+        addElement(
+          createIconElement({
+            ...centered(size, side, side),
+            width: side,
+            height: side,
+            iconId,
+          }),
+        );
       },
 
       addText: (preset) => {

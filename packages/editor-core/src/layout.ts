@@ -54,6 +54,8 @@ export function fitElementsToSize(
           letterSpacing: round(element.letterSpacing * scale),
         };
       case 'image':
+      case 'icon':
+        // An icon's stroke width is measured on its own 24-unit grid, so it scales with the box.
         return { ...element, ...geometry };
       case 'path':
         return {

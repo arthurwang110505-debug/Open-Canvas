@@ -119,7 +119,8 @@ changes the product category from "vector toy" to "design tool" in screenshots a
 
 **Shipped so far:** A1–A7 (download menu, canvas-corner zoom, anchored selection toolbar,
 type/density pass, dashboard entry with recents + size catalog + sort, in-editor templates,
-empty-canvas coaching) and B1–B2 (15 bundled OFL families, embedded in every export).
+empty-canvas coaching), B1–B2 (15 bundled OFL families, embedded in every export) and B3
+(372-icon vector catalogue as a real `icon` element, schema v5).
 
 Sequence rule: every phase ships _vertically_ — model → reducer → adapter → UI → export → test —
 for one feature at a time. No half-migrated element types on `main`.

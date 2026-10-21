@@ -4,6 +4,7 @@ import { CURRENT_SCHEMA_VERSION, LIMITS } from './constants';
 import {
   createBlankDocument,
   createEllipseElement,
+  createIconElement,
   createRectElement,
   createTextElement,
 } from './factories';
@@ -80,6 +81,29 @@ describe('ElementSchema', () => {
     expect(ElementSchema.safeParse({ ...base, x: Number.POSITIVE_INFINITY }).success).toBe(false);
     expect(ElementSchema.safeParse({ ...base, x: Number.NaN }).success).toBe(false);
     expect(ElementSchema.safeParse({ ...base, id: 'has spaces' }).success).toBe(false);
+  });
+
+  it('accepts an icon and applies its defaults', () => {
+    const parsed = ElementSchema.parse({
+      type: 'icon',
+      id: 'i1',
+      x: 0,
+      y: 0,
+      width: 96,
+      height: 96,
+      iconId: 'arrow-right',
+    });
+    expect(parsed).toMatchObject({ color: '#111827', strokeWidth: 2 });
+  });
+
+  it('rejects an icon id that could not be looked up', () => {
+    const icon = createIconElement({ id: 'i1', iconId: 'heart' });
+    expect(ElementSchema.safeParse(icon).success).toBe(true);
+    for (const iconId of ['', 'Heart', 'heart ', '../heart', 'x'.repeat(65)]) {
+      expect(ElementSchema.safeParse({ ...icon, iconId }).success).toBe(false);
+    }
+    expect(ElementSchema.safeParse({ ...icon, strokeWidth: 0 }).success).toBe(false);
+    expect(ElementSchema.safeParse({ ...icon, strokeWidth: 12 }).success).toBe(false);
   });
 
   it('validates typography constraints', () => {
