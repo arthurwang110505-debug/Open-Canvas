@@ -21,11 +21,13 @@ export function fitElementsToSize(
   // Group children are stored relative to the group origin, so they scale but never take the
   // page-level centring offset.
   const fit = (element: DesignElement, applyOffset: boolean): DesignElement => {
+    // A thin rule drawn on an A4 poster is one unit tall; scaling it onto a 1080 canvas would
+    // round it to zero and the document schema (rightly) rejects that. Keep every box visible.
     const geometry = {
       x: round(element.x * scale + (applyOffset ? offsetX : 0)),
       y: round(element.y * scale + (applyOffset ? offsetY : 0)),
-      width: round(element.width * scale),
-      height: round(element.height * scale),
+      width: Math.max(1, round(element.width * scale)),
+      height: Math.max(1, round(element.height * scale)),
     };
 
     switch (element.type) {
@@ -50,7 +52,7 @@ export function fitElementsToSize(
         return {
           ...element,
           ...geometry,
-          fontSize: round(element.fontSize * scale),
+          fontSize: Math.max(1, round(element.fontSize * scale)),
           letterSpacing: round(element.letterSpacing * scale),
         };
       case 'image':

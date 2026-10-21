@@ -65,3 +65,24 @@ describe('fitElementsToSize', () => {
 function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
+
+describe('fitElementsToSize at extreme reductions', () => {
+  it('keeps a hairline rule and small type visible instead of rounding them to zero', () => {
+    const rule = createPathElement(
+      [
+        { x: 100, y: 100 },
+        { x: 900, y: 100 },
+      ],
+      { stroke: { color: '#111827', width: 1 } },
+    );
+    const label = createTextElement({ id: 't', x: 0, y: 0, width: 400, fontSize: 3, text: 'hi' });
+
+    const fitted = fitElementsToSize([rule, label], { width: 2480, height: 3508 }, square);
+
+    for (const element of fitted) {
+      expect(element.width).toBeGreaterThanOrEqual(1);
+      expect(element.height).toBeGreaterThanOrEqual(1);
+      if (element.type === 'text') expect(element.fontSize).toBeGreaterThanOrEqual(1);
+    }
+  });
+});
