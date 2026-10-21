@@ -189,6 +189,7 @@ describe('exporting a design', () => {
     const document = createBlankDocument({ id: 'doc_live', name: 'Live', now: fixedDate });
     const { user, downloads } = renderEditor(document);
 
+    await user.click(screen.getByRole('tab', { name: 'Shapes' }));
     await user.click(screen.getByRole('button', { name: 'Rectangle' }));
     const properties = screen.getByRole('complementary', { name: 'Properties' });
     expect(within(properties).getByRole('heading', { name: 'Rectangle' })).toBeInTheDocument();

@@ -3,6 +3,8 @@ import {
   createPathElement,
   createRectElement,
   createTextElement,
+  generateId,
+  type DesignDocument,
   type DesignElement,
   type Fill,
 } from '@opencanvas/document';
@@ -10,6 +12,7 @@ import {
   alignElements,
   alignmentTarget,
   distributeElements,
+  fitElementsToSize,
   selectActivePage,
   selectSelectedElements,
   type AlignMode,
@@ -23,7 +26,8 @@ import { useMemo } from 'react';
 
 import { useCanvasController, useEditorStore } from './hooks';
 
-export type ShapeKind = 'rect' | 'rounded-rect' | 'ellipse' | 'line' | 'triangle' | 'star' | 'hexagon' | 'sparkle';
+export type ShapeKind =
+  'rect' | 'rounded-rect' | 'ellipse' | 'line' | 'triangle' | 'star' | 'hexagon' | 'sparkle';
 export type TextPreset = 'heading' | 'subheading' | 'body';
 
 export interface EditorActions {
@@ -49,6 +53,10 @@ export interface EditorActions {
   renameDocument: (name: string) => void;
   resizeDocument: (width: number, height: number) => void;
   setPageBackground: (fill: Fill, mergeKey?: string) => void;
+  /** Replaces the current page with a template, fitted to this canvas (one undo step). */
+  applyTemplate: (template: DesignDocument) => void;
+  /** Inserts a template as a new page after the current one (one undo step). */
+  addTemplatePage: (template: DesignDocument) => void;
   undo: () => void;
   redo: () => void;
 }
@@ -109,7 +117,11 @@ export function useEditorActions(): EditorActions {
                 { x: x + side, y: y + side },
                 { x, y: y + side },
               ],
-              { fill: { type: 'solid', color: '#f59e0b' }, stroke: { color: '#f59e0b', width: 0 }, closed: true },
+              {
+                fill: { type: 'solid', color: '#f59e0b' },
+                stroke: { color: '#f59e0b', width: 0 },
+                closed: true,
+              },
             ),
           );
         } else if (kind === 'star') {
@@ -120,7 +132,7 @@ export function useEditorActions(): EditorActions {
           const inner = side / 5;
           const pts: { x: number; y: number }[] = [];
           for (let i = 0; i < 10; i++) {
-            const angle = -90 + (i * 36);
+            const angle = -90 + i * 36;
             const r = i % 2 === 0 ? outer : inner;
             const rad = (angle * Math.PI) / 180;
             pts.push({ x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) });
@@ -144,7 +156,11 @@ export function useEditorActions(): EditorActions {
                 { x: x + side * 0.25, y: y + side },
                 { x, y: y + side * 0.5 },
               ],
-              { fill: { type: 'solid', color: '#06b6d4' }, stroke: { color: '#06b6d4', width: 0 }, closed: true },
+              {
+                fill: { type: 'solid', color: '#06b6d4' },
+                stroke: { color: '#06b6d4', width: 0 },
+                closed: true,
+              },
             ),
           );
         } else if (kind === 'sparkle') {
@@ -320,6 +336,46 @@ export function useEditorActions(): EditorActions {
           { type: 'page.setBackground', pageId: pageId(), background: fill },
           mergeKey ? { mergeKey } : undefined,
         );
+      },
+
+      applyTemplate: (template) => {
+        const state = store.getState();
+        const source = template.pages[0];
+        if (!source) return;
+        // Template images must be registered before elements reference them.
+        for (const asset of Object.values(template.assets)) {
+          if (!(asset.id in state.document.assets)) {
+            dispatch({ type: 'asset.register', asset }, { recordHistory: false });
+          }
+        }
+        dispatch({
+          type: 'page.replaceContent',
+          pageId: state.activePageId,
+          background: source.background,
+          elements: fitElementsToSize(source.elements, template.size, state.document.size),
+        });
+        store.getState().setSelection([]);
+      },
+
+      addTemplatePage: (template) => {
+        const state = store.getState();
+        const source = template.pages[0];
+        if (!source) return;
+        for (const asset of Object.values(template.assets)) {
+          if (!(asset.id in state.document.assets)) {
+            dispatch({ type: 'asset.register', asset }, { recordHistory: false });
+          }
+        }
+        const pageId = generateId('page');
+        dispatch({
+          type: 'page.add',
+          afterPageId: state.activePageId,
+          pageId,
+          background: source.background,
+          elements: fitElementsToSize(source.elements, template.size, state.document.size),
+        });
+        store.getState().setActivePage(pageId);
+        store.getState().setSelection([]);
       },
 
       undo: () => store.getState().undo(),

@@ -4,6 +4,7 @@ import {
   Hexagon,
   ImageIcon,
   Layers,
+  LayoutTemplate,
   Minus,
   PaintBucket,
   PenTool,
@@ -23,10 +24,13 @@ import { BackgroundPanel } from './panels/BackgroundPanel';
 import { LayersPanel } from './panels/LayersPanel';
 import { UploadsPanel } from './panels/UploadsPanel';
 import { useDraw } from './draw/DrawContext';
+import { TemplateGallery } from '../templates/TemplateGallery';
+import { getTemplate } from '../templates/catalog';
 
-type SidebarTab = 'shapes' | 'text' | 'draw' | 'uploads' | 'background' | 'layers';
+type SidebarTab = 'design' | 'shapes' | 'text' | 'draw' | 'uploads' | 'background' | 'layers';
 
 const TABS: { id: SidebarTab; label: string; icon: ReactNode }[] = [
+  { id: 'design', label: 'Design', icon: <LayoutTemplate /> },
   { id: 'shapes', label: 'Shapes', icon: <Shapes /> },
   { id: 'text', label: 'Text', icon: <Type /> },
   { id: 'draw', label: 'Draw', icon: <PenTool /> },
@@ -168,6 +172,40 @@ function TextPanel() {
   );
 }
 
+function DesignPanel() {
+  const { applyTemplate, addTemplatePage } = useEditorActions();
+  const [asNewPage, setAsNewPage] = useState(false);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex items-center gap-2 rounded-xl bg-muted/60 px-3 py-2 text-xs font-medium">
+        <input
+          type="checkbox"
+          checked={asNewPage}
+          onChange={(event) => setAsNewPage(event.target.checked)}
+          className="accent-primary"
+        />
+        Add as a new page
+      </label>
+      <TemplateGallery
+        variant="panel"
+        onUse={(templateId) => {
+          const template = getTemplate(templateId);
+          if (!template) return;
+          const document = template.build();
+          if (asNewPage) addTemplatePage(document);
+          else applyTemplate(document);
+        }}
+      />
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Applying a template replaces this page and keeps it undoable with{' '}
+        <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">Ctrl Z</kbd>. Layouts
+        are fitted to this canvas size.
+      </p>
+    </div>
+  );
+}
+
 function DrawPanel() {
   const { enabled, strokeColor, strokeWidth, setEnabled, setStrokeColor, setStrokeWidth } =
     useDraw();
@@ -231,7 +269,7 @@ function DrawPanel() {
 }
 
 export function Sidebar() {
-  const [active, setActive] = useState<SidebarTab>('shapes');
+  const [active, setActive] = useState<SidebarTab>('design');
   const baseId = useId();
 
   return (
@@ -273,6 +311,7 @@ export function Sidebar() {
         <h2 className="mb-3 text-[15px] font-semibold">
           {TABS.find((tab) => tab.id === active)?.label}
         </h2>
+        {active === 'design' && <DesignPanel />}
         {active === 'shapes' && <ShapesPanel />}
         {active === 'text' && <TextPanel />}
         {active === 'draw' && <DrawPanel />}

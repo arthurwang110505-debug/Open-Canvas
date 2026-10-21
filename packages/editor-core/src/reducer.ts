@@ -4,6 +4,7 @@ import {
   ElementSchema,
   GroupElementSchema,
   LIMITS,
+  PageSchema,
   collectReferencedAssetIds,
   err,
   findElementIndex,
@@ -111,6 +112,30 @@ function applyToPage(
   switch (command.type) {
     case 'page.setBackground':
       return ok({ ...page, background: command.background });
+
+    case 'page.replaceContent': {
+      const parsed = PageSchema.safeParse({
+        id: page.id,
+        ...(page.name !== undefined ? { name: page.name } : {}),
+        background: command.background,
+        elements: command.elements,
+      });
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return err({
+          code: 'invalid-result',
+          message: issue
+            ? `Invalid page content: ${issue.path.map(String).join('.')} ${issue.message}`
+            : 'Invalid page content.',
+          command: command.type,
+        });
+      }
+      return ok({
+        ...page,
+        background: parsed.data.background,
+        elements: parsed.data.elements,
+      });
+    }
 
     case 'element.add': {
       if (findElementIndex(page, command.element.id) !== -1) {
@@ -249,13 +274,21 @@ function applyToPage(
       if (selected.length !== command.elementIds.length) {
         return err({
           code: 'element-not-found',
-          message: 'One or more selected elements do not exist on this page (or are nested inside another group).',
+          message:
+            'One or more selected elements do not exist on this page (or are nested inside another group).',
           command: command.type,
         });
       }
       const groupId = command.groupId ?? generateId('el');
-      if (page.elements.some((el) => el.id === groupId) || selected.some((el) => el.id === groupId)) {
-        return err({ code: 'invalid-command', message: `Element id "${groupId}" already exists.`, command: command.type });
+      if (
+        page.elements.some((el) => el.id === groupId) ||
+        selected.some((el) => el.id === groupId)
+      ) {
+        return err({
+          code: 'invalid-command',
+          message: `Element id "${groupId}" already exists.`,
+          command: command.type,
+        });
       }
       // Compute bounding box of selected elements (axis-aligned, ignoring rotation for group box)
       const bounds = unionBounds(selected.map((el) => getElementBounds(el)));
@@ -313,7 +346,7 @@ function applyToPage(
           command: command.type,
         });
       }
-      const children = (group as GroupElement).children.map((child) => ({
+      const children = group.children.map((child) => ({
         ...child,
         // Restore absolute position
         x: child.x + group.x,
@@ -454,11 +487,23 @@ export function applyCommand(
           command: command.type,
         });
       }
-      const newPage: Page = {
+      const candidate: Page = {
         id: newPageId,
-        background: { type: 'solid', color: '#ffffff' },
-        elements: [],
+        background: command.background ?? { type: 'solid', color: '#ffffff' },
+        elements: command.elements ? [...command.elements] : [],
       };
+      const parsed = PageSchema.safeParse(candidate);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return err({
+          code: 'invalid-command',
+          message: issue
+            ? `Invalid page content: ${issue.path.map(String).join('.')} ${issue.message}`
+            : 'Invalid page content.',
+          command: command.type,
+        });
+      }
+      const newPage: Page = parsed.data;
       const pages = document.pages.slice();
       if (command.afterPageId) {
         const idx = pages.findIndex((p) => p.id === command.afterPageId);
@@ -494,11 +539,19 @@ export function applyCommand(
       }
       const source = document.pages[idx];
       if (!source) {
-        return err({ code: 'page-not-found', message: `Page "${command.pageId}" does not exist.`, command: command.type });
+        return err({
+          code: 'page-not-found',
+          message: `Page "${command.pageId}" does not exist.`,
+          command: command.type,
+        });
       }
       const newPageId = command.newPageId ?? generateId('page');
       if (document.pages.some((p) => p.id === newPageId)) {
-        return err({ code: 'invalid-command', message: `Page id "${newPageId}" already exists.`, command: command.type });
+        return err({
+          code: 'invalid-command',
+          message: `Page id "${newPageId}" already exists.`,
+          command: command.type,
+        });
       }
       // Clone elements with new ids
       const clonedElements = source.elements.map((el) => ({ ...el, id: generateId('el') }));
@@ -523,7 +576,11 @@ export function applyCommand(
       }
       const idx = document.pages.findIndex((p) => p.id === command.pageId);
       if (idx === -1) {
-        return err({ code: 'page-not-found', message: `Page "${command.pageId}" does not exist.`, command: command.type });
+        return err({
+          code: 'page-not-found',
+          message: `Page "${command.pageId}" does not exist.`,
+          command: command.type,
+        });
       }
       const pages = document.pages.slice();
       pages.splice(idx, 1);
@@ -533,7 +590,11 @@ export function applyCommand(
     case 'page.reorder': {
       const from = document.pages.findIndex((p) => p.id === command.pageId);
       if (from === -1) {
-        return err({ code: 'page-not-found', message: `Page "${command.pageId}" does not exist.`, command: command.type });
+        return err({
+          code: 'page-not-found',
+          message: `Page "${command.pageId}" does not exist.`,
+          command: command.type,
+        });
       }
       const to = Math.max(0, Math.min(document.pages.length - 1, Math.trunc(command.toIndex)));
       if (to === from) return ok(document);
@@ -545,6 +606,7 @@ export function applyCommand(
       break;
     }
     case 'page.setBackground':
+    case 'page.replaceContent':
     case 'element.add':
     case 'element.update':
     case 'element.updateMany':

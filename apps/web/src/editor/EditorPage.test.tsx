@@ -20,6 +20,7 @@ function renderEditor() {
 }
 
 async function insertRectangle(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('tab', { name: 'Shapes' }));
   await user.click(screen.getByRole('button', { name: 'Rectangle' }));
   return screen.getByRole('complementary', { name: 'Properties' });
 }
@@ -30,7 +31,7 @@ describe('EditorPage', () => {
     expect(screen.getByRole('textbox', { name: 'Design name' })).toHaveValue('Test design');
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled();
-    expect(screen.getByRole('tab', { name: 'Shapes' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Design' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('No unsaved changes');
     expect(screen.getByLabelText('Design canvas')).toBeInTheDocument();
@@ -156,6 +157,26 @@ describe('EditorPage', () => {
     expect(within(panel).getByLabelText('Height')).toHaveValue('720');
   });
 
+  it('applies a template to the current page in one undoable step', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('button', { name: 'Use Pastel Summer Sale template' }));
+
+    expect(screen.queryByText('Start your design')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByText('Start your design')).toBeInTheDocument();
+  });
+
+  it('can insert a template as a new page instead of replacing the current one', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('checkbox', { name: /Add as a new page/i }));
+    await user.click(screen.getByRole('button', { name: 'Use Pastel Summer Sale template' }));
+
+    expect(screen.getByRole('button', { name: /Go to page 2 \(current\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Go to page 1/ })).toBeInTheDocument();
+  });
+
   it('offers a starting point on an empty page and gets out of the way after the first insert', async () => {
     const { user } = renderEditor();
     expect(screen.getByText('Start your design')).toBeInTheDocument();
@@ -177,6 +198,7 @@ describe('EditorPage', () => {
 
   it('keeps the selection toolbar available after inserting an element', async () => {
     const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Shapes' }));
     await user.click(screen.getByRole('button', { name: 'Ellipse' }));
     expect(screen.getByRole('toolbar', { name: 'Selection actions' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Duplicate selection' })).toBeEnabled();

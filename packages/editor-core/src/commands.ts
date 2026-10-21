@@ -34,7 +34,21 @@ export type EditorCommand =
   | { type: 'document.rename'; name: string }
   | { type: 'document.resize'; width: number; height: number }
   | { type: 'page.setBackground'; pageId: string; background: Fill }
-  | { type: 'page.add'; afterPageId?: string; pageId?: string }
+  /** Adds a page, optionally seeded with template content (background and elements). */
+  | {
+      type: 'page.add';
+      afterPageId?: string;
+      pageId?: string;
+      background?: Fill;
+      elements?: readonly DesignElement[];
+    }
+  /** Replaces a page's background and elements in one undoable step (template application). */
+  | {
+      type: 'page.replaceContent';
+      pageId: string;
+      background: Fill;
+      elements: readonly DesignElement[];
+    }
   | { type: 'page.duplicate'; pageId: string; newPageId?: string }
   | { type: 'page.delete'; pageId: string }
   | { type: 'page.reorder'; pageId: string; toIndex: number }
