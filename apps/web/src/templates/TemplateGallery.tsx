@@ -22,10 +22,16 @@ export interface TemplateGalleryProps {
   variant?: 'page' | 'panel';
 }
 
+/** How many cards the compact sidebar browser shows before asking for more. */
+const PANEL_PAGE = 18;
+
 export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProps) {
   const panel = variant === 'panel';
   const [category, setCategory] = useState<TemplateCategory>('all');
   const [query, setQuery] = useState('');
+  const [limit, setLimit] = useState(PANEL_PAGE);
+  // Build each template once. Sixty cards must not rebuild sixty documents on every keystroke.
+  const documents = useMemo(() => new Map(TEMPLATES.map((tpl) => [tpl.id, tpl.build()])), []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -39,6 +45,8 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
       );
     });
   }, [category, query]);
+
+  const visible = panel ? filtered.slice(0, limit) : filtered;
 
   return (
     <section
@@ -66,6 +74,7 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
           <input
             type="search"
             placeholder="Search templates"
+            aria-label="Search templates"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="h-9 w-full rounded-full border border-input bg-white py-2 pr-4 pl-9 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
@@ -78,7 +87,11 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
           <button
             key={c}
             type="button"
-            onClick={() => setCategory(c)}
+            aria-pressed={category === c}
+            onClick={() => {
+              setCategory(c);
+              setLimit(PANEL_PAGE);
+            }}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
               category === c
                 ? 'bg-foreground text-background shadow-sm'
@@ -97,7 +110,7 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
             : 'mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
         }
       >
-        {filtered.map((tpl) => (
+        {visible.map((tpl) => (
           <div
             key={tpl.id}
             data-testid="template-card"
@@ -109,7 +122,7 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
               className="p-1.5 text-left transition-colors hover:bg-muted/30"
               aria-label={`Use ${tpl.label} template`}
             >
-              <TemplateThumbnail document={tpl.build()} />
+              <TemplateThumbnail document={documents.get(tpl.id) ?? tpl.build()} />
             </button>
             {panel ? (
               <p className="truncate px-2 pb-2 text-[11px] font-medium">{tpl.label}</p>
@@ -134,6 +147,17 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
           </div>
         ))}
       </div>
+
+      {panel && filtered.length > visible.length ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-3 w-full rounded-full"
+          onClick={() => setLimit((current) => current + PANEL_PAGE)}
+        >
+          Show {Math.min(PANEL_PAGE, filtered.length - visible.length)} more of {filtered.length}
+        </Button>
+      ) : null}
 
       {filtered.length === 0 ? (
         <div className="mt-6 rounded-xl border border-dashed bg-muted/30 px-6 py-8 text-center">

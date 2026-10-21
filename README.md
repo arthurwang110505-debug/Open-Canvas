@@ -9,8 +9,10 @@ posters, social media graphics, presentation covers and other visual content.
 > **PNG, SVG or PDF**, and designs move between browsers as native **`.opencanvas` project
 > files** (validated and migrated on import). The editor works end to end for shapes, text,
 > uploaded images and layers (drag-and-drop, cover/fill, snapping guides, align and distribute)
-> with undo/redo and keyboard shortcuts. Templates, AI assistance and cloud sync are not
-> implemented yet.
+> with undo/redo and keyboard shortcuts. The editor ships a 60-design template gallery (twelve
+> hand-tuned designs plus cuts generated from layout blueprints), a 372-icon vector catalogue and
+> 15 bundled OFL typefaces that are embedded in every export. AI assistance and cloud sync are
+> not implemented yet.
 > See [docs/roadmap.md](docs/roadmap.md) for what exists today and what comes next, and
 > [docs/fonts.md](docs/fonts.md) for the bundled typefaces and how they are embedded in exports.
 
@@ -60,7 +62,7 @@ pnpm check        # all of the above plus formatting
 | `packages/ui`            | Shared accessible UI primitives (shadcn/ui-style, Tailwind CSS v4 design tokens).                  |
 | `docs`                   | Architecture notes and roadmap.                                                                    |
 
-Planned (not yet present): `apps/api`, `packages/ai-core`, `templates`, `tests` (Playwright).
+Planned (not yet present): `apps/api`, `packages/ai-core`, `tests` (Playwright).
 
 ## Architecture in one paragraph
 
