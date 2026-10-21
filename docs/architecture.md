@@ -216,9 +216,14 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   resolver and a resolver rejection are distinct typed errors.
 - `createSvgRasterizer()` draws the SVG into a canvas (injectable `loadImage`/`createCanvas`) and
   returns a PNG data URL, refusing sizes beyond `LIMITS.maxCanvasDimension`.
+- `renderPageToSvg(..., { fontFaces })` embeds the page's typefaces as `@font-face` rules with
+  base64 `data:` sources inside `<defs><style>` (`fonts.ts`: `collectFontUsages`,
+  `buildFontFaceCss`). A data-URL font survives both "open the file elsewhere" and the
+  `<img>`-based rasterizer, where the page's own font files are unavailable — which is how PNG
+  and PDF keep the document's typefaces.
 - `renderDocumentToPdf()` renders each page to SVG, rasterizes it (default 2×) and places it on a
-  PDF page sized in jsPDF `px` units (1/96 inch). The PDF is therefore raster; vector text would
-  need font embedding, which is tracked as a follow-up.
+  PDF page sized in jsPDF `px` units (1/96 inch). The PDF is therefore raster but text-accurate;
+  vector text would need jsPDF font registration, still an open follow-up.
 
 ## 5. Web app (`apps/web`)
 
@@ -293,7 +298,11 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   bindings only in `apps/web`).
 - shadcn/ui components are hand-authored in `packages/ui` (same conventions: `cva`, `cn`, Radix
   primitives) because the CLI registry is not available in the build environment.
-- Fonts: Inter (SIL OFL 1.1, bundled via `@fontsource/inter`) plus common system families.
+- Fonts: 15 OFL families served from the app (`@fontsource-variable/*` and `@fontsource/*` for
+  the static cuts). `apps/web/src/fonts/catalog.ts` is the single registry used by the editor's
+  `@font-face` stylesheet (`install.ts`) and by export embedding (`embed.ts`). Documents store a
+  family name and weight only, so adding a family is additive; a legacy document naming a system
+  font still opens and exports by name, without embedding.
 
 ## 8. Extension points reserved for later milestones
 
@@ -302,8 +311,8 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   manual crop offsets for images extend `ImageElement` additively. The project-file format
   version is separate from the document schema version, so container changes (compression,
   layout) do not force a document migration.
-- `packages/export`: delivered for SVG/PNG/PDF. Open follow-ups: vector PDF text (font
-  embedding), `contain` fit, and multi-page SVG sheets.
+- `packages/export`: delivered for SVG/PNG/PDF with embedded fonts. Open follow-ups: vector PDF
+  text (jsPDF font registration), `contain` fit, and multi-page SVG sheets.
 - `packages/ai-core`: structured generation validated with `DocumentSchema`/`ElementSchema`,
   applied through `element.add`/`element.update` so AI edits are undoable (Milestone 4).
 - Collaboration: commands are serializable; a future op log can replay them.

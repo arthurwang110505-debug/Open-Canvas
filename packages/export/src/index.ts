@@ -1,3 +1,4 @@
+export * from './fonts';
 export * from './pdf';
 export * from './raster';
 export * from './svg';

@@ -16,6 +16,7 @@ import {
   type TextElement,
 } from '@opencanvas/document';
 
+import { buildFontFaceCss, type EmbeddedFontFace } from './fonts';
 import { TEXT_BASELINE_EM, wrapTextLines, type TextMeasurer } from './textLayout';
 import { describeCause, type ExportError } from './types';
 
@@ -35,6 +36,12 @@ export interface SvgPageOptions {
   resolveImageHref?: ImageHrefResolver;
   /** Enables word wrapping to the element width, matching the canvas. */
   measureText?: TextMeasurer;
+  /**
+   * Fonts to embed as `@font-face` rules. Data URLs make the SVG self-contained, so it keeps the
+   * document's typefaces when opened elsewhere and when rasterized for PNG/PDF, where the page's
+   * own font files are not available.
+   */
+  fontFaces?: readonly EmbeddedFontFace[];
 }
 
 const XML_ESCAPES: Record<string, string> = {
@@ -283,6 +290,16 @@ export async function renderPageToSvg(
     )}">`,
     `  <title>${escapeXml(document.name)}</title>`,
   ];
+  const fontCss = buildFontFaceCss(options.fontFaces ?? []);
+  if (fontCss.length > 0) {
+    lines.push(
+      `  <defs>`,
+      `    <style type="text/css">`,
+      ...fontCss.split('\n').map((rule) => `      ${escapeXml(rule)}`),
+      `    </style>`,
+      `  </defs>`,
+    );
+  }
   if (options.background !== false && page.background.type === 'solid') {
     lines.push(
       `  <rect width="${formatNumber(width)}" height="${formatNumber(height)}" fill="${escapeXml(

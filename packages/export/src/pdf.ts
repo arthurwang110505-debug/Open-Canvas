@@ -19,7 +19,8 @@ export interface PdfOptions {
 /**
  * Assembles a PDF from the document model: each page is rendered to SVG, rasterized, and placed
  * on a PDF page with the document's pixel size (jsPDF `px` unit = 1/96 inch). The result is a
- * raster PDF — vector text would need a font embedding pipeline, which is tracked separately.
+ * raster PDF: text is drawn from the page's embedded fonts (see `SvgPageOptions.fontFaces`), so
+ * it keeps the document's typefaces without shipping a second font pipeline.
  */
 export async function renderDocumentToPdf(
   document: DesignDocument,

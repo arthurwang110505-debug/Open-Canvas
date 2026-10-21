@@ -48,6 +48,21 @@ describe('renderPageToSvg', () => {
     expect(svg).toContain('width="2160" height="2160" viewBox="0 0 1080 1080"');
   });
 
+  it('embeds the supplied fonts as @font-face rules inside a <defs> block', async () => {
+    const svg = await render(makeDocument(), {
+      fontFaces: [{ family: 'Playfair Display', weight: '400 900', style: 'normal', data: 'AAAA' }],
+    });
+    expect(svg).toContain('  <defs>\n    <style type="text/css">');
+    expect(svg).toContain('@font-face { font-family: &quot;Playfair Display&quot;');
+    expect(svg).toContain('data:font/woff2;base64,AAAA');
+  });
+
+  it('omits the style block when no font is embedded', async () => {
+    const svg = await render(makeDocument());
+    expect(svg).not.toContain('<style');
+    expect(svg).not.toContain('<defs>');
+  });
+
   it('can omit the background', async () => {
     const svg = await render(makeDocument(), { background: false });
     expect(svg).not.toContain('fill="#ffffff"');
