@@ -19,6 +19,23 @@ body {
   overscroll-behavior: none;
 }
 
+/* Canva-like subtle polish */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* Fabric wraps the <canvas> in .canvas-container; keep it from scrolling the page on touch. */
 .canvas-container canvas {
   touch-action: none;

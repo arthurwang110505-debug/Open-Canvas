@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 import { useEditorActions } from './actions';
 import { useCanvasController, useCanvasReady, usePersistence } from './hooks';
+import { useDraw } from './draw/DrawContext';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -19,6 +20,7 @@ export function useKeyboardShortcuts(): void {
   const canvas = useCanvasController();
   const canvasReady = useCanvasReady();
   const persistence = usePersistence();
+  const draw = useDraw();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -58,6 +60,12 @@ export function useKeyboardShortcuts(): void {
         return;
       }
       // Physical bracket keys so the shortcut survives Shift (which turns ] into } on US layouts).
+      if (modifier && key === 'g') {
+        event.preventDefault();
+        if (event.shiftKey) actions.ungroupSelection();
+        else actions.groupSelection();
+        return;
+      }
       if (modifier && (event.code === 'BracketRight' || event.code === 'BracketLeft')) {
         event.preventDefault();
         const forward = event.code === 'BracketRight';
@@ -87,6 +95,36 @@ export function useKeyboardShortcuts(): void {
       }
       if (modifier) return;
 
+      // Quick insert shortcuts like Canva: R=rect, O=ellipse, T=text, L=line, D=draw
+      if (!event.altKey && !event.ctrlKey && !event.metaKey) {
+        const k = event.key.toLowerCase();
+        if (k === 'r') {
+          event.preventDefault();
+          actions.addShape('rect');
+          return;
+        }
+        if (k === 'o') {
+          event.preventDefault();
+          actions.addShape('ellipse');
+          return;
+        }
+        if (k === 't') {
+          event.preventDefault();
+          actions.addText('body');
+          return;
+        }
+        if (k === 'l') {
+          event.preventDefault();
+          actions.addShape('line');
+          return;
+        }
+        if (k === 'd') {
+          event.preventDefault();
+          draw.setEnabled(!draw.enabled);
+          return;
+        }
+      }
+
       switch (event.key) {
         case 'Delete':
         case 'Backspace':
@@ -94,6 +132,10 @@ export function useKeyboardShortcuts(): void {
           actions.deleteSelection();
           return;
         case 'Escape':
+          if (draw.enabled) {
+            draw.setEnabled(false);
+            return;
+          }
           actions.clearSelection();
           return;
         case 'ArrowLeft':
@@ -114,5 +156,5 @@ export function useKeyboardShortcuts(): void {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [actions, canvas, canvasReady, persistence]);
+  }, [actions, canvas, canvasReady, persistence, draw]);
 }

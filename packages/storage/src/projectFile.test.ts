@@ -4,6 +4,7 @@ import {
   createImageElement,
   createRectElement,
   createTextElement,
+  CURRENT_SCHEMA_VERSION,
   serializeDocument,
   type DesignDocument,
 } from '@opencanvas/document';
@@ -136,7 +137,7 @@ describe('packing a project file', () => {
     expect(written.format).toBe(PROJECT_FILE_FORMAT);
     expect(written.formatVersion).toBe(1);
     expect(written.assetCount).toBe(2);
-    expect(written.schemaVersion).toBe(1);
+    expect(written.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(written.createdAt).toBe(now.toISOString());
     expect(strFromU8(entryOf(entries, 'document.json'))).toBe(serializeDocument(document));
   });

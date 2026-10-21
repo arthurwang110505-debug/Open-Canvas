@@ -9,8 +9,10 @@ import {
   ImageIcon,
   Lock,
   LockOpen,
+  PenTool,
   Square,
   Type,
+  Users,
 } from 'lucide-react';
 import {
   useRef,
@@ -31,6 +33,8 @@ const TYPE_ICONS: Record<DesignElement['type'], ReactNode> = {
   ellipse: <Circle />,
   text: <Type />,
   image: <ImageIcon />,
+  path: <PenTool />,
+  group: <Users />,
 };
 
 type DropPosition = 'before' | 'after';

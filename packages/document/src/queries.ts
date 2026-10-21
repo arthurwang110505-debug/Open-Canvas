@@ -4,8 +4,20 @@ export function findPage(document: DesignDocument, pageId: string): Page | undef
   return document.pages.find((page) => page.id === pageId);
 }
 
+export function flattenElements(elements: readonly DesignElement[]): DesignElement[] {
+  const out: DesignElement[] = [];
+  const walk = (list: readonly DesignElement[]) => {
+    for (const el of list) {
+      out.push(el);
+      if (el.type === 'group') walk(el.children);
+    }
+  };
+  walk(elements);
+  return out;
+}
+
 export function findElement(page: Page, elementId: string): DesignElement | undefined {
-  return page.elements.find((element) => element.id === elementId);
+  return flattenElements(page.elements).find((element) => element.id === elementId);
 }
 
 export function findElementIndex(page: Page, elementId: string): number {
@@ -15,7 +27,7 @@ export function findElementIndex(page: Page, elementId: string): number {
 export function collectElementIds(document: DesignDocument): Set<string> {
   const ids = new Set<string>();
   for (const page of document.pages) {
-    for (const element of page.elements) ids.add(element.id);
+    for (const element of flattenElements(page.elements)) ids.add(element.id);
   }
   return ids;
 }
@@ -34,7 +46,7 @@ export function findAsset(document: DesignDocument, assetId: string): Asset | un
 export function collectReferencedAssetIds(document: DesignDocument): Set<string> {
   const ids = new Set<string>();
   for (const page of document.pages) {
-    for (const element of page.elements) {
+    for (const element of flattenElements(page.elements)) {
       if (element.type === 'image') ids.add(element.assetId);
     }
   }

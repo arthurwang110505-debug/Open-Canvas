@@ -4,6 +4,7 @@ import type {
   EllipseElement,
   Fill,
   ImageElement,
+  PathElement,
   RectElement,
   TextElement,
 } from '@opencanvas/document';
@@ -18,7 +19,8 @@ export type ElementPatch = Partial<
   EditableProps<RectElement> &
     EditableProps<EllipseElement> &
     EditableProps<TextElement> &
-    EditableProps<ImageElement>
+    EditableProps<ImageElement> &
+    EditableProps<PathElement>
 >;
 
 export type ReorderTarget = 'front' | 'back' | 'forward' | 'backward' | { index: number };
@@ -32,6 +34,10 @@ export type EditorCommand =
   | { type: 'document.rename'; name: string }
   | { type: 'document.resize'; width: number; height: number }
   | { type: 'page.setBackground'; pageId: string; background: Fill }
+  | { type: 'page.add'; afterPageId?: string; pageId?: string }
+  | { type: 'page.duplicate'; pageId: string; newPageId?: string }
+  | { type: 'page.delete'; pageId: string }
+  | { type: 'page.reorder'; pageId: string; toIndex: number }
   /**
    * Adds an asset record to the document. Bytes live in an asset store; the record only
    * carries metadata. Image elements may reference the asset once it is registered.
@@ -56,7 +62,9 @@ export type EditorCommand =
       /** Optional ids for the copies (same order as `elementIds`); generated when omitted. */
       newIds?: readonly string[];
     }
-  | { type: 'element.reorder'; pageId: string; elementId: string; to: ReorderTarget };
+  | { type: 'element.reorder'; pageId: string; elementId: string; to: ReorderTarget }
+  | { type: 'element.group'; pageId: string; elementIds: readonly string[]; groupId?: string }
+  | { type: 'element.ungroup'; pageId: string; groupId: string };
 
 export type EditorCommandType = EditorCommand['type'];
 

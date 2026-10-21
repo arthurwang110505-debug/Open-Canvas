@@ -2,16 +2,20 @@ import {
   AssetSchema,
   DocumentSchema,
   ElementSchema,
+  GroupElementSchema,
   LIMITS,
   collectReferencedAssetIds,
   err,
   findElementIndex,
   generateId,
+  getElementBounds,
   ok,
   type DesignDocument,
   type DesignElement,
+  type GroupElement,
   type Page,
   type Result,
+  unionBounds,
 } from '@opencanvas/document';
 
 import type { CommandError, EditorCommand, ElementPatch, ReorderTarget } from './commands';
@@ -231,10 +235,114 @@ function applyToPage(
       return ok({ ...page, elements });
     }
 
+    case 'element.group': {
+      if (command.elementIds.length < 2) {
+        return err({
+          code: 'invalid-command',
+          message: 'Select at least two elements to create a group.',
+          command: command.type,
+        });
+      }
+      // All ids must exist on this page and be at top level
+      const idSet = new Set(command.elementIds);
+      const selected = page.elements.filter((el) => idSet.has(el.id));
+      if (selected.length !== command.elementIds.length) {
+        return err({
+          code: 'element-not-found',
+          message: 'One or more selected elements do not exist on this page (or are nested inside another group).',
+          command: command.type,
+        });
+      }
+      const groupId = command.groupId ?? generateId('el');
+      if (page.elements.some((el) => el.id === groupId) || selected.some((el) => el.id === groupId)) {
+        return err({ code: 'invalid-command', message: `Element id "${groupId}" already exists.`, command: command.type });
+      }
+      // Compute bounding box of selected elements (axis-aligned, ignoring rotation for group box)
+      const bounds = unionBounds(selected.map((el) => getElementBounds(el)));
+      const children = selected.map((el) => ({
+        ...el,
+        x: el.x - bounds.left,
+        y: el.y - bounds.top,
+      }));
+      const group: GroupElement = {
+        id: groupId,
+        x: bounds.left,
+        y: bounds.top,
+        width: bounds.width,
+        height: bounds.height,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        visible: true,
+        type: 'group',
+        children,
+      };
+      const parsed = GroupElementSchema.safeParse(group);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return err({
+          code: 'invalid-result',
+          message: issue ? `Group is invalid: ${issue.message}` : 'Group is invalid.',
+          command: command.type,
+        });
+      }
+      // Insert group where the earliest selected element was, remove originals
+      const remaining = page.elements.filter((el) => !idSet.has(el.id));
+      const firstIdx = page.elements.findIndex((el) => idSet.has(el.id));
+      const insertAt = firstIdx === -1 ? remaining.length : firstIdx;
+      // Clamp to remaining length after removal
+      const clamped = Math.max(0, Math.min(remaining.length, insertAt));
+      remaining.splice(clamped, 0, parsed.data);
+      return ok({ ...page, elements: remaining });
+    }
+
+    case 'element.ungroup': {
+      const idx = findElementIndex(page, command.groupId);
+      const group = page.elements[idx];
+      if (!group) {
+        return err({
+          code: 'element-not-found',
+          message: `Group "${command.groupId}" does not exist on page "${page.id}".`,
+          command: command.type,
+        });
+      }
+      if (group.type !== 'group') {
+        return err({
+          code: 'invalid-command',
+          message: `Element "${command.groupId}" is not a group.`,
+          command: command.type,
+        });
+      }
+      const children = (group as GroupElement).children.map((child) => ({
+        ...child,
+        // Restore absolute position
+        x: child.x + group.x,
+        y: child.y + group.y,
+      }));
+      // Validate each child still fits schema (should, but check)
+      for (const child of children) {
+        const parsed = ElementSchema.safeParse(child);
+        if (!parsed.success) {
+          return err({
+            code: 'invalid-result',
+            message: `Ungrouped child "${child.id}" is invalid.`,
+            command: command.type,
+          });
+        }
+      }
+      const elements = page.elements.slice();
+      elements.splice(idx, 1, ...children);
+      return ok({ ...page, elements });
+    }
+
     case 'document.rename':
     case 'document.resize':
     case 'asset.register':
     case 'asset.remove':
+    case 'page.add':
+    case 'page.duplicate':
+    case 'page.delete':
+    case 'page.reorder':
       return err({
         code: 'invalid-command',
         message: `${command.type} is not a page command.`,
@@ -330,6 +438,112 @@ export function applyCommand(
       outcome = ok({ ...document, assets });
       break;
     }
+    case 'page.add': {
+      if (document.pages.length >= LIMITS.maxPages) {
+        return err({
+          code: 'invalid-command',
+          message: `A document may have at most ${LIMITS.maxPages} pages.`,
+          command: command.type,
+        });
+      }
+      const newPageId = command.pageId ?? generateId('page');
+      if (document.pages.some((p) => p.id === newPageId)) {
+        return err({
+          code: 'invalid-command',
+          message: `Page id "${newPageId}" already exists.`,
+          command: command.type,
+        });
+      }
+      const newPage: Page = {
+        id: newPageId,
+        background: { type: 'solid', color: '#ffffff' },
+        elements: [],
+      };
+      const pages = document.pages.slice();
+      if (command.afterPageId) {
+        const idx = pages.findIndex((p) => p.id === command.afterPageId);
+        if (idx === -1) {
+          return err({
+            code: 'page-not-found',
+            message: `Page "${command.afterPageId}" does not exist.`,
+            command: command.type,
+          });
+        }
+        pages.splice(idx + 1, 0, newPage);
+      } else {
+        pages.push(newPage);
+      }
+      outcome = ok({ ...document, pages });
+      break;
+    }
+    case 'page.duplicate': {
+      if (document.pages.length >= LIMITS.maxPages) {
+        return err({
+          code: 'invalid-command',
+          message: `A document may have at most ${LIMITS.maxPages} pages.`,
+          command: command.type,
+        });
+      }
+      const idx = document.pages.findIndex((p) => p.id === command.pageId);
+      if (idx === -1) {
+        return err({
+          code: 'page-not-found',
+          message: `Page "${command.pageId}" does not exist.`,
+          command: command.type,
+        });
+      }
+      const source = document.pages[idx];
+      if (!source) {
+        return err({ code: 'page-not-found', message: `Page "${command.pageId}" does not exist.`, command: command.type });
+      }
+      const newPageId = command.newPageId ?? generateId('page');
+      if (document.pages.some((p) => p.id === newPageId)) {
+        return err({ code: 'invalid-command', message: `Page id "${newPageId}" already exists.`, command: command.type });
+      }
+      // Clone elements with new ids
+      const clonedElements = source.elements.map((el) => ({ ...el, id: generateId('el') }));
+      const newPage: Page = {
+        id: newPageId,
+        ...(source.name ? { name: source.name } : {}),
+        background: source.background,
+        elements: clonedElements,
+      };
+      const pages = document.pages.slice();
+      pages.splice(idx + 1, 0, newPage);
+      outcome = ok({ ...document, pages });
+      break;
+    }
+    case 'page.delete': {
+      if (document.pages.length <= 1) {
+        return err({
+          code: 'invalid-command',
+          message: 'A document must have at least one page.',
+          command: command.type,
+        });
+      }
+      const idx = document.pages.findIndex((p) => p.id === command.pageId);
+      if (idx === -1) {
+        return err({ code: 'page-not-found', message: `Page "${command.pageId}" does not exist.`, command: command.type });
+      }
+      const pages = document.pages.slice();
+      pages.splice(idx, 1);
+      outcome = ok({ ...document, pages });
+      break;
+    }
+    case 'page.reorder': {
+      const from = document.pages.findIndex((p) => p.id === command.pageId);
+      if (from === -1) {
+        return err({ code: 'page-not-found', message: `Page "${command.pageId}" does not exist.`, command: command.type });
+      }
+      const to = Math.max(0, Math.min(document.pages.length - 1, Math.trunc(command.toIndex)));
+      if (to === from) return ok(document);
+      const pages = document.pages.slice();
+      const [moved] = pages.splice(from, 1);
+      if (!moved) return ok(document);
+      pages.splice(to, 0, moved);
+      outcome = ok({ ...document, pages });
+      break;
+    }
     case 'page.setBackground':
     case 'element.add':
     case 'element.update':
@@ -337,6 +551,8 @@ export function applyCommand(
     case 'element.delete':
     case 'element.duplicate':
     case 'element.reorder':
+    case 'element.group':
+    case 'element.ungroup':
       outcome = withPage(document, command.pageId, command.type, (page, context) =>
         applyToPage(page, command, context),
       );

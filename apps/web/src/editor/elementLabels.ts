@@ -5,6 +5,8 @@ export const ELEMENT_TYPE_LABELS: Record<DesignElement['type'], string> = {
   ellipse: 'Ellipse',
   text: 'Text',
   image: 'Image',
+  path: 'Draw',
+  group: 'Group',
 };
 
 const MAX_LABEL = 40;
@@ -33,5 +35,9 @@ export function describeElement(
     case 'rect':
     case 'ellipse':
       return ELEMENT_TYPE_LABELS[element.type];
+    case 'path':
+      return element.name?.trim() ? element.name.trim() : 'Draw';
+    case 'group':
+      return element.name?.trim() ? element.name.trim() : `${element.children.length} selected`;
   }
 }

@@ -173,5 +173,7 @@ const _exhaustive: Record<DesignElement['type'], true> = {
   ellipse: true,
   text: true,
   image: true,
+  path: true,
+  group: true,
 };
 void _exhaustive;

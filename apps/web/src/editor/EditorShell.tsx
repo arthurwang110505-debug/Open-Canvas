@@ -1,5 +1,7 @@
 import { CanvasStage } from './CanvasStage';
 import { ErrorToast } from './ErrorToast';
+import { FloatingToolbar } from './FloatingToolbar';
+import { PagesStrip } from './PagesStrip';
 import { PropertiesPanel } from './PropertiesPanel';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -16,6 +18,8 @@ export function EditorShell() {
         <Sidebar />
         <main className="relative min-h-0 min-w-0" aria-label="Workspace">
           <CanvasStage />
+          <FloatingToolbar />
+          <PagesStrip />
           <ErrorToast />
         </main>
         <PropertiesPanel />

@@ -4,6 +4,8 @@ import type {
   Fill,
   ImageElement,
   ImageFit,
+  PathElement,
+  PathPoint,
   RectElement,
   TextElement,
 } from '@opencanvas/document';
@@ -194,13 +196,26 @@ export interface ImageFabricProps
   extends Omit<CommonFabricProps, 'scaleX' | 'scaleY'>, ImageFitProps {
   /** Images never draw a stroke; a non-zero default would inflate the bounding box. */
   strokeWidth: 0;
+  flipX: boolean;
+  flipY: boolean;
+}
+
+export interface PathFabricProps extends CommonFabricProps {
+  path: string;
+  stroke: string;
+  strokeWidth: number;
+  strokeUniform: true;
+  strokeLineCap: 'round';
+  strokeLineJoin: 'round';
+  fill: string;
 }
 
 export type ElementFabricProps =
   | { kind: 'rect'; props: RectFabricProps }
   | { kind: 'ellipse'; props: EllipseFabricProps }
   | { kind: 'text'; props: TextFabricProps }
-  | { kind: 'image'; props: ImageFabricProps };
+  | { kind: 'image'; props: ImageFabricProps }
+  | { kind: 'path'; props: PathFabricProps };
 
 function commonProps(element: DesignElement): CommonFabricProps {
   const center = topLeftToCenter(element);
@@ -236,6 +251,35 @@ export function rectToFabricProps(element: RectElement): RectFabricProps {
   };
 }
 
+export function pathPointsToData(points: readonly PathPoint[], closed: boolean): string {
+  if (points.length === 0) return '';
+  const [first, ...rest] = points;
+  if (!first) return '';
+  let d = `M ${first.x} ${first.y}`;
+  for (const p of rest) d += ` L ${p.x} ${p.y}`;
+  if (closed) d += ' Z';
+  return d;
+}
+
+export function pathToFabricProps(element: PathElement): PathFabricProps {
+  // Points are relative to element's top-left; Fabric Path with center origin needs them centered.
+  // Shift so that path's center is at (0,0) in object space: subtract half width/height.
+  const cx = element.width / 2;
+  const cy = element.height / 2;
+  const centered = element.points.map((p) => ({ x: p.x - cx, y: p.y - cy }));
+  const d = pathPointsToData(centered, element.closed);
+  return {
+    ...commonProps(element),
+    path: d,
+    stroke: element.stroke.color,
+    strokeWidth: element.stroke.width,
+    strokeUniform: true,
+    strokeLineCap: 'round',
+    strokeLineJoin: 'round',
+    fill: fillToFabric(element.fill),
+  };
+}
+
 export function ellipseToFabricProps(element: EllipseElement): EllipseFabricProps {
   return {
     ...commonProps(element),
@@ -267,19 +311,42 @@ export function textToFabricProps(element: TextElement): TextFabricProps {
   };
 }
 
+export function imageCssFilter(filters: { brightness: number; contrast: number; saturate: number; blur: number }): string {
+  const parts: string[] = [];
+  if (filters.brightness !== 100) parts.push(`brightness(${filters.brightness}%)`);
+  if (filters.contrast !== 100) parts.push(`contrast(${filters.contrast}%)`);
+  if (filters.saturate !== 100) parts.push(`saturate(${filters.saturate}%)`);
+  if (filters.blur) parts.push(`blur(${filters.blur}px)`);
+  return parts.join(' ') || 'none';
+}
+
 /**
  * Computes the crop window and scale that place a `natural`-sized bitmap into `box`.
  *
  * - `cover`: scale uniformly until the box is filled, crop the overflow symmetrically.
  * - `fill`: stretch the whole bitmap to the box (non-uniform scale, no crop).
+ * When `crop` is present (normalized 0-1 rect), it selects a sub-rect of the natural image
+ * first; the fit is then applied inside that cropped region.
  */
 export function computeImageFit(
   box: { width: number; height: number },
   natural: { width: number; height: number },
   fit: ImageFit,
+  crop?: { x: number; y: number; width: number; height: number },
 ): ImageFitProps {
-  const naturalWidth = Math.max(1, natural.width);
-  const naturalHeight = Math.max(1, natural.height);
+  // If a user crop is present, derive the effective natural size + offset
+  let naturalWidth = Math.max(1, natural.width);
+  let naturalHeight = Math.max(1, natural.height);
+  let cropOffsetX = 0;
+  let cropOffsetY = 0;
+  if (crop) {
+    const cw = Math.max(1, Math.round(naturalWidth * crop.width));
+    const ch = Math.max(1, Math.round(naturalHeight * crop.height));
+    cropOffsetX = Math.round(naturalWidth * crop.x);
+    cropOffsetY = Math.round(naturalHeight * crop.y);
+    naturalWidth = cw;
+    naturalHeight = ch;
+  }
   const boxWidth = Math.max(1, box.width);
   const boxHeight = Math.max(1, box.height);
 
@@ -287,8 +354,8 @@ export function computeImageFit(
     return {
       width: naturalWidth,
       height: naturalHeight,
-      cropX: 0,
-      cropY: 0,
+      cropX: cropOffsetX,
+      cropY: cropOffsetY,
       scaleX: boxWidth / naturalWidth,
       scaleY: boxHeight / naturalHeight,
     };
@@ -300,8 +367,8 @@ export function computeImageFit(
   return {
     width: visibleWidth,
     height: visibleHeight,
-    cropX: (naturalWidth - visibleWidth) / 2,
-    cropY: (naturalHeight - visibleHeight) / 2,
+    cropX: cropOffsetX + (naturalWidth - visibleWidth) / 2,
+    cropY: cropOffsetY + (naturalHeight - visibleHeight) / 2,
     scaleX: scale,
     scaleY: scale,
   };
@@ -318,7 +385,13 @@ export function imageToFabricProps(
   fit: ImageFit = element.fit,
 ): ImageFabricProps {
   const { scaleX: _sx, scaleY: _sy, ...common } = commonProps(element);
-  return { ...common, strokeWidth: 0, ...computeImageFit(element, natural, fit) };
+  return {
+    ...common,
+    strokeWidth: 0,
+    flipX: element.flipH ?? false,
+    flipY: element.flipV ?? false,
+    ...computeImageFit(element, natural, fit, element.crop),
+  };
 }
 
 export interface ElementToFabricContext {
@@ -344,22 +417,38 @@ export function elementToFabricProps(
       const source = context?.imageSource(element) ?? { natural: element, fit: 'fill' as const };
       return { kind: 'image', props: imageToFabricProps(element, source.natural, source.fit) };
     }
+    case 'path':
+      return { kind: 'path', props: pathToFabricProps(element) };
+    case 'group':
+      throw new Error('Group elements are handled by FabricCanvasAdapter directly, not via elementToFabricProps.');
   }
 }
 
 /**
  * Builds the document patch for an element after Fabric reports a transform. For text,
  * corner scaling changes the font size (as design tools do) instead of stretching glyphs.
+ * For paths, points are scaled to match the new bounds.
  */
 export function patchFromTransform(
   element: DesignElement,
   transform: DecomposedTransform,
   unscaledSize: { width: number; height: number },
-): Partial<BoxGeometry> & { fontSize?: number } {
+): Partial<BoxGeometry> & { fontSize?: number; points?: PathPoint[] } {
   const geometry = geometryFromTransform(transform, unscaledSize);
   if (element.type === 'text') {
     const fontSize = roundTo(Math.max(1, element.fontSize * transform.scaleY));
     return { ...geometry, fontSize };
+  }
+  if (element.type === 'path') {
+    const scaleX = transform.scaleX;
+    const scaleY = transform.scaleY;
+    // Points are relative to top-left; scaling stretches them from (0,0) origin.
+    // For Fabric centered path, scaling is around center, but we approximate by scaling points.
+    const points = element.points.map((p) => ({
+      x: roundTo(p.x * scaleX),
+      y: roundTo(p.y * scaleY),
+    }));
+    return { ...geometry, points };
   }
   return geometry;
 }

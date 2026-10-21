@@ -1,5 +1,6 @@
 import {
   createEllipseElement,
+  createPathElement,
   createRectElement,
   createTextElement,
   type DesignElement,
@@ -22,7 +23,7 @@ import { useMemo } from 'react';
 
 import { useCanvasController, useEditorStore } from './hooks';
 
-export type ShapeKind = 'rect' | 'rounded-rect' | 'ellipse';
+export type ShapeKind = 'rect' | 'rounded-rect' | 'ellipse' | 'line' | 'triangle' | 'star' | 'hexagon' | 'sparkle';
 export type TextPreset = 'heading' | 'subheading' | 'body';
 
 export interface EditorActions {
@@ -43,6 +44,8 @@ export interface EditorActions {
   alignSelection: (mode: AlignMode) => void;
   /** Equalizes gaps between three or more selected elements. */
   distributeSelection: (axis: DistributeAxis) => void;
+  groupSelection: () => void;
+  ungroupSelection: () => void;
   renameDocument: (name: string) => void;
   resizeDocument: (width: number, height: number) => void;
   setPageBackground: (fill: Fill, mergeKey?: string) => void;
@@ -85,6 +88,86 @@ export function useEditorActions(): EditorActions {
         const position = centered(size, side, side);
         if (kind === 'ellipse') {
           addElement(createEllipseElement({ ...position, width: side, height: side }));
+        } else if (kind === 'line') {
+          const pos = centered(size, side, 6);
+          const y = pos.y + 3;
+          addElement(
+            createPathElement(
+              [
+                { x: pos.x, y },
+                { x: pos.x + side, y },
+              ],
+              { stroke: { color: '#111827', width: 4 }, fill: { type: 'none' }, closed: false },
+            ),
+          );
+        } else if (kind === 'triangle') {
+          const { x, y } = position;
+          addElement(
+            createPathElement(
+              [
+                { x: x + side / 2, y },
+                { x: x + side, y: y + side },
+                { x, y: y + side },
+              ],
+              { fill: { type: 'solid', color: '#f59e0b' }, stroke: { color: '#f59e0b', width: 0 }, closed: true },
+            ),
+          );
+        } else if (kind === 'star') {
+          const { x, y } = position;
+          const cx = x + side / 2;
+          const cy = y + side / 2;
+          const outer = side / 2;
+          const inner = side / 5;
+          const pts: { x: number; y: number }[] = [];
+          for (let i = 0; i < 10; i++) {
+            const angle = -90 + (i * 36);
+            const r = i % 2 === 0 ? outer : inner;
+            const rad = (angle * Math.PI) / 180;
+            pts.push({ x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) });
+          }
+          addElement(
+            createPathElement(pts, {
+              fill: { type: 'solid', color: '#7a5cf9' },
+              stroke: { color: '#7a5cf9', width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (kind === 'hexagon') {
+          const { x, y } = position;
+          addElement(
+            createPathElement(
+              [
+                { x: x + side * 0.25, y },
+                { x: x + side * 0.75, y },
+                { x: x + side, y: y + side * 0.5 },
+                { x: x + side * 0.75, y: y + side },
+                { x: x + side * 0.25, y: y + side },
+                { x, y: y + side * 0.5 },
+              ],
+              { fill: { type: 'solid', color: '#06b6d4' }, stroke: { color: '#06b6d4', width: 0 }, closed: true },
+            ),
+          );
+        } else if (kind === 'sparkle') {
+          const { x, y } = position;
+          const cx = x + side / 2;
+          const cy = y + side / 2;
+          const outer = side / 2;
+          const inner = side / 6;
+          const pts: { x: number; y: number }[] = [];
+          // 8-point sparkle (4 long + 4 short)
+          for (let i = 0; i < 8; i++) {
+            const angle = -90 + i * 45;
+            const r = i % 2 === 0 ? outer : inner;
+            const rad = (angle * Math.PI) / 180;
+            pts.push({ x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) });
+          }
+          addElement(
+            createPathElement(pts, {
+              fill: { type: 'solid', color: '#ec4899' },
+              stroke: { color: '#ec4899', width: 0 },
+              closed: true,
+            }),
+          );
         } else {
           addElement(
             createRectElement({
@@ -204,6 +287,21 @@ export function useEditorActions(): EditorActions {
         const updates = distributeElements(selectSelectedElements(state), axis);
         if (updates.length > 0) {
           dispatch({ type: 'element.updateMany', pageId: state.activePageId, updates });
+        }
+      },
+
+      groupSelection: () => {
+        const ids = selected();
+        if (ids.length >= 2) {
+          dispatch({ type: 'element.group', pageId: pageId(), elementIds: ids });
+        }
+      },
+
+      ungroupSelection: () => {
+        const state = store.getState();
+        const els = selectSelectedElements(state);
+        if (els.length === 1 && els[0]?.type === 'group') {
+          dispatch({ type: 'element.ungroup', pageId: state.activePageId, groupId: els[0].id });
         }
       },
 

@@ -1,13 +1,19 @@
 import { CURRENT_SCHEMA_VERSION, DEFAULT_PRESET } from './constants';
+import { getElementBounds, unionBounds } from './geometry';
 import { generateId } from './ids';
 import type {
   DesignDocument,
+  DesignElement,
   EllipseElement,
   Fill,
+  GroupElement,
   ImageAsset,
   ImageElement,
   Page,
+  PathElement,
+  PathPoint,
   RectElement,
+  Stroke,
   TextElement,
 } from './schema';
 
@@ -122,6 +128,10 @@ export function createImageElement(
     ...(overrides.name !== undefined ? { name: overrides.name } : {}),
     assetId: overrides.assetId,
     fit: overrides.fit ?? 'cover',
+    flipH: overrides.flipH ?? false,
+    flipV: overrides.flipV ?? false,
+    filters: overrides.filters ?? { brightness: 100, contrast: 100, saturate: 100, blur: 0 },
+    ...(overrides.crop !== undefined ? { crop: overrides.crop } : {}),
   };
 }
 
@@ -147,5 +157,64 @@ export function createImageAsset(options: CreateImageAssetOptions): ImageAsset {
     ...(options.byteSize !== undefined ? { byteSize: options.byteSize } : {}),
     source: options.source ?? { type: 'local' },
     createdAt: (options.now ?? new Date()).toISOString(),
+  };
+}
+
+export function createGroupElement(
+  elements: readonly DesignElement[],
+  overrides: Partial<Omit<GroupElement, 'type' | 'children'>> = {},
+): GroupElement {
+  if (elements.length === 0) throw new Error('Cannot create a group with no elements.');
+  const bounds = unionBounds(elements.map((el) => getElementBounds(el)));
+  const groupId = overrides.id ?? generateId('el');
+  // Children are stored relative to group's origin
+  const children = elements.map((el) => ({
+    ...el,
+    x: el.x - bounds.left,
+    y: el.y - bounds.top,
+  }));
+  return {
+    id: groupId,
+    ...(overrides.name !== undefined ? { name: overrides.name } : {}),
+    x: overrides.x ?? bounds.left,
+    y: overrides.y ?? bounds.top,
+    width: overrides.width ?? bounds.width,
+    height: overrides.height ?? bounds.height,
+    rotation: overrides.rotation ?? 0,
+    opacity: overrides.opacity ?? 1,
+    locked: overrides.locked ?? false,
+    visible: overrides.visible ?? true,
+    type: 'group',
+    children,
+  };
+}
+
+export function createPathElement(
+  points: readonly PathPoint[],
+  overrides: Partial<Omit<PathElement, 'type' | 'points'>> & { stroke?: Stroke; closed?: boolean } = {},
+): PathElement {
+  if (points.length < 2) throw new Error('A path must have at least two points.');
+  // Compute bounds from points (points are in page coords)
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const width = Math.max(1, maxX - minX);
+  const height = Math.max(1, maxY - minY);
+  const relPoints = points.map((p) => ({ x: p.x - minX, y: p.y - minY }));
+  return {
+    ...baseDefaults({ x: minX, y: minY, width, height, ...overrides }),
+    type: 'path',
+    ...(overrides.name !== undefined ? { name: overrides.name } : {}),
+    points: relPoints as PathPoint[],
+    stroke: overrides.stroke ?? { color: '#111827', width: 4 },
+    fill: overrides.fill ?? { type: 'none' },
+    closed: overrides.closed ?? false,
   };
 }

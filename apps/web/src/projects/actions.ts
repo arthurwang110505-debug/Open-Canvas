@@ -1,4 +1,4 @@
-import { createBlankDocument, err, type DesignDocument, type Result } from '@opencanvas/document';
+import { cloneDocumentAs, createBlankDocument, err, type DesignDocument, type Result } from '@opencanvas/document';
 import { applyCommand } from '@opencanvas/editor-core';
 import type { ProjectStore, ProjectStoreError, ProjectSummary } from '@opencanvas/storage';
 
@@ -57,4 +57,13 @@ export async function deleteProject(
   projectId: string,
 ): Promise<Result<void, ProjectActionError>> {
   return store.remove(projectId);
+}
+
+export async function createProjectFromTemplate(
+  store: ProjectStore,
+  templateDoc: DesignDocument,
+  options: { name?: string } = {},
+): Promise<Result<ProjectSummary, ProjectActionError>> {
+  const doc = cloneDocumentAs(templateDoc, { name: options.name ?? templateDoc.name });
+  return store.save(doc);
 }

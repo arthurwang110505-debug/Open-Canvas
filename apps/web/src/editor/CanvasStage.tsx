@@ -1,11 +1,13 @@
+import { createPathElement } from '@opencanvas/document';
 import { FabricCanvasAdapter } from '@opencanvas/canvas-fabric';
 import { selectActivePage, type EditorStoreState } from '@opencanvas/editor-core';
 import { cn } from '@opencanvas/ui';
-import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type DragEvent, type PointerEvent } from 'react';
 
 import { useAssetServices } from './assets/useAssetServices';
 import { useImageImport } from './assets/useImageImport';
 import { useCanvasController, useEditorStore, useNotificationStore } from './hooks';
+import { useDraw } from './draw/DrawContext';
 
 function sceneChanged(next: EditorStoreState, previous: EditorStoreState): boolean {
   return (
@@ -25,10 +27,15 @@ export function CanvasStage() {
   const notifications = useNotificationStore();
   const assetServices = useAssetServices();
   const { importFiles } = useImageImport();
+  const { enabled: drawEnabled, strokeColor, strokeWidth } = useDraw();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const adapterRef = useRef<FabricCanvasAdapter | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  const isDrawingRef = useRef(false);
+  const pointsRef = useRef<{ x: number; y: number }[]>([]);
 
+  // Fabric adapter lifecycle
   useEffect(() => {
     const container = containerRef.current;
     const canvasElement = canvasRef.current;
@@ -81,6 +88,8 @@ export function CanvasStage() {
       },
     );
 
+    adapterRef.current = adapter;
+
     const renderScene = () => {
       const state = store.getState();
       adapter.render({
@@ -110,7 +119,6 @@ export function CanvasStage() {
     });
     observer.observe(container);
 
-    // Text metrics depend on web fonts; re-measure once they are available.
     let fontsCancelled = false;
     if (typeof document.fonts !== 'undefined') {
       document.fonts.ready
@@ -128,8 +136,22 @@ export function CanvasStage() {
       unsubscribe();
       controller.detach(adapter);
       adapter.dispose();
+      adapterRef.current = null;
     };
   }, [store, controller, notifications, assetServices]);
+
+  // Disable Fabric selection while drawing (so drag doesn't move objects)
+  useEffect(() => {
+    const adapter = adapterRef.current;
+    if (!adapter) return;
+    const canvas = adapter.getFabricCanvas() as unknown as { selection: boolean; isDrawingMode: boolean; discardActiveObject: () => unknown; renderAll: () => void };
+    canvas.selection = !drawEnabled;
+    canvas.isDrawingMode = false;
+    if (drawEnabled) {
+      canvas.discardActiveObject();
+      canvas.renderAll();
+    }
+  }, [drawEnabled]);
 
   const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('Files');
 
@@ -144,6 +166,65 @@ export function CanvasStage() {
     void importFiles(Array.from(event.dataTransfer.files), at ? { at } : undefined);
   };
 
+  // Drawing handlers — page-coords via controller.clientToPage, preview via adapter
+  const handlePointerDown = useCallback(
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (!drawEnabled) return;
+      // Only left button
+      if (e.button !== 0) return;
+      e.preventDefault();
+      // Capture pointer to container
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      const pt = controller.clientToPage(e.clientX, e.clientY);
+      if (!pt) return;
+      pointsRef.current = [pt];
+      isDrawingRef.current = true;
+      adapterRef.current?.setPreviewPath(pointsRef.current, strokeColor, strokeWidth);
+    },
+    [drawEnabled, controller, strokeColor, strokeWidth],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (!drawEnabled || !isDrawingRef.current) return;
+      const pt = controller.clientToPage(e.clientX, e.clientY);
+      if (!pt) return;
+      const pts = pointsRef.current;
+      const last = pts[pts.length - 1];
+      if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < 2) return; // throttle
+      pts.push(pt);
+      adapterRef.current?.setPreviewPath(pts, strokeColor, strokeWidth);
+    },
+    [drawEnabled, controller, strokeColor, strokeWidth],
+  );
+
+  const handlePointerUp = useCallback(
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (!drawEnabled || !isDrawingRef.current) return;
+      isDrawingRef.current = false;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+      const pts = pointsRef.current;
+      adapterRef.current?.setPreviewPath(null, strokeColor, strokeWidth);
+      pointsRef.current = [];
+      if (pts.length < 2) return;
+      // Create path element via factory (computes bounds + relative points)
+      try {
+        const element = createPathElement(pts, { stroke: { color: strokeColor, width: strokeWidth } });
+        const { activePageId, dispatch } = store.getState();
+        dispatch({ type: 'element.add', pageId: activePageId, element });
+      } catch (err) {
+        console.warn('Failed to create path', err);
+      }
+    },
+    [drawEnabled, controller, store, strokeColor, strokeWidth],
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    // Don't finish on leave — wait for up
+  }, []);
+
   return (
     <div
       ref={containerRef}
@@ -151,7 +232,14 @@ export function CanvasStage() {
       className={cn(
         'relative h-full w-full overflow-hidden bg-workspace',
         dropActive && 'ring-2 ring-ring ring-inset',
+        drawEnabled && 'cursor-crosshair',
       )}
+      style={
+        {
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(0,0,0,0.04) 1px, transparent 0)',
+          backgroundSize: '20px 20px',
+        } as React.CSSProperties
+      }
       onDragOver={(event) => {
         if (!hasFiles(event)) return;
         event.preventDefault();
@@ -163,8 +251,18 @@ export function CanvasStage() {
         setDropActive(false);
       }}
       onDrop={onDrop}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
+      onPointerCancel={handlePointerUp}
     >
       <canvas ref={canvasRef} aria-label="Design canvas" />
+      {drawEnabled && (
+        <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background shadow">
+          Drawing — drag on canvas. Press D or click Draw to exit.
+        </div>
+      )}
       {dropActive && (
         <div
           aria-hidden="true"

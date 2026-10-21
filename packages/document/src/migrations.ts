@@ -24,7 +24,26 @@ export interface MigrationError {
  * Registry of schema migrations, ordered by `from`. Version 1 is the first public format,
  * so the registry is empty today; new entries are appended whenever `CURRENT_SCHEMA_VERSION` bumps.
  */
-export const MIGRATIONS: readonly Migration[] = [];
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    from: 1,
+    to: 2,
+    description: 'Add group element (children stored relative to group origin)',
+    migrate: (raw) => ({ ...raw }),
+  },
+  {
+    from: 2,
+    to: 3,
+    description: 'Add path element for freehand drawing',
+    migrate: (raw) => ({ ...raw }),
+  },
+  {
+    from: 3,
+    to: 4,
+    description: 'Add image flip, filters and crop',
+    migrate: (raw) => ({ ...raw }),
+  },
+];
 
 export interface MigrateOptions {
   registry?: readonly Migration[];

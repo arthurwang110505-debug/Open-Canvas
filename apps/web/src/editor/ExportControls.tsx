@@ -27,6 +27,7 @@ export function ExportControls() {
             aria-label={`Export ${format.label}`}
             disabled={busy !== null}
             onClick={() => void run[format.kind]()}
+            className="rounded-full"
           >
             {busy === format.kind ? (
               <LoaderCircle className="animate-spin" />

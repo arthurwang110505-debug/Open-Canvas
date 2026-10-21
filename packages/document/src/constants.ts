@@ -2,7 +2,7 @@
  * Hard limits for the document format. They protect the editor, exporters and
  * AI validation from pathological input (huge canvases, millions of elements, ...).
  */
-export const CURRENT_SCHEMA_VERSION = 1 as const;
+export const CURRENT_SCHEMA_VERSION = 4 as const;
 
 export const LIMITS = {
   /** Maximum canvas edge length in pixels (browser canvases degrade well before this). */
@@ -26,6 +26,7 @@ export const LIMITS = {
   maxAssetBytes: 25 * 1024 * 1024,
   maxAssetsPerDocument: 500,
   maxUrlLength: 2_048,
+  maxPathPoints: 2_000,
 } as const;
 
 /** Raster formats every supported browser can decode and draw to a canvas. */

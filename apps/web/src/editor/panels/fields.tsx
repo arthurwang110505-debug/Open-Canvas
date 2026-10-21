@@ -1,4 +1,5 @@
-import { Input, Label, cn } from '@opencanvas/ui';
+import { Button, Input, Label, Tooltip, cn } from '@opencanvas/ui';
+import { Pipette } from 'lucide-react';
 import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 
 export interface NumberFieldProps {
@@ -137,6 +138,20 @@ export function ColorField({ label, value, onCommit, disabled, className }: Colo
     }
   };
 
+  const canPick = typeof window !== 'undefined' && 'EyeDropper' in window;
+
+  const pick = async () => {
+    if (!canPick || disabled) return;
+    try {
+      // @ts-expect-error — EyeDropper is not in lib.dom yet in some TS versions
+      const picker = new window.EyeDropper();
+      const result: { sRGBHex: string } = await picker.open();
+      if (result?.sRGBHex) onCommit(result.sRGBHex.toLowerCase());
+    } catch {
+      // user cancelled
+    }
+  };
+
   return (
     <div className={cn('flex flex-col gap-1', className)}>
       <Label htmlFor={id}>{label}</Label>
@@ -169,6 +184,21 @@ export function ColorField({ label, value, onCommit, disabled, className }: Colo
           }}
           className="font-mono text-xs uppercase"
         />
+        {canPick ? (
+          <Tooltip content="Pick color from screen">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label={`Pick ${label} from screen`}
+              disabled={disabled}
+              onClick={() => void pick()}
+              className="shrink-0 rounded-full"
+            >
+              <Pipette />
+            </Button>
+          </Tooltip>
+        ) : null}
       </div>
     </div>
   );

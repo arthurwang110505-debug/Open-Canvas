@@ -48,7 +48,7 @@ const CanvasDimensionSchema = z
   .max(LIMITS.maxCanvasDimension);
 
 // ---------------------------------------------------------------------------
-// Elements
+// Elements — leaf schemas first so their inferred types are available
 // ---------------------------------------------------------------------------
 
 /**
@@ -105,6 +105,20 @@ export const TextElementSchema = ElementBaseSchema.extend({
 
 export const ImageFitSchema = z.enum(['cover', 'fill']);
 
+export const ImageFiltersSchema = z.object({
+  brightness: z.number().min(0).max(300).default(100),
+  contrast: z.number().min(0).max(300).default(100),
+  saturate: z.number().min(0).max(300).default(100),
+  blur: z.number().min(0).max(32).default(0),
+});
+
+export const ImageCropSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  width: z.number().min(0.05).max(1),
+  height: z.number().min(0.05).max(1),
+});
+
 /**
  * Images reference an asset record (see `ImageAssetSchema`); the bytes themselves live in an
  * asset store, never inside the document JSON.
@@ -114,14 +128,82 @@ export const ImageElementSchema = ElementBaseSchema.extend({
   assetId: IdSchema,
   /** `cover` crops to fill the box (default); `fill` stretches to the box. */
   fit: ImageFitSchema.default('cover'),
+  flipH: z.boolean().default(false),
+  flipV: z.boolean().default(false),
+  filters: ImageFiltersSchema.default({ brightness: 100, contrast: 100, saturate: 100, blur: 0 }),
+  crop: ImageCropSchema.optional(),
 });
 
-export const ElementSchema = z.discriminatedUnion('type', [
-  RectElementSchema,
-  EllipseElementSchema,
-  TextElementSchema,
-  ImageElementSchema,
-]);
+export const PathPointSchema = z.object({
+  x: CoordinateSchema,
+  y: CoordinateSchema,
+});
+
+export const PathElementSchema = ElementBaseSchema.extend({
+  type: z.literal('path'),
+  /** Points are relative to the element's (x,y) origin — same as group children. */
+  points: z.array(PathPointSchema).min(2).max(LIMITS.maxPathPoints),
+  stroke: StrokeSchema,
+  fill: FillSchema.default({ type: 'none' }),
+  closed: z.boolean().default(false),
+});
+
+// Leaf inferred types — needed before GroupElement interface
+export type HexColor = z.infer<typeof HexColorSchema>;
+export type SolidFill = z.infer<typeof SolidFillSchema>;
+export type Fill = z.infer<typeof FillSchema>;
+export type Stroke = z.infer<typeof StrokeSchema>;
+export type FontWeight = z.infer<typeof FontWeightSchema>;
+export type TextAlign = z.infer<typeof TextAlignSchema>;
+export type FontStyle = z.infer<typeof FontStyleSchema>;
+
+export type RectElement = z.infer<typeof RectElementSchema>;
+export type EllipseElement = z.infer<typeof EllipseElementSchema>;
+export type TextElement = z.infer<typeof TextElementSchema>;
+export type ImageElement = z.infer<typeof ImageElementSchema>;
+export type ImageFit = z.infer<typeof ImageFitSchema>;
+export type ImageFilters = z.infer<typeof ImageFiltersSchema>;
+export type ImageCrop = z.infer<typeof ImageCropSchema>;
+export type PathPoint = z.infer<typeof PathPointSchema>;
+export type PathElement = z.infer<typeof PathElementSchema>;
+
+export interface GroupElement {
+  id: string;
+  name?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  opacity: number;
+  locked: boolean;
+  visible: boolean;
+  type: 'group';
+  children: DesignElement[];
+}
+export type DesignElement = RectElement | EllipseElement | TextElement | ImageElement | PathElement | GroupElement;
+export type ElementType = DesignElement['type'];
+
+// Group — recursive container. Children are stored relative to the group's origin (x,y).
+// Use a non-lazy object for the group itself so `discriminatedUnion` can recognise it;
+// only the children array is lazy to allow nesting (group inside group).
+let ElementSchema: z.ZodType<DesignElement>;
+export const GroupElementSchema = ElementBaseSchema.extend({
+  type: z.literal('group'),
+  children: z.array(z.lazy(() => ElementSchema)).max(LIMITS.maxElementsPerPage),
+});
+
+ElementSchema = z.lazy(() =>
+  z.discriminatedUnion('type', [
+    RectElementSchema,
+    EllipseElementSchema,
+    TextElementSchema,
+    ImageElementSchema,
+    PathElementSchema,
+    GroupElementSchema,
+  ]),
+);
+export { ElementSchema };
 
 // ---------------------------------------------------------------------------
 // Assets
@@ -201,6 +283,14 @@ export const DocumentSchema = z
   .superRefine((doc, ctx) => {
     const pageIds = new Set<string>();
     const elementIds = new Set<string>();
+    const walk = (elements: readonly unknown[], path: (string | number)[], check: (el: { id: string; type: string; assetId?: string; children?: readonly unknown[] }, p: (string | number)[]) => void) => {
+      elements.forEach((elRaw, idx) => {
+        const el = elRaw as { id: string; type: string; assetId?: string; children?: readonly unknown[] };
+        const p = [...path, idx];
+        check(el, p);
+        if (el.type === 'group' && Array.isArray(el.children)) walk(el.children, [...p, 'children'], check);
+      });
+    };
     doc.pages.forEach((page, pageIndex) => {
       if (pageIds.has(page.id)) {
         ctx.addIssue({
@@ -210,19 +300,19 @@ export const DocumentSchema = z
         });
       }
       pageIds.add(page.id);
-      page.elements.forEach((element, elementIndex) => {
+      walk(page.elements, ['pages', pageIndex, 'elements'], (element, elementPath) => {
         if (elementIds.has(element.id)) {
           ctx.addIssue({
             code: 'custom',
-            path: ['pages', pageIndex, 'elements', elementIndex, 'id'],
+            path: elementPath as (string | number)[],
             message: `Duplicate element id "${element.id}"`,
           });
         }
         elementIds.add(element.id);
-        if (element.type === 'image' && !(element.assetId in doc.assets)) {
+        if (element.type === 'image' && element.assetId !== undefined && !(element.assetId in doc.assets)) {
           ctx.addIssue({
             code: 'custom',
-            path: ['pages', pageIndex, 'elements', elementIndex, 'assetId'],
+            path: [...elementPath, 'assetId'] as (string | number)[],
             message: `Image references unknown asset "${element.assetId}"`,
           });
         }
@@ -231,24 +321,8 @@ export const DocumentSchema = z
   });
 
 // ---------------------------------------------------------------------------
-// Inferred types. Output types (after defaults) are the canonical in-memory shapes.
+// Remaining inferred types
 // ---------------------------------------------------------------------------
-
-export type HexColor = z.infer<typeof HexColorSchema>;
-export type SolidFill = z.infer<typeof SolidFillSchema>;
-export type Fill = z.infer<typeof FillSchema>;
-export type Stroke = z.infer<typeof StrokeSchema>;
-export type FontWeight = z.infer<typeof FontWeightSchema>;
-export type TextAlign = z.infer<typeof TextAlignSchema>;
-export type FontStyle = z.infer<typeof FontStyleSchema>;
-
-export type RectElement = z.infer<typeof RectElementSchema>;
-export type EllipseElement = z.infer<typeof EllipseElementSchema>;
-export type TextElement = z.infer<typeof TextElementSchema>;
-export type ImageElement = z.infer<typeof ImageElementSchema>;
-export type ImageFit = z.infer<typeof ImageFitSchema>;
-export type DesignElement = z.infer<typeof ElementSchema>;
-export type ElementType = DesignElement['type'];
 
 export type AssetSource = z.infer<typeof AssetSourceSchema>;
 export type ImageAsset = z.infer<typeof ImageAssetSchema>;

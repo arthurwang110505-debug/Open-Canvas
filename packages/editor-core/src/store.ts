@@ -154,6 +154,7 @@ export function createEditorStore(
       }
 
       let selectedIds = state.selectedIds;
+      let activePageId = state.activePageId;
       if (command.type === 'element.add') {
         selectedIds = [command.element.id];
       } else if (command.type === 'element.duplicate') {
@@ -162,10 +163,53 @@ export function createEditorStore(
         selectedIds = added.map((element) => element.id);
       } else if (command.type === 'element.delete') {
         selectedIds = pruneSelection(nextDocument, state.selectedIds);
+      } else if (command.type === 'element.group') {
+        const newGroupId = command.groupId ?? nextDocument.pages
+          .find((p) => p.id === command.pageId)?.elements
+          .find((el) => !state.document.pages.find((pp) => pp.id === command.pageId)?.elements.some((prev) => prev.id === el.id))?.id;
+        // newGroupId is the id of the element that appears in next but not in prev (the group)
+        if (newGroupId) selectedIds = [newGroupId];
+        else {
+          // fallback: find group by diff
+          const prevIds = new Set(state.document.pages.find((p) => p.id === command.pageId)?.elements.map((e) => e.id) ?? []);
+          const diff = nextDocument.pages.find((p) => p.id === command.pageId)?.elements.find((e) => !prevIds.has(e.id));
+          selectedIds = diff ? [diff.id] : [];
+        }
+      } else if (command.type === 'element.ungroup') {
+        const prevPage = state.document.pages.find((p) => p.id === command.pageId);
+        const group = prevPage?.elements.find((e) => e.id === command.groupId);
+        if (group && group.type === 'group') {
+          selectedIds = (group as { children: { id: string }[] }).children.map((c) => c.id);
+        } else {
+          selectedIds = [];
+        }
+      } else if (command.type === 'page.add' || command.type === 'page.duplicate') {
+        // New page becomes active and selected — find the id that was inserted
+        const beforeIds = new Set(state.document.pages.map((p) => p.id));
+        const newPage = nextDocument.pages.find((p) => !beforeIds.has(p.id));
+        if (newPage) activePageId = newPage.id;
+        selectedIds = [];
+      } else if (command.type === 'page.delete') {
+        if (!nextDocument.pages.some((p) => p.id === state.activePageId)) {
+          // Deleted active page — pick nearest remaining (same index or last)
+          const deletedIndex = state.document.pages.findIndex((p) => p.id === command.pageId);
+          const fallbackIndex = Math.min(deletedIndex, nextDocument.pages.length - 1);
+          const fallback = nextDocument.pages[fallbackIndex] ?? nextDocument.pages[0];
+          if (fallback) activePageId = fallback.id;
+        }
+        selectedIds = pruneSelection(nextDocument, state.selectedIds);
+      } else if (command.type === 'page.reorder') {
+        // keep activePageId as-is; no selection change
+      }
+      // Safety: if active page vanished for any other reason (e.g. undo/redo via dispatch path), fallback
+      if (!nextDocument.pages.some((p) => p.id === activePageId)) {
+        const fb = nextDocument.pages[0];
+        if (fb) activePageId = fb.id;
       }
 
       set({
         document: nextDocument,
+        activePageId,
         past,
         future,
         selectedIds,
@@ -180,14 +224,20 @@ export function createEditorStore(
       const previous = state.past[state.past.length - 1];
       if (!previous) return false;
       lastMerge = null;
+      let activePageId = state.activePageId;
+      if (!previous.pages.some((p) => p.id === activePageId)) {
+        const fb = previous.pages[0];
+        if (fb) activePageId = fb.id;
+      }
       set({
         document: previous,
+        activePageId,
         past: state.past.slice(0, -1),
         future: [state.document, ...state.future],
         selectedIds: selectionAfterHistoryStep(
           state.document,
           previous,
-          state.activePageId,
+          activePageId,
           state.selectedIds,
         ),
         dirty: previous !== savedDocument,
@@ -200,14 +250,20 @@ export function createEditorStore(
       const [next, ...rest] = state.future;
       if (!next) return false;
       lastMerge = null;
+      let activePageId = state.activePageId;
+      if (!next.pages.some((p) => p.id === activePageId)) {
+        const fb = next.pages[0];
+        if (fb) activePageId = fb.id;
+      }
       set({
         document: next,
+        activePageId,
         past: [...state.past, state.document].slice(-historyLimit),
         future: rest,
         selectedIds: selectionAfterHistoryStep(
           state.document,
           next,
-          state.activePageId,
+          activePageId,
           state.selectedIds,
         ),
         dirty: next !== savedDocument,
