@@ -21,7 +21,10 @@ export function createShareLink(document: DesignDocument): SharedLink {
     localStorage.setItem(shareKey(shareId), serialized);
     // keep index for cleanup / listing (optional)
     const idxRaw = localStorage.getItem(SHARE_INDEX_KEY);
-    const idx: string[] = idxRaw ? JSON.parse(idxRaw) : [];
+    const stored: unknown = idxRaw ? JSON.parse(idxRaw) : [];
+    const idx = Array.isArray(stored)
+      ? stored.filter((value): value is string => typeof value === 'string')
+      : [];
     idx.unshift(shareId);
     localStorage.setItem(SHARE_INDEX_KEY, JSON.stringify(idx.slice(0, 50)));
   } catch {

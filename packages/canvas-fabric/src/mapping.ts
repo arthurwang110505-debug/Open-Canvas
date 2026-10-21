@@ -311,7 +311,12 @@ export function textToFabricProps(element: TextElement): TextFabricProps {
   };
 }
 
-export function imageCssFilter(filters: { brightness: number; contrast: number; saturate: number; blur: number }): string {
+export function imageCssFilter(filters: {
+  brightness: number;
+  contrast: number;
+  saturate: number;
+  blur: number;
+}): string {
   const parts: string[] = [];
   if (filters.brightness !== 100) parts.push(`brightness(${filters.brightness}%)`);
   if (filters.contrast !== 100) parts.push(`contrast(${filters.contrast}%)`);
@@ -420,7 +425,9 @@ export function elementToFabricProps(
     case 'path':
       return { kind: 'path', props: pathToFabricProps(element) };
     case 'group':
-      throw new Error('Group elements are handled by FabricCanvasAdapter directly, not via elementToFabricProps.');
+      throw new Error(
+        'Group elements are handled by FabricCanvasAdapter directly, not via elementToFabricProps.',
+      );
   }
 }
 

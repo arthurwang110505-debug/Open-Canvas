@@ -181,19 +181,20 @@ export interface GroupElement {
   type: 'group';
   children: DesignElement[];
 }
-export type DesignElement = RectElement | EllipseElement | TextElement | ImageElement | PathElement | GroupElement;
+export type DesignElement =
+  RectElement | EllipseElement | TextElement | ImageElement | PathElement | GroupElement;
 export type ElementType = DesignElement['type'];
 
 // Group — recursive container. Children are stored relative to the group's origin (x,y).
 // Use a non-lazy object for the group itself so `discriminatedUnion` can recognise it;
 // only the children array is lazy to allow nesting (group inside group).
-let ElementSchema: z.ZodType<DesignElement>;
 export const GroupElementSchema = ElementBaseSchema.extend({
   type: z.literal('group'),
   children: z.array(z.lazy(() => ElementSchema)).max(LIMITS.maxElementsPerPage),
 });
 
-ElementSchema = z.lazy(() =>
+// `z.lazy` defers evaluation, so the self-reference in GroupElementSchema is safe.
+export const ElementSchema: z.ZodType<DesignElement> = z.lazy(() =>
   z.discriminatedUnion('type', [
     RectElementSchema,
     EllipseElementSchema,
@@ -203,7 +204,6 @@ ElementSchema = z.lazy(() =>
     GroupElementSchema,
   ]),
 );
-export { ElementSchema };
 
 // ---------------------------------------------------------------------------
 // Assets
@@ -283,12 +283,25 @@ export const DocumentSchema = z
   .superRefine((doc, ctx) => {
     const pageIds = new Set<string>();
     const elementIds = new Set<string>();
-    const walk = (elements: readonly unknown[], path: (string | number)[], check: (el: { id: string; type: string; assetId?: string; children?: readonly unknown[] }, p: (string | number)[]) => void) => {
+    const walk = (
+      elements: readonly unknown[],
+      path: (string | number)[],
+      check: (
+        el: { id: string; type: string; assetId?: string; children?: readonly unknown[] },
+        p: (string | number)[],
+      ) => void,
+    ) => {
       elements.forEach((elRaw, idx) => {
-        const el = elRaw as { id: string; type: string; assetId?: string; children?: readonly unknown[] };
+        const el = elRaw as {
+          id: string;
+          type: string;
+          assetId?: string;
+          children?: readonly unknown[];
+        };
         const p = [...path, idx];
         check(el, p);
-        if (el.type === 'group' && Array.isArray(el.children)) walk(el.children, [...p, 'children'], check);
+        if (el.type === 'group' && Array.isArray(el.children))
+          walk(el.children, [...p, 'children'], check);
       });
     };
     doc.pages.forEach((page, pageIndex) => {
@@ -304,12 +317,16 @@ export const DocumentSchema = z
         if (elementIds.has(element.id)) {
           ctx.addIssue({
             code: 'custom',
-            path: elementPath as (string | number)[],
+            path: elementPath,
             message: `Duplicate element id "${element.id}"`,
           });
         }
         elementIds.add(element.id);
-        if (element.type === 'image' && element.assetId !== undefined && !(element.assetId in doc.assets)) {
+        if (
+          element.type === 'image' &&
+          element.assetId !== undefined &&
+          !(element.assetId in doc.assets)
+        ) {
           ctx.addIssue({
             code: 'custom',
             path: [...elementPath, 'assetId'] as (string | number)[],

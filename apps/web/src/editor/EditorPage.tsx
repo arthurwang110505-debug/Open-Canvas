@@ -3,7 +3,7 @@ import type { DesignDocument } from '@opencanvas/document';
 import { AssetProvider, type AssetProviderProps } from './assets/AssetProvider';
 import { EditorProvider } from './EditorProvider';
 import { EditorShell } from './EditorShell';
-import { DrawProvider } from './draw/DrawContext';
+import { DrawProvider } from './draw/DrawProvider';
 import { ExportProvider } from './export/ExportProvider';
 import type { ExportServices } from './export/ExportServices';
 import type { PersistenceController } from './persistence';

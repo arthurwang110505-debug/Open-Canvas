@@ -23,14 +23,19 @@ interface ProjectThumbnailProps {
 export function ProjectThumbnail({ project }: ProjectThumbnailProps) {
   const { store } = useProjects();
   const cacheKey = `${project.id}::${project.updatedAt}`;
-  const [svg, setSvg] = useState<string | null>(() => svgCache.get(cacheKey) ?? null);
+  // The cache is keyed by project + updatedAt, so a changed key derives a new value in render
+  // (React's recommended pattern) instead of setting state synchronously inside the effect.
+  const [rendered, setRendered] = useState<{ key: string; svg: string | null }>(() => ({
+    key: cacheKey,
+    svg: svgCache.get(cacheKey) ?? null,
+  }));
+  if (rendered.key !== cacheKey) {
+    setRendered({ key: cacheKey, svg: svgCache.get(cacheKey) ?? null });
+  }
+  const svg = rendered.key === cacheKey ? rendered.svg : null;
 
   useEffect(() => {
-    const cached = svgCache.get(cacheKey);
-    if (cached) {
-      setSvg(cached);
-      return;
-    }
+    if (svgCache.has(cacheKey)) return;
     let cancelled = false;
     void (async () => {
       const loaded = await store.load(project.id);
@@ -66,7 +71,7 @@ export function ProjectThumbnail({ project }: ProjectThumbnailProps) {
       if (cancelled) return;
       if (result.ok) {
         svgCache.set(cacheKey, result.value);
-        setSvg(result.value);
+        setRendered({ key: cacheKey, svg: result.value });
       }
     })();
     return () => {

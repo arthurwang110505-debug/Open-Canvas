@@ -164,22 +164,34 @@ export function createEditorStore(
       } else if (command.type === 'element.delete') {
         selectedIds = pruneSelection(nextDocument, state.selectedIds);
       } else if (command.type === 'element.group') {
-        const newGroupId = command.groupId ?? nextDocument.pages
-          .find((p) => p.id === command.pageId)?.elements
-          .find((el) => !state.document.pages.find((pp) => pp.id === command.pageId)?.elements.some((prev) => prev.id === el.id))?.id;
+        const newGroupId =
+          command.groupId ??
+          nextDocument.pages
+            .find((p) => p.id === command.pageId)
+            ?.elements.find(
+              (el) =>
+                !state.document.pages
+                  .find((pp) => pp.id === command.pageId)
+                  ?.elements.some((prev) => prev.id === el.id),
+            )?.id;
         // newGroupId is the id of the element that appears in next but not in prev (the group)
         if (newGroupId) selectedIds = [newGroupId];
         else {
           // fallback: find group by diff
-          const prevIds = new Set(state.document.pages.find((p) => p.id === command.pageId)?.elements.map((e) => e.id) ?? []);
-          const diff = nextDocument.pages.find((p) => p.id === command.pageId)?.elements.find((e) => !prevIds.has(e.id));
+          const prevIds = new Set(
+            state.document.pages.find((p) => p.id === command.pageId)?.elements.map((e) => e.id) ??
+              [],
+          );
+          const diff = nextDocument.pages
+            .find((p) => p.id === command.pageId)
+            ?.elements.find((e) => !prevIds.has(e.id));
           selectedIds = diff ? [diff.id] : [];
         }
       } else if (command.type === 'element.ungroup') {
         const prevPage = state.document.pages.find((p) => p.id === command.pageId);
         const group = prevPage?.elements.find((e) => e.id === command.groupId);
-        if (group && group.type === 'group') {
-          selectedIds = (group as { children: { id: string }[] }).children.map((c) => c.id);
+        if (group?.type === 'group') {
+          selectedIds = group.children.map((c) => c.id);
         } else {
           selectedIds = [];
         }

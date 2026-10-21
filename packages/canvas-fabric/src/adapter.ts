@@ -34,6 +34,7 @@ import {
   roundTo,
   topLeftToCenter,
   type BoxGeometry,
+  type PathFabricProps,
 } from './mapping';
 import { PLACEHOLDER_SIZE, createPlaceholderBitmap } from './placeholder';
 
@@ -283,7 +284,7 @@ export class FabricCanvasAdapter {
   }
 
   getViewportTransform(): TMat2D {
-    return this.canvas.viewportTransform as TMat2D;
+    return this.canvas.viewportTransform;
   }
 
   getZoom(): number {
@@ -455,10 +456,8 @@ export class FabricCanvasAdapter {
     const w = Math.max(1, maxX - minX);
     const h = Math.max(1, maxY - minY);
     const rel = points.map((p) => ({ x: p.x - minX, y: p.y - minY }));
-    const [first, ...rest] = rel;
+    const first = rel[0];
     if (!first) return;
-    let d = `M ${first.x} ${first.y}`;
-    for (const p of rest) d += ` L ${p.x} ${p.y}`;
     const center = { x: minX + w / 2, y: minY + h / 2 };
     // Top-left to center conversion without rotation
     const fabricCenter = { x: center.x, y: center.y }; // No rotation for preview
@@ -617,11 +616,11 @@ export class FabricCanvasAdapter {
 
   private createGroupObject(group: DesignElement & { type: 'group' }): Group {
     const groupCenter = topLeftToCenter(group);
-    const childObjects: FabricObject[] = (group.children as DesignElement[]).map((child) => {
+    const childObjects: FabricObject[] = group.children.map((child) => {
       // Image inside group not yet fully supported (placeholder)
       if (child.type === 'group') {
         // Nested group: recursively create
-        const nested = this.createGroupObject(child as DesignElement & { type: 'group' });
+        const nested = this.createGroupObject(child);
         // nested is already a Group with absolute positioning? Need to offset to parent group center
         // For nested, its center absolute is topLeftToCenter(child absolute) -> compute relative
         const childAbsCenter = topLeftToCenter({
@@ -654,7 +653,7 @@ export class FabricCanvasAdapter {
         obj.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
         return obj;
       }
-      const mapped = elementToFabricProps(child as DesignElement, this.fabricContext);
+      const mapped = elementToFabricProps(child, this.fabricContext);
       let fabricObj: FabricObject;
       switch (mapped.kind) {
         case 'rect':
@@ -753,9 +752,7 @@ export class FabricCanvasAdapter {
     if (element.type === 'path' && object instanceof Path) {
       const mapped = elementToFabricProps(element, this.fabricContext);
       // Path's `path` is the SVG data — set separately
-      const { path, ...rest } = (
-        mapped as { kind: 'path'; props: import('./mapping').PathFabricProps }
-      ).props;
+      const { path, ...rest } = (mapped as { kind: 'path'; props: PathFabricProps }).props;
       const props: Record<string, unknown> = { ...rest, path };
       // Fabric Path stores path as array internally, but constructor uses string; updating path
       // requires setting `path` property and re-calculating dimensions.
@@ -781,9 +778,7 @@ export class FabricCanvasAdapter {
       this.ensureImageLoading(object, element);
       // Apply flip/filters; FabricImage uses flipX/flipY from mapping, but filters need applyFilters()
       const f = element.filters ?? { brightness: 100, contrast: 100, saturate: 100, blur: 0 };
-      const desired = buildFabricFilters(
-        f as { brightness: number; contrast: number; saturate: number; blur: number },
-      );
+      const desired = buildFabricFilters(f);
       const cur = (object as unknown as { filters: unknown[] }).filters as unknown[] | undefined;
       const same =
         cur?.length === desired.length &&

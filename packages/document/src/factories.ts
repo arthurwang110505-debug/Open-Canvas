@@ -191,7 +191,10 @@ export function createGroupElement(
 
 export function createPathElement(
   points: readonly PathPoint[],
-  overrides: Partial<Omit<PathElement, 'type' | 'points'>> & { stroke?: Stroke; closed?: boolean } = {},
+  overrides: Partial<Omit<PathElement, 'type' | 'points'>> & {
+    stroke?: Stroke;
+    closed?: boolean;
+  } = {},
 ): PathElement {
   if (points.length < 2) throw new Error('A path must have at least two points.');
   // Compute bounds from points (points are in page coords)
@@ -212,7 +215,7 @@ export function createPathElement(
     ...baseDefaults({ x: minX, y: minY, width, height, ...overrides }),
     type: 'path',
     ...(overrides.name !== undefined ? { name: overrides.name } : {}),
-    points: relPoints as PathPoint[],
+    points: relPoints,
     stroke: overrides.stroke ?? { color: '#111827', width: 4 },
     fill: overrides.fill ?? { type: 'none' },
     closed: overrides.closed ?? false,
