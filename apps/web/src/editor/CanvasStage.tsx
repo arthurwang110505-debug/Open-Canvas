@@ -1,12 +1,15 @@
 import { createPathElement } from '@opencanvas/document';
 import { FabricCanvasAdapter } from '@opencanvas/canvas-fabric';
 import { selectActivePage, type EditorStoreState } from '@opencanvas/editor-core';
-import { cn } from '@opencanvas/ui';
+import { Button, cn } from '@opencanvas/ui';
+import { LayoutTemplate, Square, Type } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type DragEvent, type PointerEvent } from 'react';
 
+import { useEditorActions } from './actions';
 import { useAssetServices } from './assets/useAssetServices';
 import { useImageImport } from './assets/useImageImport';
-import { useCanvasController, useEditorStore, useNotificationStore } from './hooks';
+import { ZoomControl } from './ZoomControl';
+import { useCanvasController, useEditor, useEditorStore, useNotificationStore } from './hooks';
 import { useDraw } from './draw/DrawContext';
 
 function sceneChanged(next: EditorStoreState, previous: EditorStoreState): boolean {
@@ -32,6 +35,8 @@ export function CanvasStage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const adapterRef = useRef<FabricCanvasAdapter | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  const actions = useEditorActions();
+  const isEmpty = useEditor((state) => selectActivePage(state).elements.length === 0);
   const isDrawingRef = useRef(false);
   const pointsRef = useRef<{ x: number; y: number }[]>([]);
 
@@ -73,6 +78,9 @@ export function CanvasStage() {
         },
         onSelectionChanged: (ids) => store.getState().setSelection(ids),
         onZoomChanged: (zoom) => store.getState().setZoom(zoom),
+        onViewportChanged: () => controller.bumpViewport(),
+        onInteractionChanged: (interacting) => controller.setInteracting(interacting),
+        onTextEditingChanged: (editing) => controller.setEditingText(editing),
         onAssetError: (elementId, assetId, error) => {
           const asset = store.getState().document.assets[assetId];
           notifications.getState().show({
@@ -144,7 +152,12 @@ export function CanvasStage() {
   useEffect(() => {
     const adapter = adapterRef.current;
     if (!adapter) return;
-    const canvas = adapter.getFabricCanvas() as unknown as { selection: boolean; isDrawingMode: boolean; discardActiveObject: () => unknown; renderAll: () => void };
+    const canvas = adapter.getFabricCanvas() as unknown as {
+      selection: boolean;
+      isDrawingMode: boolean;
+      discardActiveObject: () => unknown;
+      renderAll: () => void;
+    };
     canvas.selection = !drawEnabled;
     canvas.isDrawingMode = false;
     if (drawEnabled) {
@@ -203,22 +216,26 @@ export function CanvasStage() {
       if (!drawEnabled || !isDrawingRef.current) return;
       isDrawingRef.current = false;
       try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {}
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // The pointer may already have been released (pointercancel); nothing to undo.
+      }
       const pts = pointsRef.current;
       adapterRef.current?.setPreviewPath(null, strokeColor, strokeWidth);
       pointsRef.current = [];
       if (pts.length < 2) return;
       // Create path element via factory (computes bounds + relative points)
       try {
-        const element = createPathElement(pts, { stroke: { color: strokeColor, width: strokeWidth } });
+        const element = createPathElement(pts, {
+          stroke: { color: strokeColor, width: strokeWidth },
+        });
         const { activePageId, dispatch } = store.getState();
         dispatch({ type: 'element.add', pageId: activePageId, element });
       } catch (err) {
         console.warn('Failed to create path', err);
       }
     },
-    [drawEnabled, controller, store, strokeColor, strokeWidth],
+    [drawEnabled, store, strokeColor, strokeWidth],
   );
 
   const handlePointerLeave = useCallback(() => {
@@ -234,12 +251,6 @@ export function CanvasStage() {
         dropActive && 'ring-2 ring-ring ring-inset',
         drawEnabled && 'cursor-crosshair',
       )}
-      style={
-        {
-          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(0,0,0,0.04) 1px, transparent 0)',
-          backgroundSize: '20px 20px',
-        } as React.CSSProperties
-      }
       onDragOver={(event) => {
         if (!hasFiles(event)) return;
         event.preventDefault();
@@ -258,6 +269,44 @@ export function CanvasStage() {
       onPointerCancel={handlePointerUp}
     >
       <canvas ref={canvasRef} aria-label="Design canvas" />
+      <ZoomControl />
+      {isEmpty && !drawEnabled && !dropActive ? (
+        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center px-6">
+          <div className="pointer-events-none flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border border-border/80 bg-white/95 px-6 py-5 text-center shadow-[0_12px_40px_rgba(16,24,40,0.12)] backdrop-blur">
+            <span className="grid size-10 place-items-center rounded-xl bg-secondary text-secondary-foreground">
+              <LayoutTemplate className="size-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">Start your design</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Add something to the page, or drop an image anywhere.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              <Button
+                size="sm"
+                className="pointer-events-auto rounded-full"
+                onClick={() => actions.addText('heading')}
+              >
+                <Type /> Add a text box
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="pointer-events-auto rounded-full"
+                onClick={() => actions.addShape('rect')}
+              >
+                <Square /> Add a shape
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Tip: press <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">R</kbd>{' '}
+              for a rectangle,{' '}
+              <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">T</kbd> for text.
+            </p>
+          </div>
+        </div>
+      ) : null}
       {drawEnabled && (
         <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background shadow">
           Drawing — drag on canvas. Press D or click Draw to exit.

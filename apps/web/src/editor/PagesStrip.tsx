@@ -55,16 +55,13 @@ export function PagesStrip() {
   return (
     <div
       aria-label="Pages"
-      className="pointer-events-auto absolute bottom-3 left-1/2 z-20 flex max-w-[min(92%,960px)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-border bg-white px-2 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+      className="pointer-events-auto absolute bottom-3 left-1/2 z-20 flex max-w-[min(78%,720px)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-border bg-white px-2 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
     >
       <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin">
         {pages.map((page, index) => {
           const isActive = page.id === activePageId;
           return (
-            <div
-              key={page.id}
-              className="group relative flex shrink-0 flex-col items-center gap-1"
-            >
+            <div key={page.id} className="group relative flex shrink-0 flex-col items-center gap-1">
               <button
                 type="button"
                 aria-label={`Go to page ${index + 1}${isActive ? ' (current)' : ''}`}
@@ -210,13 +207,7 @@ function PageThumbnail({
 
   if (!svg) {
     // Skeleton while SVG renders
-    return (
-      <div
-        aria-hidden="true"
-        className="animate-pulse bg-muted"
-        style={{ width, height }}
-      />
-    );
+    return <div aria-hidden="true" className="animate-pulse bg-muted" style={{ width, height }} />;
   }
 
   return (

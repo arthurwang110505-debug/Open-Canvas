@@ -18,7 +18,9 @@ const size = { width: 1080, height: 1080 };
 
 describe('FabricCanvasAdapter', () => {
   let canvasEl: HTMLCanvasElement;
-  let callbacks: { [K in keyof CanvasAdapterCallbacks]: Mock<CanvasAdapterCallbacks[K]> };
+  let callbacks: {
+    [K in keyof CanvasAdapterCallbacks]: Mock<NonNullable<CanvasAdapterCallbacks[K]>>;
+  };
   let adapter: FabricCanvasAdapter;
 
   beforeEach(() => {
@@ -30,6 +32,9 @@ describe('FabricCanvasAdapter', () => {
       onTextMeasured: vi.fn<CanvasAdapterCallbacks['onTextMeasured']>(),
       onSelectionChanged: vi.fn<CanvasAdapterCallbacks['onSelectionChanged']>(),
       onZoomChanged: vi.fn<CanvasAdapterCallbacks['onZoomChanged']>(),
+      onViewportChanged: vi.fn<NonNullable<CanvasAdapterCallbacks['onViewportChanged']>>(),
+      onInteractionChanged: vi.fn<NonNullable<CanvasAdapterCallbacks['onInteractionChanged']>>(),
+      onTextEditingChanged: vi.fn<NonNullable<CanvasAdapterCallbacks['onTextEditingChanged']>>(),
       onAssetError: vi.fn<CanvasAdapterCallbacks['onAssetError']>(),
     };
     adapter = new FabricCanvasAdapter(canvasEl, callbacks);
@@ -112,6 +117,36 @@ describe('FabricCanvasAdapter', () => {
     adapter.render({ page: makePage([a, b]), size, selectedIds: [], assets: {} });
     expect(adapter.getFabricCanvas().getActiveObject()).toBeUndefined();
     expect(callbacks.onSelectionChanged).not.toHaveBeenCalled();
+  });
+
+  it('reports the selection box in client space so floating UI can follow the object', () => {
+    expect(adapter.getSelectionClientRect()).toBeNull();
+
+    const rect = createRectElement({ id: 'r1', x: 100, y: 50, width: 200, height: 100 });
+    adapter.render({ page: makePage([rect]), size, selectedIds: ['r1'], assets: {} });
+
+    const active = adapter.getFabricCanvas().getActiveObject();
+    if (!active) throw new Error('expected an active object');
+    const bounds = active.getBoundingRect();
+    const client = adapter.getSelectionClientRect();
+    expect(client).not.toBeNull();
+    expect(client?.width).toBeCloseTo(bounds.width);
+    expect(client?.height).toBeCloseTo(bounds.height);
+    expect(client?.left).toBeCloseTo(bounds.left);
+    expect(client?.top).toBeCloseTo(bounds.top);
+  });
+
+  it('signals viewport, pointer and text-editing changes to the host', () => {
+    adapter.setZoom(2);
+    expect(callbacks.onViewportChanged).toHaveBeenCalled();
+
+    adapter.getFabricCanvas().fire('mouse:down');
+    expect(callbacks.onInteractionChanged).toHaveBeenLastCalledWith(true);
+    adapter.getFabricCanvas().fire('mouse:up');
+    expect(callbacks.onInteractionChanged).toHaveBeenLastCalledWith(false);
+
+    adapter.getFabricCanvas().fire('text:editing:entered');
+    expect(callbacks.onTextEditingChanged).toHaveBeenLastCalledWith(true);
   });
 
   it('reports user selection changes', () => {

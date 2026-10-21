@@ -51,6 +51,12 @@ export interface CanvasAdapterCallbacks {
   onTextMeasured: (elementId: string, measuredHeight: number) => void;
   onSelectionChanged: (elementIds: readonly string[]) => void;
   onZoomChanged: (zoom: number) => void;
+  /** Panning, zooming or fitting changed what part of the page is under the viewport. */
+  onViewportChanged?: () => void;
+  /** A pointer interaction (press, drag, release) started or ended. */
+  onInteractionChanged?: (interacting: boolean) => void;
+  /** Inline text editing started or ended, so chrome can step out of the way. */
+  onTextEditingChanged?: (editing: boolean) => void;
   /**
    * Fired when an image element cannot be displayed: the asset record is missing, its bytes
    * are not available, or the browser failed to decode them. The element stays on the
@@ -62,6 +68,14 @@ export interface CanvasAdapterCallbacks {
 export interface AssetLoadError {
   code: 'asset-missing' | 'unavailable' | 'load-failed';
   message: string;
+}
+
+/** A rectangle in client (viewport) coordinates. */
+export interface ViewportRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 export interface CanvasScene {
@@ -122,7 +136,12 @@ class AssetLoadFailure extends Error {
 const defaultImageLoader: ImageSourceLoader = (url, { signal }) =>
   util.loadImage(url, { signal, crossOrigin: 'anonymous' });
 
-function buildFabricFilters(filtersConfig: { brightness: number; contrast: number; saturate: number; blur: number }): InstanceType<typeof filters.BaseFilter>[] {
+function buildFabricFilters(filtersConfig: {
+  brightness: number;
+  contrast: number;
+  saturate: number;
+  blur: number;
+}): InstanceType<typeof filters.BaseFilter>[] {
   const out: InstanceType<typeof filters.BaseFilter>[] = [];
   if (filtersConfig.brightness !== 100) {
     const b = (filtersConfig.brightness - 100) / 100;
@@ -282,12 +301,32 @@ export class FabricCanvasAdapter {
     this.canvas.zoomToPoint(new Point(focal.x, focal.y), clamped);
     this.canvas.requestRenderAll();
     this.callbacks.onZoomChanged(clamped);
+    this.callbacks.onViewportChanged?.();
   }
 
   panBy(deltaX: number, deltaY: number): void {
     if (this.disposed) return;
     this.canvas.relativePan(new Point(deltaX, deltaY));
     this.canvas.requestRenderAll();
+    this.callbacks.onViewportChanged?.();
+  }
+
+  /**
+   * Bounding box of the current selection in client coordinates (viewport pixels), or `null`
+   * when nothing is selected. Used to anchor floating UI to the object rather than the screen.
+   */
+  getSelectionClientRect(): ViewportRect | null {
+    if (this.disposed) return null;
+    const active = this.canvas.getActiveObject();
+    if (!active) return null;
+    const host = this.canvas.getElement().getBoundingClientRect();
+    const bounds = active.getBoundingRect();
+    return {
+      left: host.left + bounds.left,
+      top: host.top + bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+    };
   }
 
   /** Fits and centers the page inside the viewport. */
@@ -316,6 +355,7 @@ export class FabricCanvasAdapter {
     this.canvas.setViewportTransform(transform);
     this.canvas.requestRenderAll();
     this.callbacks.onZoomChanged(zoom);
+    this.callbacks.onViewportChanged?.();
   }
 
   /** Reconciles Fabric objects with the given page, preserving object identity by element id. */
@@ -387,7 +427,11 @@ export class FabricCanvasAdapter {
   }
 
   /** Shows a temporary freehand preview while the user is drawing. */
-  setPreviewPath(points: readonly { x: number; y: number }[] | null, stroke: string, strokeWidth: number): void {
+  setPreviewPath(
+    points: readonly { x: number; y: number }[] | null,
+    stroke: string,
+    strokeWidth: number,
+  ): void {
     if (this.disposed) return;
     if (this.previewPath) {
       this.canvas.remove(this.previewPath);
@@ -588,7 +632,10 @@ export class FabricCanvasAdapter {
           rotation: child.rotation,
         });
         // Reposition nested group to be relative to parent
-        nested.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
+        nested.set({
+          left: childAbsCenter.x - groupCenter.x,
+          top: childAbsCenter.y - groupCenter.y,
+        });
         return nested;
       }
       if (child.type === 'image') {
@@ -636,7 +683,10 @@ export class FabricCanvasAdapter {
         rotation: child.rotation,
       });
       // Override to group-relative coordinates (Fabric Group expects children relative to group center)
-      fabricObj.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
+      fabricObj.set({
+        left: childAbsCenter.x - groupCenter.x,
+        top: childAbsCenter.y - groupCenter.y,
+      });
       // Individual children inside a group should not be interactive
       fabricObj.set({ selectable: false, evented: false, hasControls: false, hasBorders: false });
       return fabricObj;
@@ -703,13 +753,18 @@ export class FabricCanvasAdapter {
     if (element.type === 'path' && object instanceof Path) {
       const mapped = elementToFabricProps(element, this.fabricContext);
       // Path's `path` is the SVG data — set separately
-      const { path, ...rest } = (mapped as { kind: 'path'; props: import('./mapping').PathFabricProps }).props;
+      const { path, ...rest } = (
+        mapped as { kind: 'path'; props: import('./mapping').PathFabricProps }
+      ).props;
       const props: Record<string, unknown> = { ...rest, path };
       // Fabric Path stores path as array internally, but constructor uses string; updating path
       // requires setting `path` property and re-calculating dimensions.
       if ((object as unknown as { path: unknown }).path !== path) {
         (object as unknown as { set: (k: string, v: unknown) => void }).set('path', path);
-        (object as unknown as { set: (k: string, v: unknown) => void }).set('pathOffset', { x: 0, y: 0 });
+        (object as unknown as { set: (k: string, v: unknown) => void }).set('pathOffset', {
+          x: 0,
+          y: 0,
+        });
       }
       let changed = false;
       for (const [key, value] of Object.entries(props)) {
@@ -726,9 +781,15 @@ export class FabricCanvasAdapter {
       this.ensureImageLoading(object, element);
       // Apply flip/filters; FabricImage uses flipX/flipY from mapping, but filters need applyFilters()
       const f = element.filters ?? { brightness: 100, contrast: 100, saturate: 100, blur: 0 };
-      const desired = buildFabricFilters(f as { brightness: number; contrast: number; saturate: number; blur: number });
+      const desired = buildFabricFilters(
+        f as { brightness: number; contrast: number; saturate: number; blur: number },
+      );
       const cur = (object as unknown as { filters: unknown[] }).filters as unknown[] | undefined;
-      const same = cur?.length === desired.length && cur?.every((_, i) => (cur[i] as { type?: string })?.type === (desired[i] as { type?: string })?.type);
+      const same =
+        cur?.length === desired.length &&
+        cur?.every(
+          (_, i) => (cur[i] as { type?: string })?.type === (desired[i] as { type?: string })?.type,
+        );
       if (!same) {
         (object as unknown as { filters: unknown[] }).filters = desired as unknown[];
         try {
@@ -962,11 +1023,24 @@ export class FabricCanvasAdapter {
     this.canvas.on('selection:updated', emitSelection);
     this.canvas.on('selection:cleared', emitSelection);
 
+    this.canvas.on('text:editing:entered', () => {
+      this.callbacks.onTextEditingChanged?.(true);
+    });
+
     this.canvas.on('text:editing:exited', (event) => {
+      this.callbacks.onTextEditingChanged?.(false);
       if (this.applying) return;
       const id = this.idsByObject.get(event.target);
       if (!id) return;
       this.callbacks.onTextCommitted(id, event.target.text, roundTo(event.target.height));
+    });
+
+    this.canvas.on('mouse:down', () => {
+      this.callbacks.onInteractionChanged?.(true);
+    });
+    this.canvas.on('mouse:up', () => {
+      this.callbacks.onInteractionChanged?.(false);
+      this.callbacks.onViewportChanged?.();
     });
 
     this.canvas.on('mouse:wheel', (event) => {

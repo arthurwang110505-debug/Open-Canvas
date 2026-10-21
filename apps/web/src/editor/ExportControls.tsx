@@ -1,43 +1,95 @@
-import { Button, Tooltip } from '@opencanvas/ui';
-import { Download, LoaderCircle } from 'lucide-react';
+import {
+  Button,
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuLabel,
+  MenuSeparator,
+  MenuTrigger,
+} from '@opencanvas/ui';
+import { Download, FileImage, FileText, LoaderCircle, PenTool } from 'lucide-react';
 
 import { RASTER_SCALE, useDesignExport, type ExportKind } from './export/useDesignExport';
 
-const FORMATS: readonly { kind: ExportKind; label: string; hint: string }[] = [
-  { kind: 'png', label: 'PNG', hint: `PNG image at ${RASTER_SCALE}× resolution` },
-  { kind: 'svg', label: 'SVG', hint: 'SVG vector file (text stays editable)' },
-  { kind: 'pdf', label: 'PDF', hint: `PDF with every page rendered at ${RASTER_SCALE}×` },
+interface Format {
+  kind: ExportKind;
+  /** Menu label — the accessible name stays "Export PNG" and friends. */
+  label: string;
+  hint: string;
+  icon: React.ReactNode;
+  description: string;
+}
+
+const FORMATS: readonly Format[] = [
+  {
+    kind: 'png',
+    label: 'Export PNG',
+    hint: `${RASTER_SCALE}×`,
+    icon: <FileImage />,
+    description: 'Image · transparent background',
+  },
+  {
+    kind: 'svg',
+    label: 'Export SVG',
+    hint: 'vector',
+    icon: <PenTool />,
+    description: 'Vector · text stays editable',
+  },
+  {
+    kind: 'pdf',
+    label: 'Export PDF',
+    hint: 'print',
+    icon: <FileText />,
+    description: 'Document · every page',
+  },
 ];
 
-/** Downloads the current design as PNG, SVG or PDF. Each button performs its export. */
+/**
+ * One primary download action instead of three competing buttons. Each entry performs the
+ * same export the individual buttons used to, and reports progress in place.
+ */
 export function ExportControls() {
   const { busy, exportPng, exportSvg, exportPdf } = useDesignExport();
   const run = { png: exportPng, svg: exportSvg, pdf: exportPdf };
 
   return (
-    <div className="flex items-center gap-1" role="group" aria-label="Export">
-      {FORMATS.map((format) => (
-        <Tooltip
-          key={format.kind}
-          content={busy === format.kind ? 'Preparing the file…' : format.hint}
+    <Menu>
+      <MenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy !== null}
+          className="rounded-full"
+          aria-label="Download"
         >
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label={`Export ${format.label}`}
-            disabled={busy !== null}
-            onClick={() => void run[format.kind]()}
-            className="rounded-full"
+          {busy ? <LoaderCircle className="animate-spin" /> : <Download aria-hidden="true" />}
+          {busy ? 'Preparing…' : 'Download'}
+        </Button>
+      </MenuTrigger>
+      <MenuContent align="end" aria-label="Download formats">
+        <MenuLabel>Download</MenuLabel>
+        {FORMATS.map((format) => (
+          <MenuItem
+            key={format.kind}
+            aria-label={format.label}
+            icon={format.icon}
+            hint={busy === format.kind ? '…' : format.hint}
+            onSelect={() => void run[format.kind]()}
           >
-            {busy === format.kind ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <Download aria-hidden="true" />
-            )}
-            {format.label}
-          </Button>
-        </Tooltip>
-      ))}
-    </div>
+            <span className="flex flex-col">
+              <span>{format.label.replace('Export ', '')}</span>
+              <span className="text-[11px] font-normal text-muted-foreground">
+                {format.description}
+              </span>
+            </span>
+          </MenuItem>
+        ))}
+        <MenuSeparator />
+        <p className="px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+          Downloads use the full document at {RASTER_SCALE}× resolution. Each page of a multi-page
+          design is included.
+        </p>
+      </MenuContent>
+    </Menu>
   );
 }

@@ -156,6 +156,32 @@ describe('EditorPage', () => {
     expect(within(panel).getByLabelText('Height')).toHaveValue('720');
   });
 
+  it('offers a starting point on an empty page and gets out of the way after the first insert', async () => {
+    const { user } = renderEditor();
+    expect(screen.getByText('Start your design')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Add a shape' }));
+
+    expect(screen.queryByText('Start your design')).not.toBeInTheDocument();
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    expect(within(panel).getByRole('heading', { name: 'Rectangle' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+  });
+
+  it('opens a zoom menu with presets in the workspace corner', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('button', { name: /Zoom level/ }));
+    await user.click(screen.getByRole('menuitem', { name: '200%' }));
+    expect(screen.getByRole('button', { name: /Zoom level/ })).toHaveTextContent('200%');
+  });
+
+  it('keeps the selection toolbar available after inserting an element', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('button', { name: 'Ellipse' }));
+    expect(screen.getByRole('toolbar', { name: 'Selection actions' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Duplicate selection' })).toBeEnabled();
+  });
+
   it('exposes zoom controls once the canvas is mounted', async () => {
     const { user } = renderEditor();
     const zoomIn = screen.getByRole('button', { name: 'Zoom in' });

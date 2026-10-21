@@ -23,6 +23,15 @@ const fixedDate = new Date('2026-05-06T07:08:09.000Z');
 const ONE_PIXEL_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
+/** Opens the Download menu and picks a format, like a user would. */
+async function exportFormat(
+  user: ReturnType<typeof userEvent.setup>,
+  format: 'PNG' | 'SVG' | 'PDF',
+) {
+  await user.click(screen.getByRole('button', { name: 'Download' }));
+  await user.click(screen.getByRole('menuitem', { name: `Export ${format}` }));
+}
+
 interface Harness {
   user: ReturnType<typeof userEvent.setup>;
   downloads: { blob: Blob; filename: string }[];
@@ -67,7 +76,7 @@ describe('exporting a design', () => {
   it('downloads an SVG rendered from the document model', async () => {
     const { user, downloads } = renderEditor(designWithRectangle());
 
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
 
     const [download] = downloads;
     expect(download?.filename).toBe('Poster.svg');
@@ -83,7 +92,7 @@ describe('exporting a design', () => {
   it('rasterizes at 2× for PNG and hands over an image blob', async () => {
     const { user, downloads, rasterize } = renderEditor(designWithRectangle());
 
-    await user.click(screen.getByRole('button', { name: 'Export PNG' }));
+    await exportFormat(user, 'PNG');
 
     expect(rasterize).toHaveBeenCalledTimes(1);
     const [svg, size, scale] = rasterize.mock.calls[0] as [
@@ -104,7 +113,7 @@ describe('exporting a design', () => {
   it('assembles a PDF from the document pages', async () => {
     const { user, downloads, rasterize } = renderEditor(designWithRectangle());
 
-    await user.click(screen.getByRole('button', { name: 'Export PDF' }));
+    await exportFormat(user, 'PDF');
 
     const [download] = downloads;
     if (!download) throw new Error('expected a download');
@@ -118,7 +127,7 @@ describe('exporting a design', () => {
   it('reports a rasterizer failure instead of downloading a broken file', async () => {
     const { user, downloads } = renderEditor(designWithRectangle(), { rasterizeResult: 'failed' });
 
-    await user.click(screen.getByRole('button', { name: 'Export PNG' }));
+    await exportFormat(user, 'PNG');
 
     expect(await screen.findByText('No 2D context in this browser.')).toBeInTheDocument();
     expect(screen.getByText('Export failed')).toBeInTheDocument();
@@ -143,7 +152,7 @@ describe('exporting a design', () => {
     await blobStore.put(asset.id, new Blob(['logo-bytes'], { type: 'image/png' }));
 
     const { user, downloads } = renderEditor(document, { blobStore });
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
 
     const svg = await downloads[0]?.blob.text();
     expect(svg).toContain('preserveAspectRatio="xMidYMid slice"');
@@ -164,7 +173,7 @@ describe('exporting a design', () => {
     document.pages[0]?.elements.push(createImageElement({ id: 'i1', assetId: asset.id }));
 
     const { user, downloads } = renderEditor(document, { blobStore: new MemoryAssetBlobStore() });
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
 
     expect(
       await screen.findByText('The image "logo.png" could not be embedded: its image data', {
@@ -184,7 +193,7 @@ describe('exporting a design', () => {
     const properties = screen.getByRole('complementary', { name: 'Properties' });
     expect(within(properties).getByRole('heading', { name: 'Rectangle' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
     const svg = await downloads[0]?.blob.text();
     expect(svg).toContain('<rect width="324" height="324"');
   });
@@ -197,7 +206,7 @@ describe('exporting a design', () => {
     });
     const { user, downloads } = renderEditor(document);
 
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
     expect(downloads[0]?.filename).toBe('Poster spring summer.svg');
   });
 });

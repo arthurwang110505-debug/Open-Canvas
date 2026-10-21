@@ -1,4 +1,4 @@
-import type { FabricCanvasAdapter } from '@opencanvas/canvas-fabric';
+import type { FabricCanvasAdapter, ViewportRect } from '@opencanvas/canvas-fabric';
 import { nextZoomIn, nextZoomOut, type EditorStore } from '@opencanvas/editor-core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -7,6 +7,12 @@ export interface CanvasControllerState {
   ready: boolean;
   /** Alignment guides and snapping while dragging; applied to every mounted adapter. */
   snapping: boolean;
+  /** Increments whenever the viewport pans, zooms or fits; anchors floating UI. */
+  viewportRevision: number;
+  /** True between pointer down and pointer up on the canvas. */
+  interacting: boolean;
+  /** True while inline text editing is active. */
+  editingText: boolean;
 }
 
 /**
@@ -26,11 +32,25 @@ export interface CanvasController {
   setSnapping: (enabled: boolean) => void;
   /** Page coordinates under a viewport point, or `null` while the canvas is not mounted. */
   clientToPage: (clientX: number, clientY: number) => { x: number; y: number } | null;
+  /** Client-space rectangle of the current selection, or `null` when nothing is selected. */
+  getSelectionClientRect: () => ViewportRect | null;
+  /** Called by the adapter when the viewport changes; refreshes floating UI. */
+  bumpViewport: () => void;
+  /** Called by the adapter on pointer down/up. */
+  setInteracting: (interacting: boolean) => void;
+  /** Called by the adapter when inline text editing starts or ends. */
+  setEditingText: (editing: boolean) => void;
 }
 
 export function createCanvasController(store: EditorStore): CanvasController {
   let adapter: FabricCanvasAdapter | null = null;
-  const state = createStore<CanvasControllerState>(() => ({ ready: false, snapping: true }));
+  const state = createStore<CanvasControllerState>(() => ({
+    ready: false,
+    snapping: true,
+    viewportRevision: 0,
+    interacting: false,
+    editingText: false,
+  }));
 
   const withAdapter = (action: (instance: FabricCanvasAdapter) => void): void => {
     if (!adapter) {
@@ -44,7 +64,7 @@ export function createCanvasController(store: EditorStore): CanvasController {
     attach: (instance) => {
       adapter = instance;
       instance.setSnapping(state.getState().snapping);
-      state.setState({ ready: true });
+      state.setState({ ready: true, viewportRevision: state.getState().viewportRevision + 1 });
     },
     detach: (instance) => {
       if (adapter !== instance) return;
@@ -67,5 +87,13 @@ export function createCanvasController(store: EditorStore): CanvasController {
       adapter?.setSnapping(enabled);
     },
     clientToPage: (clientX, clientY) => adapter?.clientToPage(clientX, clientY) ?? null,
+    getSelectionClientRect: () => adapter?.getSelectionClientRect() ?? null,
+    bumpViewport: () => state.setState({ viewportRevision: state.getState().viewportRevision + 1 }),
+    setInteracting: (interacting) => {
+      if (state.getState().interacting !== interacting) state.setState({ interacting });
+    },
+    setEditingText: (editingText) => {
+      if (state.getState().editingText !== editingText) state.setState({ editingText });
+    },
   };
 }

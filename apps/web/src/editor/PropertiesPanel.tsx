@@ -107,8 +107,8 @@ function PageProperties() {
 
   return (
     <>
-      <div className="px-3 py-3">
-        <h2 className="text-sm font-semibold">Page</h2>
+      <div className="px-4 py-3.5">
+        <h2 className="text-[15px] font-semibold">Page</h2>
         <p className="text-xs text-muted-foreground">
           {elementCount === 0
             ? 'Nothing on the page yet. Insert a shape or text from the left panel.'
@@ -507,7 +507,12 @@ function ImageProperties({ element }: { element: ImageElement }) {
           max={300}
           precision={0}
           unit="%"
-          onCommit={(v) => updateSelection({ filters: { ...filters, brightness: v } }, `filter-brightness:${element.id}`)}
+          onCommit={(v) =>
+            updateSelection(
+              { filters: { ...filters, brightness: v } },
+              `filter-brightness:${element.id}`,
+            )
+          }
         />
         <NumberField
           label="Contrast"
@@ -516,7 +521,12 @@ function ImageProperties({ element }: { element: ImageElement }) {
           max={300}
           precision={0}
           unit="%"
-          onCommit={(v) => updateSelection({ filters: { ...filters, contrast: v } }, `filter-contrast:${element.id}`)}
+          onCommit={(v) =>
+            updateSelection(
+              { filters: { ...filters, contrast: v } },
+              `filter-contrast:${element.id}`,
+            )
+          }
         />
         <NumberField
           label="Saturation"
@@ -525,7 +535,12 @@ function ImageProperties({ element }: { element: ImageElement }) {
           max={300}
           precision={0}
           unit="%"
-          onCommit={(v) => updateSelection({ filters: { ...filters, saturate: v } }, `filter-saturate:${element.id}`)}
+          onCommit={(v) =>
+            updateSelection(
+              { filters: { ...filters, saturate: v } },
+              `filter-saturate:${element.id}`,
+            )
+          }
         />
         <NumberField
           label="Blur"
@@ -534,14 +549,23 @@ function ImageProperties({ element }: { element: ImageElement }) {
           max={32}
           precision={1}
           unit="px"
-          onCommit={(v) => updateSelection({ filters: { ...filters, blur: v } }, `filter-blur:${element.id}`)}
+          onCommit={(v) =>
+            updateSelection({ filters: { ...filters, blur: v } }, `filter-blur:${element.id}`)
+          }
         />
-        {(filters.brightness !== 100 || filters.contrast !== 100 || filters.saturate !== 100 || filters.blur !== 0) ? (
+        {filters.brightness !== 100 ||
+        filters.contrast !== 100 ||
+        filters.saturate !== 100 ||
+        filters.blur !== 0 ? (
           <Button
             variant="ghost"
             size="sm"
             className="rounded-full"
-            onClick={() => updateSelection({ filters: { brightness: 100, contrast: 100, saturate: 100, blur: 0 } })}
+            onClick={() =>
+              updateSelection({
+                filters: { brightness: 100, contrast: 100, saturate: 100, blur: 0 },
+              })
+            }
           >
             Reset filters
           </Button>
@@ -601,18 +625,37 @@ function ImageProperties({ element }: { element: ImageElement }) {
               />
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1 rounded-full" onClick={() => updateSelection({ crop: undefined })}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 rounded-full"
+                onClick={() => updateSelection({ crop: undefined })}
+              >
                 Reset crop
               </Button>
-              <Button variant="outline" size="sm" className="flex-1 rounded-full" onClick={() => updateSelection({ crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 } })}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 rounded-full"
+                onClick={() =>
+                  updateSelection({ crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 } })
+                }
+              >
                 Center 80%
               </Button>
             </div>
           </>
         ) : (
           <div className="flex flex-col gap-2">
-            <p className="text-xs text-muted-foreground">No crop — showing full image. Crop selects a sub-rectangle of the source (0–100%).</p>
-            <Button variant="outline" size="sm" className="rounded-full" onClick={() => updateSelection({ crop: { x: 0, y: 0, width: 1, height: 1 } })}>
+            <p className="text-xs text-muted-foreground">
+              No crop — showing full image. Crop selects a sub-rectangle of the source (0–100%).
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              onClick={() => updateSelection({ crop: { x: 0, y: 0, width: 1, height: 1 } })}
+            >
               Enable crop
             </Button>
           </div>
@@ -626,15 +669,18 @@ function ElementProperties({ element }: { element: DesignElement }) {
   const { updateSelection } = useEditorActions();
   const assets = useEditor((state) => state.document.assets);
   const key = (field: string) => `${field}:${element.id}`;
-  const hasStroke = element.type === 'rect' || element.type === 'ellipse' || element.type === 'path';
-  const stroke = hasStroke ? (element as { stroke?: { color: string; width: number } }).stroke : undefined;
+  const hasStroke =
+    element.type === 'rect' || element.type === 'ellipse' || element.type === 'path';
+  const stroke = hasStroke
+    ? (element as { stroke?: { color: string; width: number } }).stroke
+    : undefined;
   const [aspectLocked, setAspectLocked] = useState(false);
   const aspect = element.height !== 0 ? element.width / element.height : 1;
 
   return (
     <>
-      <div className="px-3 py-4">
-        <h2 className="text-sm font-semibold">{ELEMENT_TYPE_LABELS[element.type]}</h2>
+      <div className="px-4 py-3.5">
+        <h2 className="text-[15px] font-semibold">{ELEMENT_TYPE_LABELS[element.type]}</h2>
         <p className="truncate text-xs text-muted-foreground" title={element.id}>
           {describeElement(element, assets)}
         </p>
@@ -719,7 +765,9 @@ function ElementProperties({ element }: { element: DesignElement }) {
             {aspectLocked ? <Link className="size-3.5" /> : <Unlink className="size-3.5" />}
             {aspectLocked ? 'Aspect locked' : 'Lock aspect'}
           </Button>
-          {aspectLocked ? <span className="text-xs text-muted-foreground">W/H stays proportional</span> : null}
+          {aspectLocked ? (
+            <span className="text-xs text-muted-foreground">W/H stays proportional</span>
+          ) : null}
         </div>
       </FieldGroup>
       {(element.type === 'rect' || element.type === 'ellipse' || element.type === 'path') && (
@@ -729,7 +777,9 @@ function ElementProperties({ element }: { element: DesignElement }) {
               <ColorField
                 label={element.fill.type === 'none' ? 'Fill (none)' : 'Fill'}
                 value={element.fill.type === 'solid' ? element.fill.color : '#ffffff'}
-                onCommit={(color) => updateSelection({ fill: { type: 'solid', color } }, key('fill'))}
+                onCommit={(color) =>
+                  updateSelection({ fill: { type: 'solid', color } }, key('fill'))
+                }
               />
               <label className="flex items-center gap-2 text-xs text-foreground">
                 <input
@@ -767,7 +817,10 @@ function ElementProperties({ element }: { element: DesignElement }) {
               className="w-24"
               onCommit={(width) =>
                 element.type === 'path'
-                  ? updateSelection({ stroke: { color: stroke?.color ?? '#111827', width: Math.max(1, width) } }, key('strokeWidth'))
+                  ? updateSelection(
+                      { stroke: { color: stroke?.color ?? '#111827', width: Math.max(1, width) } },
+                      key('strokeWidth'),
+                    )
                   : updateSelection(
                       width <= 0
                         ? { stroke: undefined }
@@ -788,8 +841,8 @@ function ElementProperties({ element }: { element: DesignElement }) {
             <label className="flex items-center gap-2 text-xs text-foreground">
               <input
                 type="checkbox"
-                checked={(element as any).closed}
-                onChange={(event) => updateSelection({ closed: event.target.checked } as any)}
+                checked={element.closed}
+                onChange={(event) => updateSelection({ closed: event.target.checked })}
                 className="accent-primary"
               />
               Closed shape
@@ -822,7 +875,7 @@ function MultiSelectionProperties({ elements }: { elements: DesignElement[] }) {
   return (
     <>
       <div className="px-3 py-3">
-        <h2 className="text-sm font-semibold">{elements.length} elements selected</h2>
+        <h2 className="text-[15px] font-semibold">{elements.length} elements selected</h2>
         <p className="text-xs text-muted-foreground">
           Drag to move them together. Shared properties apply to every selected element.
         </p>
@@ -852,7 +905,7 @@ export function PropertiesPanel() {
   return (
     <aside
       aria-label="Properties"
-      className="flex h-full w-72 flex-col overflow-y-auto border-l border-border bg-panel"
+      className="flex h-full w-[300px] flex-col overflow-y-auto border-l border-border bg-panel"
     >
       {selected.length === 0 && <PageProperties />}
       {single && <ElementProperties key={single.id} element={single} />}
