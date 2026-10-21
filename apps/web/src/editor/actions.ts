@@ -32,10 +32,11 @@ export type ShapeKind =
 export type TextPreset = 'heading' | 'subheading' | 'body';
 
 export interface EditorActions {
-  addShape: (kind: ShapeKind) => void;
-  addText: (preset: TextPreset) => void;
-  /** Places a bundled icon, centred on the page; the id comes from `@opencanvas/icons`. */
-  addIcon: (iconId: string) => void;
+  /** Adds a shape in the middle of the page, or centred on `at` (page coordinates). */
+  addShape: (kind: ShapeKind, at?: { x: number; y: number }) => void;
+  addText: (preset: TextPreset, at?: { x: number; y: number }) => void;
+  /** Places a bundled icon; the id comes from `@opencanvas/icons`. */
+  addIcon: (iconId: string, at?: { x: number; y: number }) => void;
   deleteSelection: () => void;
   duplicateSelection: () => void;
   nudgeSelection: (dx: number, dy: number) => void;
@@ -73,9 +74,24 @@ const TEXT_PRESETS: Record<
   body: { text: 'Add a little bit of body text', fontSize: 32, fontWeight: 400, widthRatio: 0.6 },
 };
 
-/** Centers a `width`x`height` box on the page. */
-function centered(page: { width: number; height: number }, width: number, height: number) {
-  return { x: Math.round((page.width - width) / 2), y: Math.round((page.height - height) / 2) };
+/**
+ * Top-left for a `width`x`height` box: centred on the page by default, or centred on `at` when a
+ * drop point is given. Coordinates are clamped to the canvas so a drop on the edge still lands.
+ */
+function placeAt(
+  page: { width: number; height: number },
+  width: number,
+  height: number,
+  at?: { x: number; y: number },
+) {
+  if (!at) {
+    return { x: Math.round((page.width - width) / 2), y: Math.round((page.height - height) / 2) };
+  }
+  const clamp = (value: number, max: number) => Math.round(Math.min(Math.max(value, 0), max));
+  return {
+    x: clamp(at.x - width / 2, page.width - width),
+    y: clamp(at.y - height / 2, page.height - height),
+  };
 }
 
 export function useEditorActions(): EditorActions {
@@ -93,14 +109,15 @@ export function useEditorActions(): EditorActions {
     };
 
     return {
-      addShape: (kind) => {
+      addShape: (kind, at) => {
         const { size } = store.getState().document;
         const side = Math.round(Math.min(size.width, size.height) * 0.3);
-        const position = centered(size, side, side);
+        const position = placeAt(size, side, side, at);
+        const linePos = placeAt(size, side, 6, at);
         if (kind === 'ellipse') {
           addElement(createEllipseElement({ ...position, width: side, height: side }));
         } else if (kind === 'line') {
-          const pos = centered(size, side, 6);
+          const pos = linePos;
           const y = pos.y + 3;
           addElement(
             createPathElement(
@@ -199,12 +216,12 @@ export function useEditorActions(): EditorActions {
         }
       },
 
-      addIcon: (iconId) => {
+      addIcon: (iconId, at) => {
         const { size } = store.getState().document;
         const side = Math.round(Math.min(size.width, size.height) * 0.2);
         addElement(
           createIconElement({
-            ...centered(size, side, side),
+            ...placeAt(size, side, side, at),
             width: side,
             height: side,
             iconId,
@@ -212,7 +229,7 @@ export function useEditorActions(): EditorActions {
         );
       },
 
-      addText: (preset) => {
+      addText: (preset, at) => {
         const { size } = store.getState().document;
         const spec = TEXT_PRESETS[preset];
         const scale = Math.min(size.width, size.height) / 1080;
@@ -220,7 +237,7 @@ export function useEditorActions(): EditorActions {
         const width = Math.round(size.width * spec.widthRatio);
         const height = Math.round(fontSize * 1.2);
         const element = createTextElement({
-          ...centered(size, width, height),
+          ...placeAt(size, width, height, at),
           width,
           height,
           text: spec.text,

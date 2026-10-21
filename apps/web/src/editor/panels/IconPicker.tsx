@@ -44,8 +44,8 @@ export function IconPreview({
 }
 
 /**
- * The library panel: search across names and keywords, then either insert (click) or replace the
- * selected icon (`mode="replace"`). Search runs over the data, never over 200 rendered nodes.
+ * The replace picker that opens from an icon's properties: search across names and keywords, then
+ * swap the selected icon. Search runs over the data, never over the rendered nodes.
  */
 export function IconPicker({
   onPick,
@@ -97,7 +97,7 @@ export function IconPicker({
       <div
         id={listId}
         role="listbox"
-        aria-label="Icons"
+        aria-label="Replace icon"
         className="grid max-h-[420px] grid-cols-4 gap-2 overflow-y-auto pr-1"
       >
         {results.map((entry) => (
@@ -123,8 +123,7 @@ export function IconPicker({
         <p className="py-4 text-center text-xs text-muted-foreground">No icons match “{query}”.</p>
       ) : (
         <p className="text-[11px] text-muted-foreground">
-          {results.length} icon{results.length === 1 ? '' : 's'} · click to insert, then recolour or
-          resize it like any other element.
+          {results.length} icon{results.length === 1 ? '' : 's'} · click to swap the selected icon.
         </p>
       )}
     </div>

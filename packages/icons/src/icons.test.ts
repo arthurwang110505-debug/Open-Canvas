@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { ICON_ENTRIES, ICON_FAMILIES, ICON_IDS, getIcon, searchIcons, shapeToSvg } from './index';
+import {
+  ICON_ENTRIES,
+  ICON_FAMILIES,
+  ICON_IDS,
+  POPULAR_ICON_IDS,
+  getIcon,
+  popularIcons,
+  searchIcons,
+  shapeToSvg,
+} from './index';
 import { ICON_VIEWBOX } from './types';
 
 describe('the icon catalogue', () => {
@@ -83,6 +92,21 @@ describe('searchIcons', () => {
 
   it('returns nothing when a term matches nothing', () => {
     expect(searchIcons('heart zzzz')).toEqual([]);
+  });
+});
+
+describe('popularIcons', () => {
+  it('only names icons this build actually ships', () => {
+    for (const id of POPULAR_ICON_IDS) expect(getIcon(id), id).toBeDefined();
+    expect(popularIcons().map((entry) => entry.id)).toEqual([...POPULAR_ICON_IDS]);
+    expect(new Set(POPULAR_ICON_IDS).size).toBe(POPULAR_ICON_IDS.length);
+  });
+
+  it('opens the picker with a useful spread rather than the first alphabetical page', () => {
+    const popular = popularIcons();
+    expect(popular.length).toBeGreaterThanOrEqual(40);
+    const families = new Set(popular.map((entry) => entry.family));
+    expect(families.size).toBeGreaterThan(6);
   });
 });
 

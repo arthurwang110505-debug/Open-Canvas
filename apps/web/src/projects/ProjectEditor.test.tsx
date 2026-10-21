@@ -50,7 +50,7 @@ function renderProjectEditor(services: ProjectsServices, projectId: string = PRO
 }
 
 async function insertRectangle(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('tab', { name: 'Shapes' }));
+  await user.click(await screen.findByRole('tab', { name: 'Elements' }));
   await user.click(await screen.findByRole('button', { name: 'Rectangle' }));
 }
 

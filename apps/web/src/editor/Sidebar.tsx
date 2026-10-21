@@ -1,159 +1,35 @@
-import { Button, Input, cn } from '@opencanvas/ui';
+import { Button, cn } from '@opencanvas/ui';
 import {
-  Circle,
-  Hexagon,
-  Heart,
   ImageIcon,
   Layers,
   LayoutTemplate,
-  Minus,
   PaintBucket,
   PenTool,
-  Search,
   Shapes,
-  Sparkles,
-  Square,
-  Squircle,
-  Star,
-  Triangle,
   Type,
 } from 'lucide-react';
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
-import { useEditorActions, type ShapeKind } from './actions';
+import { useEditorActions } from './actions';
+import { ElementsPanel } from './elements/ElementsPanel';
 import { BackgroundPanel } from './panels/BackgroundPanel';
-import { IconPicker } from './panels/IconPicker';
 import { LayersPanel } from './panels/LayersPanel';
 import { UploadsPanel } from './panels/UploadsPanel';
 import { useDraw } from './draw/DrawContext';
 import { TemplateGallery } from '../templates/TemplateGallery';
 import { getTemplate } from '../templates/catalog';
 
-type SidebarTab =
-  'design' | 'shapes' | 'icons' | 'text' | 'draw' | 'uploads' | 'background' | 'layers';
+type SidebarTab = 'design' | 'elements' | 'text' | 'draw' | 'uploads' | 'background' | 'layers';
 
 const TABS: { id: SidebarTab; label: string; icon: ReactNode }[] = [
   { id: 'design', label: 'Design', icon: <LayoutTemplate /> },
-  { id: 'shapes', label: 'Shapes', icon: <Shapes /> },
-  { id: 'icons', label: 'Icons', icon: <Heart /> },
+  { id: 'elements', label: 'Elements', icon: <Shapes /> },
   { id: 'text', label: 'Text', icon: <Type /> },
   { id: 'draw', label: 'Draw', icon: <PenTool /> },
   { id: 'uploads', label: 'Uploads', icon: <ImageIcon /> },
   { id: 'background', label: 'Background', icon: <PaintBucket /> },
   { id: 'layers', label: 'Layers', icon: <Layers /> },
 ];
-
-function ShapesPanel() {
-  const { addShape } = useEditorActions();
-  const [query, setQuery] = useState('');
-  const items = useMemo<{ kind: ShapeKind; label: string; icon: ReactNode; keywords: string }[]>(
-    () => [
-      {
-        kind: 'rect',
-        label: 'Rectangle',
-        icon: <Square className="size-7" />,
-        keywords: 'rect square box',
-      },
-      {
-        kind: 'rounded-rect' as const,
-        label: 'Rounded rectangle',
-        icon: <Squircle className="size-7" />,
-        keywords: 'rounded squircle pill',
-      },
-      {
-        kind: 'ellipse' as const,
-        label: 'Ellipse',
-        icon: <Circle className="size-7" />,
-        keywords: 'circle oval ellipse',
-      },
-      {
-        kind: 'line' as const,
-        label: 'Line',
-        icon: <Minus className="size-7" />,
-        keywords: 'line divider',
-      },
-      {
-        kind: 'triangle' as const,
-        label: 'Triangle',
-        icon: <Triangle className="size-7" />,
-        keywords: 'triangle arrow',
-      },
-      {
-        kind: 'star' as const,
-        label: 'Star',
-        icon: <Star className="size-7" />,
-        keywords: 'star favorite',
-      },
-      {
-        kind: 'hexagon' as const,
-        label: 'Hexagon',
-        icon: <Hexagon className="size-7" />,
-        keywords: 'hexagon polygon',
-      },
-      {
-        kind: 'sparkle' as const,
-        label: 'Sparkle',
-        icon: <Sparkles className="size-7" />,
-        keywords: 'sparkle magic',
-      },
-    ],
-    [],
-  );
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((i) => i.label.toLowerCase().includes(q) || i.keywords.includes(q));
-  }, [items, query]);
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          placeholder="Search shapes"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="h-8 rounded-full bg-muted/60 pl-8 text-sm"
-        />
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        {filtered.map((item) => (
-          <Button
-            key={item.kind}
-            variant="outline"
-            className="h-[72px] flex-col gap-1 rounded-xl text-xs font-normal hover:border-primary/30 hover:bg-primary/[0.04]"
-            onClick={() => addShape(item.kind)}
-          >
-            {item.icon}
-            {item.label}
-          </Button>
-        ))}
-      </div>
-      {filtered.length === 0 ? (
-        <p className="py-4 text-center text-xs text-muted-foreground">No shapes match “{query}”.</p>
-      ) : null}
-      <p className="text-[11px] text-muted-foreground">
-        Tip: Press <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">R</kbd> for
-        rectangle, <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">O</kbd> for
-        ellipse.
-      </p>
-    </div>
-  );
-}
-
-function IconsPanel() {
-  const { addIcon } = useEditorActions();
-  return (
-    <div className="flex flex-col gap-3">
-      <IconPicker onPick={addIcon} />
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        Icons are vectors, not images: they stay sharp at any size, take the colour you choose, and
-        add nothing to the document but an id and a size.
-      </p>
-    </div>
-  );
-}
 
 function TextPanel() {
   const { addText } = useEditorActions();
@@ -329,8 +205,7 @@ export function Sidebar() {
           {TABS.find((tab) => tab.id === active)?.label}
         </h2>
         {active === 'design' && <DesignPanel />}
-        {active === 'shapes' && <ShapesPanel />}
-        {active === 'icons' && <IconsPanel />}
+        {active === 'elements' && <ElementsPanel />}
         {active === 'text' && <TextPanel />}
         {active === 'draw' && <DrawPanel />}
         {active === 'uploads' && <UploadsPanel />}

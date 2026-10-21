@@ -20,7 +20,7 @@ function renderEditor() {
 }
 
 async function insertRectangle(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Shapes' }));
+  await user.click(screen.getByRole('tab', { name: 'Elements' }));
   await user.click(screen.getByRole('button', { name: 'Rectangle' }));
   return screen.getByRole('complementary', { name: 'Properties' });
 }
@@ -225,7 +225,7 @@ describe('EditorPage', () => {
 
   it('keeps the selection toolbar available after inserting an element', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Shapes' }));
+    await user.click(screen.getByRole('tab', { name: 'Elements' }));
     await user.click(screen.getByRole('button', { name: 'Ellipse' }));
     expect(screen.getByRole('toolbar', { name: 'Selection actions' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Duplicate selection' })).toBeEnabled();

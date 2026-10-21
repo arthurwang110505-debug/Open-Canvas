@@ -14,6 +14,62 @@ export const ICONS: Readonly<Record<string, IconEntry>> = Object.fromEntries(
 /** Ids of the icons that ship with the app, in catalogue order. */
 export const ICON_IDS: readonly string[] = ICON_ENTRIES.map((entry) => entry.id);
 
+/**
+ * The icons a blank page is most likely to need, in the order a picker should show them before
+ * anyone types. Deliberately a small curated list rather than a frequency counter: the panel has
+ * to look the same for everyone, with no telemetry.
+ */
+export const POPULAR_ICON_IDS: readonly string[] = [
+  'heart',
+  'star',
+  'sparkles',
+  'zap',
+  'check',
+  'badge-check',
+  'arrow-right',
+  'arrow-up-right',
+  'plus',
+  'x',
+  'search',
+  'bell',
+  'home',
+  'user',
+  'users',
+  'mail',
+  'phone',
+  'message-circle',
+  'calendar',
+  'clock',
+  'map-pin',
+  'globe',
+  'gift',
+  'package',
+  'shopping-bag',
+  'credit-card',
+  'trophy',
+  'crown',
+  'gem',
+  'rocket',
+  'lightbulb',
+  'palette',
+  'camera',
+  'video',
+  'music',
+  'coffee',
+  'utensils',
+  'leaf',
+  'sun',
+  'moon',
+  'cloud',
+  'flame',
+  'droplet',
+  'smile',
+  'thumbs-up',
+  'shield',
+  'lock',
+  'flag',
+];
+
 /** Families in picker order, with a display label. */
 export const ICON_FAMILIES: readonly { id: string; label: string }[] = [
   { id: 'essentials', label: 'Essentials' },
@@ -35,6 +91,13 @@ export const ICON_FAMILIES: readonly { id: string; label: string }[] = [
 /** Shape data for an icon id, or `undefined` when the id is unknown or from a future version. */
 export function getIcon(id: string): IconEntry | undefined {
   return ICONS[id];
+}
+
+/** `POPULAR_ICON_IDS` resolved to catalogue entries, skipping any id this build does not have. */
+export function popularIcons(): IconEntry[] {
+  return POPULAR_ICON_IDS.map((id) => ICONS[id]).filter((entry): entry is IconEntry =>
+    Boolean(entry),
+  );
 }
 
 /**

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type PointerE
 import { useEditorActions } from './actions';
 import { useAssetServices } from './assets/useAssetServices';
 import { useImageImport } from './assets/useImageImport';
+import { hasElementDrag, readElementDragPayload } from './elements/drag';
 import { ZoomControl } from './ZoomControl';
 import { useCanvasController, useEditor, useEditorStore, useNotificationStore } from './hooks';
 import { useDraw } from './draw/DrawContext';
@@ -35,6 +36,9 @@ export function CanvasStage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const adapterRef = useRef<FabricCanvasAdapter | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  // Screen-space preview of what a dragged element will become, while it hovers the canvas.
+  const [ghost, setGhost] = useState<{ x: number; y: number; size: number } | null>(null);
+  const zoom = useEditor((state) => state.zoom);
   const actions = useEditorActions();
   const isEmpty = useEditor((state) => selectActivePage(state).elements.length === 0);
   const isDrawingRef = useRef(false);
@@ -171,16 +175,69 @@ export function CanvasStage() {
     }
   }, [drawEnabled]);
 
+  // A cancelled drag never reaches this element's `onDrop`, so clear the preview whenever the
+  // gesture ends anywhere on the page.
+  useEffect(() => {
+    const clear = () => {
+      setGhost(null);
+      setDropActive(false);
+    };
+    window.addEventListener('dragend', clear);
+    return () => window.removeEventListener('dragend', clear);
+  }, []);
+
   const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('Files');
 
+  const pagePoint = (event: DragEvent<HTMLDivElement>) =>
+    Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+      ? controller.clientToPage(event.clientX, event.clientY)
+      : null;
+
+  /** The element's eventual page size in screen pixels, or `null` for an unknown drag. */
+  const ghostSize = (event: DragEvent<HTMLDivElement>): number | null => {
+    const payload = readElementDragPayload(event.dataTransfer);
+    if (!payload) return null;
+    const { size } = store.getState().document;
+    const fraction = payload.kind === 'icon' ? 0.2 : 0.3;
+    return Math.round(Math.min(size.width, size.height) * fraction * zoom);
+  };
+
+  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (hasElementDrag(event.dataTransfer)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      const size = ghostSize(event);
+      const container = containerRef.current;
+      if (size && container) {
+        const rect = container.getBoundingClientRect();
+        setGhost({
+          x: event.clientX - rect.left - size / 2,
+          y: event.clientY - rect.top - size / 2,
+          size,
+        });
+      }
+      return;
+    }
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setDropActive(true);
+  };
+
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    const payload = readElementDragPayload(event.dataTransfer);
+    if (payload) {
+      event.preventDefault();
+      setGhost(null);
+      const at = pagePoint(event) ?? undefined;
+      if (payload.kind === 'icon') actions.addIcon(payload.iconId, at);
+      else actions.addShape(payload.shape, at);
+      return;
+    }
     if (!hasFiles(event)) return;
     event.preventDefault();
     setDropActive(false);
-    const at =
-      Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
-        ? controller.clientToPage(event.clientX, event.clientY)
-        : null;
+    const at = pagePoint(event);
     void importFiles(Array.from(event.dataTransfer.files), at ? { at } : undefined);
   };
 
@@ -256,15 +313,11 @@ export function CanvasStage() {
         dropActive && 'ring-2 ring-ring ring-inset',
         drawEnabled && 'cursor-crosshair',
       )}
-      onDragOver={(event) => {
-        if (!hasFiles(event)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'copy';
-        setDropActive(true);
-      }}
+      onDragOver={onDragOver}
       onDragLeave={(event) => {
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
         setDropActive(false);
+        setGhost(null);
       }}
       onDrop={onDrop}
       onPointerDown={handlePointerDown}
@@ -316,6 +369,14 @@ export function CanvasStage() {
         <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background shadow">
           Drawing — drag on canvas. Press D or click Draw to exit.
         </div>
+      )}
+      {ghost && (
+        <div
+          aria-hidden="true"
+          data-testid="element-drop-ghost"
+          className="pointer-events-none absolute z-10 rounded-md border-2 border-dashed border-primary/70 bg-primary/10"
+          style={{ left: ghost.x, top: ghost.y, width: ghost.size, height: ghost.size }}
+        />
       )}
       {dropActive && (
         <div

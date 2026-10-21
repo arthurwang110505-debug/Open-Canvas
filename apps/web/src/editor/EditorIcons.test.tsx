@@ -20,7 +20,7 @@ function renderEditor(document?: DesignDocument) {
 }
 
 async function openIconsTab(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Icons' }));
+  await user.click(screen.getByRole('tab', { name: 'Elements' }));
   return screen.getByRole('listbox', { name: 'Icons' });
 }
 
@@ -45,14 +45,22 @@ describe('icons', () => {
     const { user } = renderEditor();
     const list = await openIconsTab(user);
 
-    await user.type(screen.getByRole('searchbox', { name: 'Search icons' }), 'money');
+    await user.type(screen.getByRole('searchbox', { name: 'Search elements' }), 'money');
     expect(within(list).getByRole('option', { name: 'Insert wallet' })).toBeInTheDocument();
     expect(within(list).queryByRole('option', { name: 'Insert heart' })).not.toBeInTheDocument();
 
-    await user.clear(screen.getByRole('searchbox', { name: 'Search icons' }));
-    await user.click(screen.getByRole('button', { name: 'Food' }));
-    expect(within(list).getByRole('option', { name: 'Insert pizza' })).toBeInTheDocument();
-    expect(within(list).queryByRole('option', { name: 'Insert heart' })).not.toBeInTheDocument();
+    await user.clear(screen.getByRole('searchbox', { name: 'Search elements' }));
+    // Category chips narrow the panel to one library at a time.
+    await user.click(screen.getByRole('button', { name: 'Shapes' }));
+    expect(screen.queryByRole('listbox', { name: 'Icons' })).not.toBeInTheDocument();
+    // The icon list unmounts while Shapes is selected, so re-query it rather than reusing `list`.
+    await user.click(screen.getByRole('button', { name: 'Icons' }));
+    const iconsAgain = screen.getByRole('listbox', { name: 'Icons' });
+    await user.type(screen.getByRole('searchbox', { name: 'Search elements' }), 'pizza');
+    expect(within(iconsAgain).getByRole('option', { name: 'Insert pizza' })).toBeInTheDocument();
+    expect(
+      within(iconsAgain).queryByRole('option', { name: 'Insert heart' }),
+    ).not.toBeInTheDocument();
   });
 
   it('recolours and replaces a selected icon', async () => {
@@ -75,11 +83,13 @@ describe('icons', () => {
     expect(color).toHaveValue('#ef4444');
 
     await user.click(within(properties).getByRole('button', { name: 'Replace' }));
-    const picker = within(properties).getByRole('listbox', { name: 'Icons' });
+    const picker = within(properties).getByRole('listbox', { name: 'Replace icon' });
     await user.click(within(picker).getByRole('option', { name: 'Insert star' }));
     expect(within(properties).getByText('star')).toBeInTheDocument();
     // The picker closes again so the panel is not left in replace mode.
-    expect(within(properties).queryByRole('listbox', { name: 'Icons' })).not.toBeInTheDocument();
+    expect(
+      within(properties).queryByRole('listbox', { name: 'Replace icon' }),
+    ).not.toBeInTheDocument();
   });
 
   it('undoes an icon insertion as one step', async () => {
