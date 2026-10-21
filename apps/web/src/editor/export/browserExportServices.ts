@@ -1,6 +1,7 @@
 import { createSvgRasterizer, type TextMeasurer } from '@opencanvas/export';
 
 import { downloadBlob } from '../../download';
+import { resolveFontFaces } from '../../fonts/embed';
 import type { ExportServices } from './ExportServices';
 
 /**
@@ -27,5 +28,6 @@ export function createBrowserExportServices(): ExportServices {
     rasterize: createSvgRasterizer(),
     ...(measureText ? { measureText } : {}),
     download: downloadBlob,
+    resolveFontFaces,
   };
 }

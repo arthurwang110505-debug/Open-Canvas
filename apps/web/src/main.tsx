@@ -1,14 +1,14 @@
-import '@fontsource/inter/400.css';
-import '@fontsource/inter/500.css';
-import '@fontsource/inter/600.css';
-import '@fontsource/inter/700.css';
-import '@fontsource/inter/800.css';
 import './index.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
+import { installBundledFonts } from './fonts/install';
+
+// Register the bundled typefaces before the first paint so the editor and every export can use
+// them; the files are served from this app, so nothing is fetched from a third party.
+installBundledFonts();
 
 const container = document.getElementById('root');
 if (!container) {

@@ -11,7 +11,8 @@ posters, social media graphics, presentation covers and other visual content.
 > uploaded images and layers (drag-and-drop, cover/fill, snapping guides, align and distribute)
 > with undo/redo and keyboard shortcuts. Templates, AI assistance and cloud sync are not
 > implemented yet.
-> See [docs/roadmap.md](docs/roadmap.md) for what exists today and what comes next.
+> See [docs/roadmap.md](docs/roadmap.md) for what exists today and what comes next, and
+> [docs/fonts.md](docs/fonts.md) for the bundled typefaces and how they are embedded in exports.
 
 ## Principles
 

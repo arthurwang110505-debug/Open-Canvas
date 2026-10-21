@@ -2,7 +2,6 @@ import {
   CANVAS_PRESETS,
   LIMITS,
   type DesignElement,
-  type FontWeight,
   type ImageElement,
   type ImageFit,
   type TextAlign,
@@ -49,18 +48,22 @@ import { useShallow } from 'zustand/shallow';
 
 import { useEditorActions } from './actions';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
-import { FONT_FAMILIES } from './fonts';
+import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
 import { useEditor } from './hooks';
 import { ColorField, FieldGroup, NumberField } from './panels/fields';
 
-/** Weights bundled for Inter; browsers synthesize the rest for system fonts. */
-const FONT_WEIGHTS: { value: FontWeight; label: string }[] = [
-  { value: 400, label: 'Regular' },
-  { value: 500, label: 'Medium' },
-  { value: 600, label: 'Semibold' },
-  { value: 700, label: 'Bold' },
-  { value: 800, label: 'Extra bold' },
-];
+/** Names for the weights the bundled families expose; anything else shows its number. */
+const FONT_WEIGHT_LABELS: Record<number, string> = {
+  100: 'Thin',
+  200: 'Extra light',
+  300: 'Light',
+  400: 'Regular',
+  500: 'Medium',
+  600: 'Semibold',
+  700: 'Bold',
+  800: 'Extra bold',
+  900: 'Black',
+};
 
 const TEXT_ALIGNMENTS: { value: TextAlign; label: string; icon: React.ReactNode }[] = [
   { value: 'left', label: 'Align left', icon: <AlignLeft /> },
@@ -334,17 +337,38 @@ function TextProperties({ element }: { element: TextElement }) {
         <Select
           id={familyId}
           value={element.fontFamily}
+          style={{ fontFamily: `"${element.fontFamily}"` }}
           onChange={(event) => updateSelection({ fontFamily: event.target.value })}
         >
-          {!FONT_FAMILIES.includes(element.fontFamily) && (
+          {!FONT_FAMILY_NAMES.includes(element.fontFamily) && (
             <option value={element.fontFamily}>{element.fontFamily}</option>
           )}
-          {FONT_FAMILIES.map((family) => (
-            <option key={family} value={family} style={{ fontFamily: family }}>
-              {family}
-            </option>
+          {FONT_CATEGORIES.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.families.map((font) => (
+                <option
+                  key={font.family}
+                  value={font.family}
+                  style={{ fontFamily: `"${font.family}", sans-serif` }}
+                >
+                  {font.family}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </Select>
+        <p
+          aria-hidden="true"
+          data-testid="font-specimen"
+          className="truncate rounded-md border border-border bg-muted/40 px-2 py-1.5 text-base leading-tight text-foreground"
+          style={{
+            fontFamily: `"${element.fontFamily}"`,
+            fontWeight: element.fontWeight,
+            fontStyle: element.fontStyle,
+          }}
+        >
+          Aa Bb Cc — The quick brown fox
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <NumberField
@@ -363,9 +387,9 @@ function TextProperties({ element }: { element: TextElement }) {
             value={element.fontWeight}
             onChange={(event) => updateSelection({ fontWeight: Number(event.target.value) })}
           >
-            {FONT_WEIGHTS.map((weight) => (
-              <option key={weight.value} value={weight.value}>
-                {weight.label}
+            {fontWeightsFor(element.fontFamily, element.fontWeight).map((weight) => (
+              <option key={weight} value={weight}>
+                {FONT_WEIGHT_LABELS[weight] ?? String(weight)}
               </option>
             ))}
           </Select>

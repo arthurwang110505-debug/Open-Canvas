@@ -3,11 +3,12 @@ import {
   createImageAsset,
   createImageElement,
   createRectElement,
+  createTextElement,
   err,
   ok,
   type DesignDocument,
 } from '@opencanvas/document';
-import type { ExportError } from '@opencanvas/export';
+import type { EmbeddedFontFace, ExportError } from '@opencanvas/export';
 import { MemoryAssetBlobStore } from '@opencanvas/storage';
 import { TooltipProvider } from '@opencanvas/ui';
 import { render, screen, within } from '@testing-library/react';
@@ -32,24 +33,43 @@ async function exportFormat(
   await user.click(screen.getByRole('menuitem', { name: `Export ${format}` }));
 }
 
+/** One fake face is enough: the embedder has its own tests, exports only pass it through. */
+const EMBEDDED_INTER: EmbeddedFontFace = {
+  family: 'Inter',
+  weight: '100 900',
+  style: 'normal',
+  data: 'QUFB',
+};
+
 interface Harness {
   user: ReturnType<typeof userEvent.setup>;
   downloads: { blob: Blob; filename: string }[];
   rasterize: ReturnType<typeof vi.fn>;
+  resolveFontFaces: ReturnType<typeof vi.fn>;
 }
 
 function renderEditor(
   document: DesignDocument,
-  options: { rasterizeResult?: 'ok' | 'failed'; blobStore?: MemoryAssetBlobStore } = {},
+  options: {
+    rasterizeResult?: 'ok' | 'failed';
+    blobStore?: MemoryAssetBlobStore;
+    fontFailure?: boolean;
+  } = {},
 ): Harness {
   const downloads: { blob: Blob; filename: string }[] = [];
   const failure: ExportError = { code: 'raster-failed', message: 'No 2D context in this browser.' };
   const rasterize = vi.fn(() =>
     Promise.resolve(options.rasterizeResult === 'failed' ? err(failure) : ok(ONE_PIXEL_PNG)),
   );
+  const resolveFontFaces = vi.fn(() =>
+    options.fontFailure
+      ? Promise.reject(new Error('The font "Inter" could not be embedded: HTTP 404'))
+      : Promise.resolve([EMBEDDED_INTER]),
+  );
   const services: Partial<ExportServices> = {
     rasterize,
     download: (blob, filename) => downloads.push({ blob, filename }),
+    resolveFontFaces,
   };
   const user = userEvent.setup();
   render(
@@ -61,7 +81,7 @@ function renderEditor(
       />
     </TooltipProvider>,
   );
-  return { user, downloads, rasterize };
+  return { user, downloads, rasterize, resolveFontFaces };
 }
 
 function designWithRectangle(): DesignDocument {
@@ -131,6 +151,35 @@ describe('exporting a design', () => {
 
     expect(await screen.findByText('No 2D context in this browser.')).toBeInTheDocument();
     expect(screen.getByText('Export failed')).toBeInTheDocument();
+    expect(downloads).toEqual([]);
+  });
+
+  it('embeds the fonts the page uses so the file keeps its typeface', async () => {
+    const document = createBlankDocument({ id: 'doc_font', name: 'Menu', now: fixedDate });
+    document.pages[0]?.elements.push(
+      createTextElement({ id: 't1', x: 20, y: 20, text: 'Dinner', fontFamily: 'Playfair Display' }),
+    );
+    const { user, downloads, resolveFontFaces } = renderEditor(document);
+
+    await exportFormat(user, 'SVG');
+
+    expect(resolveFontFaces).toHaveBeenCalledWith([
+      { family: 'Playfair Display', weight: 400, style: 'normal' },
+    ]);
+    const svg = await downloads[0]?.blob.text();
+    expect(svg).toContain('<defs>');
+    expect(svg).toContain('@font-face { font-family: &quot;Inter&quot;');
+    expect(svg).toContain('data:font/woff2;base64,QUFB');
+  });
+
+  it('reports a font that cannot be embedded instead of exporting a fallback', async () => {
+    const { user, downloads } = renderEditor(designWithRectangle(), { fontFailure: true });
+
+    await exportFormat(user, 'SVG');
+
+    expect(
+      await screen.findByText('The font "Inter" could not be embedded: HTTP 404'),
+    ).toBeInTheDocument();
     expect(downloads).toEqual([]);
   });
 

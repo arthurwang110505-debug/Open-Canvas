@@ -128,18 +128,23 @@ export function CanvasStage() {
     observer.observe(container);
 
     let fontsCancelled = false;
-    if (typeof document.fonts !== 'undefined') {
-      document.fonts.ready
-        .then(() => {
-          if (!fontsCancelled) adapter.invalidateTextLayout();
-        })
-        .catch((error: unknown) => {
-          console.warn('Web fonts failed to load; text metrics may be approximate.', error);
-        });
+    // `fonts.ready` resolves once at startup; a family picked later (see the font menu) arrives
+    // afterwards, and `loadingdone` is what tells the canvas to re-measure with the real metrics.
+    const remeasureText = () => {
+      if (!fontsCancelled) adapter.invalidateTextLayout();
+    };
+    const fonts = typeof document === 'undefined' ? undefined : document.fonts;
+    if (fonts) {
+      fonts.ready.catch((error: unknown) => {
+        console.warn('Web fonts failed to load; text metrics may be approximate.', error);
+      });
+      fonts.addEventListener('loadingdone', remeasureText);
+      void fonts.ready.then(remeasureText);
     }
 
     return () => {
       fontsCancelled = true;
+      fonts?.removeEventListener('loadingdone', remeasureText);
       observer.disconnect();
       unsubscribe();
       controller.detach(adapter);

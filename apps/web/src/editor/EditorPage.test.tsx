@@ -139,6 +139,33 @@ describe('EditorPage', () => {
     expect(within(panel).getByLabelText('Weight')).toHaveValue('800');
   });
 
+  it('offers the bundled families and previews the chosen font', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add a heading' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const font = within(panel).getByLabelText('Font');
+
+    // Bundled families are grouped, and only weights the family ships are offered.
+    expect(within(font).getByRole('group', { name: 'Serif' })).toBeInTheDocument();
+    await user.selectOptions(font, 'Playfair Display');
+    expect(font).toHaveValue('Playfair Display');
+    expect(within(panel).getByTestId('font-specimen')).toHaveStyle({
+      fontFamily: '"Playfair Display"',
+    });
+
+    // Playfair Display starts at 400, so 800 is not a real weight for it.
+    const weight = within(panel).getByLabelText<HTMLSelectElement>('Weight');
+    expect([...weight.options].map((option) => option.value)).toEqual([
+      '400',
+      '500',
+      '600',
+      '700',
+      '800',
+      '900',
+    ]);
+  });
+
   it('reorders layers through the arrange controls', async () => {
     const { user } = renderEditor();
     await insertRectangle(user);
