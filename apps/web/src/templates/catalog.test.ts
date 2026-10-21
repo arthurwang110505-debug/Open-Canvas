@@ -70,6 +70,27 @@ describe('the template catalogue', () => {
     }
   });
 
+  it('keeps generated text boxes from landing on each other', () => {
+    for (const instance of INSTANCES) {
+      const template = getTemplate(instance.id);
+      const document = template?.build();
+      const texts = (document?.pages[0]?.elements ?? []).filter(
+        (element) => element.type === 'text',
+      );
+      for (let i = 0; i < texts.length; i += 1) {
+        for (let j = i + 1; j < texts.length; j += 1) {
+          const a = texts[i]!;
+          const b = texts[j]!;
+          const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+          const overlapY = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+          if (overlapX <= 8 || overlapY <= 8) continue;
+          const share = overlapY / Math.min(a.height, b.height);
+          expect(share, `${instance.id}: "${a.text}" over "${b.text}"`).toBeLessThan(0.2);
+        }
+      }
+    }
+  });
+
   it('renders every design to a vector file with no broken numbers', async () => {
     for (const template of TEMPLATES) {
       const document = template.build();

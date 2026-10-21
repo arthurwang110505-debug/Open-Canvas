@@ -284,7 +284,7 @@ const sale: Blueprint = {
     if (content.subtitle) {
       frame.text(content.subtitle, {
         x: 0.07,
-        y: 0.76,
+        y: 0.8,
         w: 0.6,
         size: 0.024,
         font: type.body,
@@ -295,9 +295,9 @@ const sale: Blueprint = {
     if (content.cta) {
       frame.pill(content.cta, {
         x: 0.07,
-        y: 0.84,
+        y: 0.87,
         w: 0.3,
-        h: 0.075,
+        h: 0.07,
         fill: palette.ink,
         color: palette.bg,
         font: type.body,
@@ -315,7 +315,7 @@ const quote: Blueprint = {
       x: 0.05,
       y: 0.0,
       w: 0.5,
-      size: 0.38,
+      size: 0.26,
       weight: 700,
       font: type.display,
       color: palette.accent,
@@ -324,7 +324,7 @@ const quote: Blueprint = {
     });
     frame.text(content.title, {
       x: 0.1,
-      y: 0.28,
+      y: 0.36,
       w: 0.8,
       size: 0.07,
       weight: 500,
@@ -333,11 +333,11 @@ const quote: Blueprint = {
       align: 'center',
       lineHeight: 1.18,
     });
-    frame.rect({ x: 0.46, y: 0.72, w: 0.08, h: 0.006, fill: palette.accent });
+    frame.rect({ x: 0.46, y: 0.75, w: 0.08, h: 0.006, fill: palette.accent });
     if (content.subtitle) {
       frame.text(content.subtitle, {
         x: 0.1,
-        y: 0.76,
+        y: 0.79,
         w: 0.8,
         size: 0.026,
         weight: 600,
@@ -539,7 +539,7 @@ const cover: Blueprint = {
     if (content.subtitle) {
       frame.text(content.subtitle, {
         x: 0.07,
-        y: 0.46,
+        y: 0.5,
         w: 0.48,
         size: 0.026,
         font: type.body,
@@ -549,14 +549,14 @@ const cover: Blueprint = {
       });
     }
     frame.rule(
-      { x: 0.07, y: 0.58 },
-      { x: 0.53, y: 0.58 },
+      { x: 0.07, y: 0.7 },
+      { x: 0.53, y: 0.7 },
       { color: palette.ink, width: 1, opacity: 0.25 },
     );
     if (content.meta) {
       frame.text(content.meta.toUpperCase(), {
         x: 0.07,
-        y: 0.61,
+        y: 0.73,
         w: 0.46,
         size: 0.018,
         weight: 600,
@@ -711,15 +711,15 @@ const profile: Blueprint = {
       });
     }
     frame.rule(
-      { x: 0.07, y: 0.4 },
-      { x: 0.93, y: 0.4 },
+      { x: 0.07, y: 0.43 },
+      { x: 0.93, y: 0.43 },
       { color: palette.ink, width: 1, opacity: 0.18 },
     );
     (content.items ?? []).slice(0, 3).forEach((item, index) => {
       frame.text(item, {
         x: 0.07,
         y: 0.47 + index * 0.09,
-        w: 0.6,
+        w: 0.5,
         size: 0.02,
         font: type.body,
         color: palette.ink,
@@ -798,7 +798,7 @@ const product: Blueprint = {
     if (content.subtitle) {
       frame.text(content.subtitle, {
         x: 0.07,
-        y: 0.72,
+        y: 0.79,
         w: 0.56,
         size: 0.023,
         font: type.body,
@@ -810,7 +810,7 @@ const product: Blueprint = {
     if (content.cta) {
       frame.pill(content.cta, {
         x: 0.07,
-        y: 0.83,
+        y: 0.87,
         w: 0.28,
         h: 0.07,
         fill: palette.ink,
