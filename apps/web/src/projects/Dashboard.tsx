@@ -1,8 +1,19 @@
 import { CANVAS_PRESETS, LIMITS } from '@opencanvas/document';
 import type { ProjectStoreError, ProjectSummary } from '@opencanvas/storage';
 import type { Result } from '@opencanvas/document';
-import { Button, Input, Select } from '@opencanvas/ui';
 import {
+  Button,
+  Input,
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuLabel,
+  MenuTrigger,
+  Select,
+} from '@opencanvas/ui';
+import {
+  ChevronDown,
+  Clock,
   Copy,
   Download,
   FileUp,
@@ -24,7 +35,13 @@ import {
 } from 'react';
 
 import { navigate } from '../router';
-import { createProject, createProjectFromTemplate, deleteProject, duplicateProject, renameProject } from './actions';
+import {
+  createProject,
+  createProjectFromTemplate,
+  deleteProject,
+  duplicateProject,
+  renameProject,
+} from './actions';
 import { exportProjectFile, importProjectFile } from './projectFiles';
 import { describeProjectContents, formatCanvasSize, formatTimestamp } from './format';
 import { useProjects } from './useProjects';
@@ -85,9 +102,67 @@ function EmptyStateIllustration() {
   );
 }
 
+const PRESET_CATEGORIES: { id: CanvasPresetCategory; label: string }[] = [
+  { id: 'social', label: 'Social' },
+  { id: 'presentation', label: 'Presentation' },
+  { id: 'print', label: 'Print' },
+  { id: 'video', label: 'Video' },
+];
+
+type CanvasPresetCategory = (typeof CANVAS_PRESETS)[number]['category'];
+
+/** Category-grouped size picker: the whole catalog is one click away, like Canva's home screen. */
+function SizePicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const current = CANVAS_PRESETS.find((preset) => preset.id === value) ?? CANVAS_PRESETS[0];
+  return (
+    <Menu className="w-full sm:w-64">
+      <MenuTrigger asChild>
+        <Button
+          variant="outline"
+          aria-label="Canvas size"
+          className="h-10 w-full justify-between rounded-full px-4 text-[13px] font-medium"
+        >
+          <span className="truncate">
+            {current?.label} · {current?.width}×{current?.height}
+          </span>
+          <ChevronDown className="size-4 shrink-0 opacity-60" />
+        </Button>
+      </MenuTrigger>
+      <MenuContent className="max-h-80 w-72 overflow-y-auto">
+        {PRESET_CATEGORIES.map((category) => {
+          const presets = CANVAS_PRESETS.filter((preset) => preset.category === category.id);
+          if (presets.length === 0) return null;
+          return (
+            <div key={category.id}>
+              <MenuLabel>{category.label}</MenuLabel>
+              {presets.map((preset) => (
+                <MenuItem
+                  key={preset.id}
+                  hint={`${preset.width}×${preset.height}`}
+                  onSelect={() => onChange(preset.id)}
+                >
+                  {preset.label}
+                </MenuItem>
+              ))}
+            </div>
+          );
+        })}
+      </MenuContent>
+    </Menu>
+  );
+}
+
 const STARTER_TEMPLATES: { label: string; presetId: string; gradient: string }[] = [
-  { label: 'Instagram post', presetId: 'instagram-post', gradient: 'from-violet-500 to-indigo-600' },
-  { label: 'Instagram story', presetId: 'instagram-story', gradient: 'from-fuchsia-500 to-pink-500' },
+  {
+    label: 'Instagram post',
+    presetId: 'instagram-post',
+    gradient: 'from-violet-500 to-indigo-600',
+  },
+  {
+    label: 'Instagram story',
+    presetId: 'instagram-story',
+    gradient: 'from-fuchsia-500 to-pink-500',
+  },
   { label: 'Presentation', presetId: 'presentation-16-9', gradient: 'from-sky-500 to-blue-600' },
   { label: 'Poster A4', presetId: 'poster-a4', gradient: 'from-emerald-500 to-teal-600' },
   { label: 'YouTube cover', presetId: 'youtube-thumbnail', gradient: 'from-orange-500 to-red-500' },
@@ -108,6 +183,7 @@ export function Dashboard() {
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'recent' | 'name'>('recent');
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const applyListResult = useCallback((listed: Result<ProjectSummary[], ProjectStoreError>) => {
@@ -257,12 +333,16 @@ export function Dashboard() {
 
   const filteredProjects = useMemo(() => {
     if (list.status !== 'ready') return [];
-    if (!searchQuery.trim()) return list.projects;
-    const q = searchQuery.toLowerCase();
-    return list.projects.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q),
-    );
-  }, [list, searchQuery]);
+    const query = searchQuery.trim().toLowerCase();
+    const matches = query
+      ? list.projects.filter(
+          (p) => p.name.toLowerCase().includes(query) || p.id.toLowerCase().includes(query),
+        )
+      : [...list.projects];
+    return sortBy === 'name'
+      ? matches.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+      : matches;
+  }, [list, searchQuery, sortBy]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-[#f8f9fb] text-foreground">
@@ -270,7 +350,10 @@ export function Dashboard() {
         <Logo />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-            OpenCanvas <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold tracking-widest text-primary">BETA</span>
+            OpenCanvas{' '}
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold tracking-widest text-primary">
+              BETA
+            </span>
           </p>
           <p className="truncate text-xs text-muted-foreground">
             {backend === 'indexeddb'
@@ -322,19 +405,12 @@ export function Dashboard() {
                   void onCreate();
                 }}
               >
-                <Select
-                  aria-label="Canvas size"
-                  value={presetId}
-                  onChange={(event) => setPresetId(event.target.value)}
-                  className="h-9 w-56 rounded-full bg-muted/50"
+                <SizePicker value={presetId} onChange={setPresetId} />
+                <Button
+                  type="submit"
+                  disabled={busy !== null}
+                  className="rounded-full px-5 shadow-sm"
                 >
-                  {CANVAS_PRESETS.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.label} · {preset.width}×{preset.height}
-                    </option>
-                  ))}
-                </Select>
-                <Button type="submit" disabled={busy !== null} className="rounded-full px-5 shadow-sm">
                   <Plus />
                   New design
                 </Button>
@@ -361,7 +437,9 @@ export function Dashboard() {
                   onClick={() => void onCreate(tpl.presetId)}
                   className="group flex shrink-0 items-center gap-2.5 rounded-full border border-border bg-background px-3 py-2 pr-4 text-sm font-medium shadow-sm transition-all hover:shadow-md hover:border-primary/30 hover:bg-primary/[0.04] disabled:opacity-50"
                 >
-                  <span className={`grid size-7 place-items-center rounded-full bg-gradient-to-br ${tpl.gradient} text-white shadow-sm`}>
+                  <span
+                    className={`grid size-7 place-items-center rounded-full bg-gradient-to-br ${tpl.gradient} text-white shadow-sm`}
+                  >
                     <Plus className="size-3.5" />
                   </span>
                   {tpl.label}
@@ -369,6 +447,44 @@ export function Dashboard() {
               ))}
             </div>
           </div>
+
+          {/* Continue editing — the returning-user happy path */}
+          {list.status === 'ready' && list.projects.length > 0 ? (
+            <section aria-label="Continue editing" className="mt-6">
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+                  <Clock className="size-4 text-primary" /> Continue editing
+                </h2>
+                <span className="text-xs text-muted-foreground">Your three most recent</span>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                {list.projects.slice(0, 3).map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => navigate({ name: 'editor', projectId: project.id })}
+                    className="flex items-center gap-3 rounded-xl border border-border bg-white p-2.5 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md disabled:opacity-50"
+                  >
+                    <span className="w-20 shrink-0">
+                      <ProjectThumbnail project={project} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-semibold">
+                        {project.name}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {formatCanvasSize(project)}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        Updated {formatTimestamp(project.updatedAt)}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {/* Template gallery — Canva-like discovery */}
           <div className="mt-6">
@@ -388,11 +504,22 @@ export function Dashboard() {
                   className="h-9 w-full rounded-full border border-input bg-white py-2 pl-9 pr-4 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20"
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
-                {filteredProjects.length === list.projects.length
-                  ? `${list.projects.length} design${list.projects.length === 1 ? '' : 's'}`
-                  : `${filteredProjects.length} of ${list.projects.length}`}
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-muted-foreground">
+                  {filteredProjects.length === list.projects.length
+                    ? `${list.projects.length} design${list.projects.length === 1 ? '' : 's'}`
+                    : `${filteredProjects.length} of ${list.projects.length}`}
+                </p>
+                <Select
+                  aria-label="Sort designs"
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value as 'recent' | 'name')}
+                  className="h-9 w-36 rounded-full bg-white text-[13px]"
+                >
+                  <option value="recent">Last edited</option>
+                  <option value="name">Name</option>
+                </Select>
+              </div>
             </div>
           ) : null}
 
@@ -417,7 +544,10 @@ export function Dashboard() {
           {list.status === 'loading' ? (
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="animate-pulse rounded-2xl border border-border bg-white p-3">
+                <div
+                  key={i}
+                  className="animate-pulse rounded-2xl border border-border bg-white p-3"
+                >
                   <div className="aspect-[4/3] rounded-xl bg-muted" />
                   <div className="mt-3 h-4 w-3/4 rounded bg-muted" />
                 </div>
@@ -428,7 +558,12 @@ export function Dashboard() {
           {list.status === 'error' ? (
             <div className="mt-6 space-y-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-4 text-sm">
               <p role="alert">{list.message}</p>
-              <Button variant="outline" size="sm" className="rounded-full" onClick={() => void refresh()}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() => void refresh()}
+              >
                 Try again
               </Button>
             </div>
@@ -439,17 +574,24 @@ export function Dashboard() {
               <EmptyStateIllustration />
               <h2 className="mt-6 text-lg font-semibold">No designs yet</h2>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Pick a size above or jump in with a template. Your designs are saved automatically in this browser.
+                Pick a size above or jump in with a template. Your designs are saved automatically
+                in this browser.
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 <Button onClick={() => void onCreate()} className="rounded-full px-6">
                   <Plus /> Create blank design
                 </Button>
-                <Button variant="outline" className="rounded-full" onClick={() => fileInput.current?.click()}>
+                <Button
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => fileInput.current?.click()}
+                >
                   <FileUp /> Import .opencanvas
                 </Button>
               </div>
-              <p className="mt-4 text-xs text-muted-foreground">Tip: Try “Instagram post” or “Poster A4” from the strip above.</p>
+              <p className="mt-4 text-xs text-muted-foreground">
+                Tip: Try “Instagram post” or “Poster A4” from the strip above.
+              </p>
             </div>
           ) : null}
 
@@ -457,7 +599,12 @@ export function Dashboard() {
             <div className="mt-8 rounded-2xl border border-dashed border-border bg-white px-6 py-12 text-center">
               <p className="font-medium">No matches for “{searchQuery}”</p>
               <p className="text-sm text-muted-foreground">Try a different search term.</p>
-              <Button variant="outline" size="sm" className="mt-3 rounded-full" onClick={() => setSearchQuery('')}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 rounded-full"
+                onClick={() => setSearchQuery('')}
+              >
                 Clear search
               </Button>
             </div>
@@ -496,12 +643,16 @@ export function Dashboard() {
                               onChange={(event) =>
                                 setRenaming({ projectId: project.id, draft: event.target.value })
                               }
-                              onBlur={(event) => void onRename(project.id, event.currentTarget.value)}
+                              onBlur={(event) =>
+                                void onRename(project.id, event.currentTarget.value)
+                              }
                               onKeyDown={onRenameKeyDown}
                               className="h-8 rounded-full"
                             />
                           ) : (
-                            <h2 className="truncate text-sm font-semibold leading-tight">{project.name}</h2>
+                            <h2 className="truncate text-sm font-semibold leading-tight">
+                              {project.name}
+                            </h2>
                           )}
                           <p className="text-xs text-muted-foreground">
                             {formatCanvasSize(project)} · {describeProjectContents(project)}
