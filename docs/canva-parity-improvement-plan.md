@@ -1,671 +1,386 @@
-# OpenCanvas → Canva Parity: Improvement Plan
+# OpenCanvas → Canva: a working plan
 
-**Date:** 2026-10-19  
-**Status:** Proposal for Milestones 3–8 (post Projects & Export)  
-**Author:** Agent (arena/aa9a8dea)  
-**Goal:** Make OpenCanvas feel and function like Canva.com for 80% of solo-creator jobs — while staying local-first, open-source, and self-hostable.
+**Version:** 2.0 · **Date:** 2026-10-21 · **Baseline:** `ec56b00` (schema v4, 334 tests)
+**Supersedes:** v1 draft dated 2026-10-19 (still in git history). v1 planned work that has since
+shipped and under-counted how much of the "Canva feel" is content, not controls.
 
-> **One-sentence vision:** *Canva’s polish with OpenCanvas’s principles.* Templates you can browse in seconds, a drag-anything editor that never fights you, one-click brand styles, and exports that just work — all without requiring an account or cloud.
-
----
-
-## Table of Contents
-1. [Executive Summary](#1-executive-summary)
-2. [Where We Are vs. Canva](#2-where-we-are-vs-canva)
-3. [What "More Like Canva" Means (and Doesn't)](#3-what-more-like-canva-means-and-doesnt)
-4. [Gap Inventory — P0 / P1 / P2](#4-gap-inventory--p0--p1--p2)
-5. [Seven Pillars to Close the Gap](#5-seven-pillars-to-close-the-gap)
-6. [Phased Roadmap (Milestones 4–8)](#6-phased-roadmap-milestones-48)
-7. [Detailed Feature Specs (Acceptance Criteria)](#7-detailed-feature-specs-acceptance-criteria)
-8. [IA & UX Redesign: Make It Feel Like Canva](#8-ia--ux-redesign-make-it-feel-like-canva)
-9. [Data Model & API Changes](#9-data-model--api-changes)
-10. [Engineering Plan by Package](#10-engineering-plan-by-package)
-11. [Brand, Templates & Content Strategy](#11-brand-templates--content-strategy)
-12. [Quality, A11y & Performance Targets](#12-quality-a11y--performance-targets)
-13. [Metrics & Validation](#13-metrics--validation)
-14. [Risks & Mitigations](#14-risks--mitigations)
-15. [Quick Wins: First 2 Weeks](#15-quick-wins-first-2-weeks)
-16. [Appendix A: Canva Jobs-To-Be-Done Map](#appendix-a-canva-jobs-to-be-done-map)
-17. [Appendix B: Proposed File Tree Additions](#appendix-b-proposed-file-tree-additions)
-18. [Appendix C: Out-of-Scope / Later](#appendix-c-out-of-scope--later)
+> **Thesis.** OpenCanvas no longer lacks _editor features_; it lacks _things to put on the page_
+> and _the five seconds before the page_. A user can already draw eight shapes, crop, filter,
+> group, hold pages, present and export. What they cannot do is open the app, find something
+> beautiful, drag a photo and a font into it, and get a print-ready file. That is the gap.
 
 ---
 
-## 1. Executive Summary
+## Contents
 
-OpenCanvas today is a **solid M3 private beta**: local-first persistence, clean document model, pure reducer + undo/redo, Fabric.js adapter, PNG/SVG/PDF export, dashboard with `.opencanvas` portability. It proves the architecture.
-
-Canva wins because **everything is 1 click away**: thousands of searchable templates, a left rail that is an *inspiration & asset library*, freeform drag from anywhere, precise alignment tools, typography that photographs well, and instant resize/export/share. The editor feels *soft, spacious, and forgiving*.
-
-To reach Canva-likeness we propose **7 pillars** and **5 new milestones (4–8)** over ~2 quarters of focused work:
-
-| Pillar | Canva expectation | OpenCanvas today | Target after M8 |
-|--------|-------------------|------------------|-----------------|
-| **Discovery** | Searchable template gallery, categories, recents | Dashboard list only | Full template gallery + search + categories, 100+ open-licensed templates |
-| **Canvas & Layout** | Multi-page, rulers, guides, grouping, frames, grids | Single page, align/distribute, snap toggle | Multi-page + groups + frames + rulers + smart guides |
-| **Elements** | Shapes, lines, icons (40k+), illustrations, photos, charts, tables | 3 shapes | 20+ shapes/lines + icon library (Lucide/Phosphor) + frames & grids |
-| **Typography** | 1000+ fonts, text effects, curved text, font pairing | 8 system fonts, basic styles | 30+ bundled/display fonts, Google Fonts opt-in, text effects v1 |
-| **Media** | Filters, adjust, crop, BG remover, replace | cover/fill only | Crop, flip, opacity, filters (brightness/contrast/saturate), replace |
-| **Workflow** | Resize, copy styles, position panel, style guide | Background color only | Canvas resize + magic resize v1, eyedropper, copy style, background images/gradients |
-| **Collaboration & Publish** | Share links, comments, present, social direct-publish | Download PNG/SVG/PDF + .opencanvas | Share via link (self-hosted), present mode, direct social sizes |
-
-**Principle-preserving choices:**
-- Templates & stock remain **locally bundled** (no mandatory cloud). Optional URL assets already exist.
-- AI (Milestone 4 in current roadmap) becomes *assistive*, not required — Magic-like features unlock only if user provides a key.
-- Every new element type remains **document-model-first** with Zod validation, migrations, and headless export tests — same discipline that makes M1-M3 reviewable.
+1. [Verified snapshot](#1-verified-snapshot)
+2. [Canva-feel scorecard](#2-canva-feel-scorecard)
+3. [Five hard truths](#3-five-hard-truths)
+4. [Strategy: four phases](#4-strategy-four-phases)
+5. [Phase A — Face and entry](#phase-a--face-and-entry)
+6. [Phase B — The library](#phase-b--the-library)
+7. [Phase C — Canvas power](#phase-c--canvas-power)
+8. [Phase D — Publish and trust](#phase-d--publish-and-trust)
+9. [Deep specs (schema, adapter, export)](#9-deep-specs)
+10. [Visual and interaction spec](#10-visual-and-interaction-spec)
+11. [Quality gates and budgets](#11-quality-gates-and-budgets)
+12. [Risks](#12-risks)
+13. [Metrics](#13-metrics)
+14. [First ten working days](#14-first-ten-working-days)
+15. [Explicit non-goals](#15-explicit-non-goals)
 
 ---
 
-## 2. Where We Are vs. Canva
+## 1. Verified snapshot
 
-### Current strengths to keep
-- **Architecture is right:** `document → editor-core → canvas-fabric → storage/export` is clean; it will scale to groups/frames without rewrite.
-- **Undo/redo + merge keys:** Already Canva-grade for text/position edits.
-- **Export from model, not screenshot:** Guarantees WYSIWYG and enables headless testing — Canva does the same server-side.
-- **Local-first with Dexie + .opencanvas ZIP:** More portable than Canva’s walled garden.
+Audited from source on `ec56b00`, not from the README (which is one milestone behind).
 
-### Current gaps that break the Canva feeling
+| Surface        | Actually shipped                                                                                                                                                                                                       | Source of truth                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Document model | v4 schema; `rect`, `ellipse`, `text`, `image`, `path`, `group`; migrations 1→4                                                                                                                                         | `packages/document/src/schema.ts`       |
+| Commands       | rename, resize, page add/duplicate/delete/reorder/setBackground, asset register/remove, element add/update/updateMany/delete/duplicate/reorder/group/ungroup                                                           | `packages/editor-core/src/commands.ts`  |
+| Canvas         | zoom, fit, wheel pan, snapping + alignment guides, page shadow, drag-drop images, freehand draw, text auto-grow                                                                                                        | `packages/canvas-fabric/src/adapter.ts` |
+| Panels         | Shapes (8), Text (3 presets), Draw, Uploads, Background (solid only), Layers; Properties (X/Y/W/H/R/opacity/aspect lock/fill/stroke/corner radius), image crop/filters/flip, text line-height/letter-spacing/underline | `apps/web/src/editor`                   |
+| Selection      | floating toolbar: duplicate, lock, hide, arrange, group/ungroup, delete                                                                                                                                                | `FloatingToolbar.tsx`                   |
+| Projects       | IndexedDB autosave, dashboard grid + search, `.opencanvas` import/export, thumbnails from the SVG renderer                                                                                                             | `apps/web/src/projects`                 |
+| Templates      | **12** templates across 5 categories, card grid + search, dashboard only                                                                                                                                               | `templates/catalog.ts`                  |
+| Share          | link stored in **localStorage**, present mode (SVG page flip)                                                                                                                                                          | `share/cloud.ts`                        |
+| Export         | PNG @2×, SVG, PDF (each page rasterized @2×)                                                                                                                                                                           | `packages/export`                       |
+| Type           | **8 system fonts** (Inter bundled, the rest are OS fonts)                                                                                                                                                              | `editor/fonts.ts`                       |
+| Tests          | 334 unit/integration (Vitest + jsdom), no E2E                                                                                                                                                                          | `*.test.ts(x)`                          |
 
-| Surface | What Canva does | OpenCanvas does today |
-|---------|----------------|-----------------------|
-| **Home** | Visual grid of template previews by use-case (Instagram, Poster, Presentation), search bar, "Recently edited", "Starred" | Text list, size preset dropdown only |
-| **Left rail** | Tall icon rail → expanding panel: Design (templates), Elements (shapes/icons/photos), Text (presets + font combos), Brand, Uploads, Draw, Projects | 5 tabs: Shapes (3 buttons), Text (3 buttons), Uploads, Background (20 swatches), Layers |
-| **Canvas** | Infinite pan, zoom with preview thumbnails, rulers, margins, snap to center/edges/gaps, distribute evenly | Fixed centered page, zoom/fit, snap to objects/page only |
-| **Selection** | Floating toolbar near selection: duplicate, lock, position, transparency, more | No floating toolbar; all in right panel. No position numeric fields always visible |
-| **Text** | Huge typographic range: headings with effects, curved, list/bullets, spacing controls, font discovery | 3 presets, 5 weights, 4 alignments, no bullets/lists, no effects |
-| **Images** | Search Unsplash/Pexels, filters, adjust sliders, crop to shape/frame, background remover | Upload & drag-to-canvas only; cover/fill; no crop/replace/flip |
-| **Layers** | Groups, frames, pages, lock/hide, search, show outline | Flat list, reorder/hide/lock/rename |
-| **Share** | Share button → link, download, print, present, schedule | Export buttons in top bar: PNG/SVG/PDF |
-| **Feel** | Rounded 16px cards, soft shadows, large previews, generous whitespace, purple brand | Sharp borders, dense controls, gray workspace, small click targets |
+**What v1 planned that is now done:** template gallery, multi-page, group/ungroup, eight shapes,
+corner radius, floating toolbar, aspect lock, image crop (numeric), filters, flip, shape search,
+`R/O/T/L/D` shortcuts, dashboard cards, present mode, page strip. Do not re-plan these.
 
-**Bottom line:** Functionally ~15% of Canva’s solo-creator surface; affectively ~30% (clean but utilitarian).
-
----
-
-## 3. What "More Like Canva" Means (and Doesn't)
-
-**Means:**
-1. **Template-first creation.** User lands → sees *what to make* (not blank canvas dimensions). Creating from template is the happy path.
-2. **Everything draggable.** From left panel → canvas, canvas → canvas, uploads → canvas, with live preview and snap.
-3. **Style, not just properties.** Brand colors/fonts applied in one click; styles copy-paste across elements.
-4. **Forgiving precision.** Smart guides, distribute, tidy-up, position panel with X/Y/W/H + rotation, lock aspect ratio.
-5. **Export confidence.** What you see is what you get for PDF/PNG/SVG, with correct fonts and print-ready bleeds.
-
-**Doesn't mean (v1):**
-- Rebuilding Canva’s 40k icon library, video timeline, or Magic Studio AI suite.
-- Real-time multiplayer cursors on day one (keep document commands serializable for future).
-- Pixel-perfect Canva clone — OpenCanvas keeps its own brand (indigo, Inter, open-source voice).
-
-**Non-negotiables carried forward:**
-- Local-first; no login to start designing.
-- Document JSON is source of truth; Fabric is adapter.
-- No fake buttons — shipped controls are real and tested.
+**What v1 planned that is still missing:** icons/photos/illustrations, frames, gradients and image
+backgrounds, fonts beyond the OS set, text effects and bullets, copy/paste style, brand kit,
+history panel, magic resize, vector-text PDF, in-editor templates, real share.
 
 ---
 
-## 4. Gap Inventory — P0 / P1 / P2
+## 2. Canva-feel scorecard
 
-### P0 — Must have to *feel* like Canva (ship in M4–M5)
-- Template gallery + search + categories + preview on hover
-- Multi-page support (add/duplicate/delete/reorder pages + page thumbnails in bottom strip)
-- Group / Ungroup (with nested transforms)
-- More primitives: **Line, Triangle, Star, Rounded star, Arrow, Blob** + stroke controls + corner radius
-- Icon library (Lucide already installed → expose as searchable Elements)
-- Frames (image-in-shape) + Grids (2–6 cell layouts)
-- Image: **crop (contain + manual crop rect), flip H/V, replace, opacity**
-- Text: **bulleted list, line height/letter spacing live preview, 20+ fonts, text box auto-grow**
-- Background: **image & gradient**, not just solid
-- Position panel: X/Y/W/H/R + lock aspect + center on page
-- Floating contextual toolbar (duplicate/delete/lock/position/more)
-- Dashboard visual refresh: card grid with thumbnails (rasterized SVG previews)
-- Canvas chrome: rulers (optional), page shadow, checkerboard behind transparent, centered with padding
-- Copy style / Paste style (Format painter)
+Scored 0–5 against "a first-time user who has used Canva before". Weighted by how much each
+surface drives the _impression_ of Canva.
 
-### P1 — Strongly expected (ship in M6)
-- Text effects v1: **Shadow, Lift, Hollow, Background** (SVG filters, no rasterization needed)
-- Image Adjust: **brightness, contrast, saturate, blur** (CSS filters → export via SVG filter)
-- Brand Kit panel: 3 palettes + 3 font pairs saved locally
-- History panel (visual timeline scrub)
-- Keyboard: T for text, R for rect, L for line, Cmd+G/U for group
-- Search inside Elements (shapes/icons) with instant filter
-- Resize (Magic Resize v1: single click to convert 1080×1080 → 1080×1920 with re-centering)
-- Present mode (full-screen page flip)
-- PDF: vector text (not raster) when fonts are embedded/standard
+| #   | Surface                  | Weight | Today    | Why                                                                                                                    | Target   |
+| --- | ------------------------ | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------- | -------- |
+| 1   | Entry (home → designing) | 20 %   | 2.5      | Real template grid and thumbnails, but 12 templates, a size `<select>`, no recents/starred, no in-editor templates     | 4.5      |
+| 2   | Content library breadth  | 25 %   | 0.5      | 8 primitives. No photos, icons, illustrations, gradients, grids                                                        | 4.0      |
+| 3   | Typography               | 15 %   | 1.5      | Arial/Verdana/Times is the visual signature of a non-designer tool; no effects, lists, or font previews                | 4.0      |
+| 4   | Canvas affordances       | 20 %   | 2.5      | Snap/align/zoom are good; no frames, no on-canvas crop, no alt-drag, toolbar is pinned to the screen not the selection | 4.0      |
+| 5   | Publish quality          | 15 %   | 2.0      | PNG/SVG/raster PDF; no scale, JPEG, transparency, print bleeds; share link is local-only                               | 4.0      |
+| 6   | Polish and consistency   | 5 %    | 3.0      | Rounded cards and indigo tokens are in; panels use 10–11 px type and mixed control heights                             | 4.5      |
+|     | **Weighted**             | 100 %  | **~1.9** |                                                                                                                        | **~4.2** |
 
-### P2 — Delight & differentiation (M7–M8)
-- Curved text, text on path
-- Charts & Tables (simple bar/pie/table elements backed by data array)
-- Draw (freehand pen → path element)
-- Background remover (local WASM or user-provided key, clearly disclosed)
-- Comments (local) + share link generation for self-hosted `apps/api`
-- Template contribution workflow (PR a JSON + preview PNG)
-- Animations (fade/slide) for Present, exported as MP4 via canvas capture
-- Real-time collaboration (commands over WebSocket, OT/CRDT)
+The score is deliberately harsh on #2 and #3 because that is where "this is not Canva" comes
+from, and both are _content_ problems that code alone cannot finish.
 
 ---
 
-## 5. Seven Pillars to Close the Gap
+## 3. Five hard truths
 
-### Pillar 1 — Discovery (Dashboard → Studio Home)
-Transform `#/` from file manager into **home**: search bar at top, category chips (For You, Social, Posters, Presentations, Videos, Print, Brand), template grid, recents. Dashboard as “Projects” becomes one tab in home.
-
-### Pillar 2 — Canvas & Layout
-- Multi-page doc (already in schema: `pages[]` with limit 100, but UI only shows active page). Add **Pages strip** (bottom or left) + page thumbnail renderer.
-- **Group**: new `group` element containing children with relative coords (see §9).
-- **Frame**: shape element that clips its single image child.
-- **Grid**: convenience → creates frames in layout; stored as group of frames.
-- **Guides**: center, edge, equal-gap, and margin guides (Canva’s “Tidy up”).
-
-### Pillar 3 — Elements Library
-Leverage `lucide-react` (already dep) → searchable icon grid with style filters (outline/filled). Add line/arrow (end caps), triangle/star/polygon via `path` data; keep schema simple.
-
-### Pillar 4 — Typography System
-- Bundle **Inter + 10 display fonts** (Be Vietnam, DM Sans, Playfair, Montserrat, etc. via `@fontsource`) + allow Google Fonts opt-in (user pastes URL, stored locally, disclosed).
-- Font loading state (`document.fonts.ready` + placeholder metrics).
-- Effects as SVG filters + extra rects (background), fully exportable.
-
-### Pillar 5 — Media Editing
-Stay on `<image>` element; add `crop` rect + `adjust` bag. Export respects both (SVG `clipPath` + `filter`). No canvas pixel editing needed for v1.
-
-### Pillar 6 — Workflow & Productivity
-- Eyedropper (`EyeDropper` API fallback to canvas sampling), Copy style (`format painter` = patch without geometry).
-- Resize: `document.resize` already exists — build UI: “Resize” button → choose preset → choose “Copy & resize” vs “Resize this design” + reflow.
-
-### Pillar 7 — Publish & Share
-- Present: reuse canvas adapter in fullscreen, page navigation with arrow keys.
-- Export: add **JPG** (existing raster path + quality slider), **PDF Print** (bleed + crop marks), social presets.
-- Self-host path: `apps/api` share links (M5 Cloud milestone) — document stored server-side, read-only view link.
+1. **The editor is not the bottleneck; the library is.** 25 % of the scorecard is empty. The
+   highest-leverage work in this repo is a content pipeline (icons, photos, template blueprints),
+   not more reducer commands.
+2. **Nobody will find the good features.** Crop, filters, flip, distribute and aspect lock all
+   exist and all hide in a 320 px right panel behind numeric fields. Canva's rule is that
+   destructive/creative actions live on the selection. Discovery is a feature.
+3. **The share dialog currently over-promises.** `share/cloud.ts` writes the document to
+   `localStorage`, so "Anyone with the link can view a read-only copy" is false for anyone but
+   the author on the same browser. This contradicts the project's own _no fake buttons_
+   principle and must be fixed before any growth work.
+4. **Fonts are load-bearing and currently a trap.** All 8 families are OS fonts, so SVG text
+   export by-name works. The moment we bundle webfonts (`@fontsource`), `renderPageToSvg` will
+   emit `font-family="Playfair Display"` with no `@font-face`, and PNG/PDF rasterization through
+   an `<img>` will silently fall back — designs will export in the wrong typeface. Font work must
+   ship with embedding, or not at all.
+5. **Schema changes are cheap here, and that is an asset.** The migration registry, discriminated
+   unions and headless exporters mean gradients, icons and frames can be added without a rewrite
+   — _if_ each lands as its own migration + adapter + export + fixture. Bundling them into one
+   "design system v5" PR would destroy reviewability.
 
 ---
 
-## 6. Phased Roadmap (Milestones 4–8)
+## 4. Strategy: four phases
 
-> Each milestone is ≤ 400 lines + tests, consistent with prior PR size. Names map to existing roadmap but expand scope.
+Ordered so each phase is independently demoable and each closes a complete job.
 
-### Milestone 4 — **Canvas & Structure** (4–5 weeks)
-*Make multi-page & grouped layouts possible.*
+| Phase | Theme             | Duration  | Job it closes                             | Scorecard move             |
+| ----- | ----------------- | --------- | ----------------------------------------- | -------------------------- |
+| **A** | Face and entry    | 1.5 weeks | "I land and know what to make"            | #1 2.5 → 4.0, #6 3.0 → 4.0 |
+| **B** | The library       | 3 weeks   | "I have something beautiful to drag in"   | #2 0.5 → 3.5, #3 1.5 → 4.0 |
+| **C** | Canvas power      | 3 weeks   | "The editor does not fight me"            | #4 2.5 → 4.0               |
+| **D** | Publish and trust | 2 weeks   | "My file is right and the link is honest" | #5 2.0 → 4.0               |
 
-| Deliverable | Packages touched | Acceptance |
-|-------------|----------------|------------|
-| Multi-page UI: page strip, add/duplicate/delete/reorder, keyboard PgUp/PgDn | `apps/web`, `document`, `editor-core` | Create 3-page doc, reorder via drag, export PDF renders 3 pages |
-| Group/Ungroup: schema + reducer + Fabric group handling | `document`, `editor-core`, `canvas-fabric` | Group 3 shapes → move as one → ungroup → undo restores |
-| New primitives: line, triangle, star, arrow (with stroke/endpoint) | `document`, `editor-core`, `canvas-fabric`, `export` | Each inserts centered, appears in Layers as its type, exports to SVG path |
-| Position panel v2: X/Y/W/H/R + aspect lock + "Center horizontally/vertically" | `apps/web` | Typing X=100 moves element; lock keeps W/H ratio |
-| Rulers + page shadow + workspace padding | `apps/web`, `canvas-fabric` | Toggling rulers doesn't break snap; shadow visible at 100% zoom |
+**Cut line.** If only two weeks exist, ship Phase A + B1/B2 (fonts and icons). That subset alone
+changes the product category from "vector toy" to "design tool" in screenshots and in use.
 
-**Exit gate:** Playwright: create group, duplicate page, export PDF has N pages.
-
-### Milestone 5 — **Discovery & Polish** (4 weeks)
-*Make it browsable and beautiful.*
-
-| Deliverable | Acceptance |
-|-------------|------------|
-| Template gallery: `/templates` registry (JSON), search, category filter, preview modal | ≥ 30 templates (originals, CC0-licensed placeholders noted), search "instagram" returns correct presets |
-| Dashboard grid: card with thumbnail (SVG → data URL rasterized in worker) | Thumbnails match canvas at 240px wide |
-| Left rail redesign: icon rail + search bar inside each panel (Canva layout) | Tab switch preserves scroll; keyboard nav works |
-| Visual refresh: theme.css tokens → softer radii (12px), card shadows, larger click targets (40px min) | Lighthouse a11y ≥ 95, no layout shift |
-| Background: image upload + gradient editor | Gradient exports to SVG `<linearGradient>` |
-
-**Exit gate:** New user can go Home → search "poster" → click template → edit within 10s.
-
-### Milestone 6 — **Text & Media Power** (4–5 weeks)
-*Close the creator loop.*
-
-| Deliverable | Acceptance |
-|-------------|------------|
-| Typography v2: 25 fonts, font picker with preview, bullets/numbered lists, line height UI | Text with bullets exports as multiple `<tspan>`; font loads before export |
-| Text effects v1: shadow, hollow, lift, background | Each effect renders in canvas + SVG export (filter/shadow) |
-| Image v2: crop UI (handles + contain), flip, replace, opacity slider | Crop rect stored, exported via `<clipPath>`, undoable |
-| Adjust: brightness/contrast/saturate/blur sliders | CSS filter on canvas + SVG `<filter>` on export |
-| Floating toolbar (selection context) + eyedropper + copy/paste style | Toolbar appears near selection; copy style copies fill/stroke/typography |
-
-**Exit gate:** Edit text → apply lift effect → export PNG shows effect; crop image → export SVG clipped.
-
-### Milestone 7 — **Brand & Publish** (3–4 weeks)
-*For repeat creators.*
-
-| Deliverable | Acceptance |
-|-------------|------------|
-| Brand Kit: save palettes (5 colors) + font pairs locally, apply to page | Applying palette recolors fills/text that match old palette (opt-in) |
-| History timeline panel + named versions (snapshot) | Scrub shows preview; restore prompts confirm |
-| Magic Resize v1: convert canvas size with anchor options (center/stretch) | 1080×1080 → 1920×1080 keeps content centered |
-| Present mode + share preview | Present runs fullscreen, arrow keys flip pages |
-| Export JPG + PDF Print (bleed/marks) | JPG quality 80/90/100 slider; PDF vector text for standard fonts |
-
-### Milestone 8 — **Extensibility & Community** (ongoing)
-| Deliverable | Notes |
-|-------------|-------|
-| Plugin surface: `packages/ai-core` provider abstraction + template contribution guide | AI edits go through commands, preview & confirm |
-| `apps/api` sharing: auth, project sync, public view link | Self-hosted; AGPL-compliant |
-| Playwright E2E + perf budgets | LCP < 2.5s, canvas FPS ≥ 55 on 1080p |
+Sequence rule: every phase ships _vertically_ — model → reducer → adapter → UI → export → test —
+for one feature at a time. No half-migrated element types on `main`.
 
 ---
 
-## 7. Detailed Feature Specs (Acceptance Criteria)
+### Phase A — Face and entry
 
-### 7.1 Multi-Page
-- **Command:** `page.add { afterId?, preset? }`, `page.delete { pageId }`, `page.reorder { pageId, toIndex }`, `page.duplicate { pageId }`
-- **UI:** Horizontal strip below canvas with numbered thumbnails (active has ring). Add button at end + between pages on hover. Right-click menu: Duplicate, Delete (confirm if last page), Copy to new design.
-- **Export:** `renderDocumentToPdf` already iterates pages; ensure thumbnails reuse same rasterizer path (shared `createThumbnailRenderer`).
-- **Tests:** 3 pages → delete middle → pageCount 2, active clamps; undo restores.
+Goal: the product should read as Canva in a screenshot before it gains a single new element type.
 
-### 7.2 Group / Ungroup
-- **Schema:** `GroupElement { type:'group', children: DesignElement[], x,y,width,height, rotation, ... }` — children coords **relative to group origin**. Group bounds = union of children AABBs (via `geometry.ts`).
-- **Reducer:** `group { elementIds }` creates group at insertion index = max(selected indices)+1, removes originals; `ungroup { groupId }` explodes children to page with absolute coords.
-- **Adapter:** Fabric `Group` with `interactive` children; `onElementsModified` reports group transform → reducer decomposes into child updates (or single group patch for move).
-- **Naming:** Auto “Group of 3” → renameable.
+| ID  | Change                                                                                                                                                                                                                                                                | Files                                                                                | Done when                                                                                             | Size |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | ---- |
+| A1  | **One primary CTA.** Replace the three top-bar export buttons with a `Download` menu (format · scale · transparent · page range) and make `Share` the primary filled button.                                                                                          | `ExportControls.tsx`, `TopBar.tsx`                                                   | Menu is keyboard-navigable, each item runs the existing exporter; UI tests for the menu               | M    |
+| A2  | **Move zoom to the canvas corner.** Zoom % as a popover bottom-right (fit, 50/100/200 %, "fit page", "fit selection"), exactly where Canva puts it. Keep `Ctrl ±` shortcuts.                                                                                          | `TopBar.tsx`, new `ZoomControl.tsx`, `CanvasStage.tsx`                               | Zoom popover works at all zoom levels; top bar shortens by ~140 px                                    | S    |
+| A3  | **Anchor the floating toolbar to the selection.** Today it is `left-1/2 top-3` — a screen-level bar. Add `pageToClient()` to the adapter, position the toolbar above the selection bounding box, flip below when near the top edge, hide while dragging/editing text. | `adapter.ts`, `FloatingToolbar.tsx`, `CanvasStage.tsx`                               | Toolbar follows the object within one frame; clamped to the workspace; still fully keyboard reachable | M    |
+| A4  | **Type scale and density pass.** Raise panel body text from 10–11 px to 13 px, labels 12 px, section titles 13 px semibold; unify control height to 32 px; increase panel padding 12 → 16 px; make the left rail 72 px with 24 px icons.                              | `packages/ui/src/styles/theme.css`, `Sidebar.tsx`, `PropertiesPanel.tsx`, `panels/*` | axe passes; no panel content clipped at 1280×800; visual diff reviewed                                | M    |
+| A5  | **Dashboard: real entry.** Replace the size `<select>` with a horizontal size catalog (searchable, grouped Social/Print/Presentation/Video), add a "Continue editing" hero (three most recent designs) and sort control (recent / name).                              | `Dashboard.tsx`, new `SizeCatalog.tsx`, `storage` list API                           | New project in ≤ 2 clicks; recents reflect `updatedAt`; empty state unchanged                         | M    |
+| A6  | **Templates tab inside the editor.** A `Design` tab at the top of the left rail that shows the same gallery and can (a) apply a template to the _current_ page and (b) insert a template as a _new_ page, both undoable, both behind a confirmation.                  | `Sidebar.tsx`, `templates/TemplateGallery.tsx`, `editor/actions.ts`                  | Applying a template is one undo step; inserting a page doesn't disturb existing pages                 | M    |
+| A7  | **Empty-canvas coaching.** When a page has zero elements, show a soft ghost prompt (headline + 3 chips: template, add text, upload) that disappears on first insert and never intercepts clicks.                                                                      | `CanvasStage.tsx`                                                                    | Prompt never blocks pointer events; hidden in present mode and for non-empty pages                    | S    |
 
-### 7.3 Primitives
-| Type | Schema fields | Canvas mapping | SVG |
-|------|---------------|----------------|-----|
-| `line` | `x,y,x2,y2`, `stroke`, `strokeWidth`, `endCap:'none'|'arrow'` | `fabric.Line` | `<line>` + optional `<marker>` |
-| `path` (star/triangle/arrow) | `pathData:string` (SVG d), `fill`, `stroke`, `strokeWidth` | `fabric.Path` | `<path d>` |
-| `rect` existing | add `strokeWidth` already via `Stroke.width` | — | — |
-
-Seed with factories `createLineElement`, `createStarElement(n=5)`, etc.
-
-### 7.4 Frames & Grids
-- Frame = `frame` element `{ shape:'rect'|'ellipse'|'path', clipPathData?, image: ImageElement | null, fit:'cover'|'contain' }` OR simpler: `image` with `clipShape` + `clipRadius`. Prefer composition: `frame` wraps one `image`.
-- Grids = preset groups of frames (2×1, 1×2, 2×2, 3×1…) inserted as group.
-- Export: frame → `<g clipPath>` containing `<image>`.
-
-### 7.5 Position Panel & Floating Toolbar
-- **Position panel** (right, collapsible): fields X, Y, W, H (NumberField, 0.5px precision), R (slider + number), aspect lock toggle, buttons: Center H/V, Flip H/V.
-- **Floating toolbar**: appears above selection bounding box (or below if near top). Buttons: duplicate, delete, lock, layer (bring forward/back), copy style, more (group, position, transparency). Uses `useFloating`-style absolute positioning via controller → page → viewport math.
-
-### 7.6 Typography v2
-- Fonts: bundle 12 via `@fontsource/*`: Inter, DM Sans, Manrope, Playfair Display, Bebas Neue, Montserrat, Lora, Poppins, Space Grotesk, JetBrains Mono, Caveat, Anton.
-- Picker: search + category chips (Sans/Serif/Display/Handwriting/Mono) + preview sentence “The quick brown fox...”.
-- Lists: `text.listStyle: 'none'|'bullet'|'numbered'` + `listIndent`. Export: bullets as `• ` prefix + `<tspan>` per line with indent.
-- Effects: `text.effect?: { type:'shadow'|'lift'|'hollow'|'background', color?, offsetX?, offsetY?, blur? }`. Implement as SVG filter: shadow = `<feDropShadow>`, hollow = `fill:none stroke`, lift = offset duplicate.
-
-### 7.7 Image Editing v2
-- `ImageElement` additions: `crop?: { x,y,width,height }` (unit rect 0..1), `flipX?:boolean`, `flipY?:boolean`, `opacity` already via base `opacity`, `adjust?: { brightness%, contrast%, saturate%, blurPx }`.
-- UI: crop mode toggle → Fabric `crop` rect handles; Flip buttons; Replace → file picker + re-import same asset id pattern.
-- Export: `crop` → `clipPath` rect in element-local coords; `adjust` → `<filter>` with `feComponentTransfer`/`feGaussianBlur`.
-
-### 7.8 Brand Kit (Local)
-- Storage: new Dexie table `brandKits` or single doc key `localBrand`.
-- Data: `{ palettes: {id,name,colors:HexColor[5]}[], fontPairs: {id, headingFont, bodyFont}[], logos: assetId[] }`.
-- UI: Brand tab in left rail → palette swatches (click applies to current page: replace fills matching old brand colors), font pair apply (heading/body detection via fontSize threshold).
-
-### 7.9 Template Registry
-- File: `apps/web/src/templates/registry.ts` + `templates/*.json` (canonical `DesignDocumentInput` with `source:'template'`).
-- Each template: `id, name, category, tags[], preview: { width,height, dataUrl }` (generated at build via `scripts/generate-previews.mjs` → SVG raster).
-- Search: simple tokenized `name + tags` filter (Fuse.js optional, ~5kb). No backend search needed for 100 templates.
-- On create from template: `createProjectFromTemplate(store, templateId)` clones document with new ids via `createBlankDocument` + element id regeneration.
-
-### 7.10 Magic Resize v1
-- UI: TopBar button “Resize” → drawer with presets; option “Copy & resize” (creates new project) vs “Resize”.
-- Logic: keep element relative positions: `newX = oldX / oldW * newW` (anchor center) or stretch mode `newW = oldW` scaled. Text fontSize scales with width ratio (clamped).
-- Single undo entry; preview before confirm.
+**Deliberately not in A:** new shapes, new fonts, gradients. A is chrome, entry and honesty.
 
 ---
 
-## 8. IA & UX Redesign: Make It Feel Like Canva
+### Phase B — The library
 
-### 8.1 Information Architecture
-```
-#/                          → Home (new)
-#/projects                   → Projects (existing Dashboard, now tab)
-#/templates/:category?      → Template gallery
-#/design/:id                → Editor
-#/brand                     → Brand Kit (later)
-#/settings                  → Settings (font opt-in, storage)
-```
+Goal: the left rail becomes an asset library rather than a shape menu. This phase is where the
+product stops feeling like a prototype.
 
-Keep hash router (no server rewrites) — just add routes. Redirect `#/` to home with recent designs + template entry points; keep `#/design/:id` stable.
+| ID  | Change                                                                                                                                                                                                                                                                                                                                                            | Files / packages                                                                                                    | Done when                                                                                             | Size |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---- |
+| B1  | **Bundled fonts.** Add 14 OFL families via `@fontsource-variable/*` (display, editorial, geometric, handwritten — e.g. Playfair Display, DM Serif Display, Bricolage Grotesque, Space Grotesk, Manrope, Fraunces, Caveat), lazily loaded with `FontFace` status ("loading/ready") so text never reflows after export.                                             | `apps/web/src/editor/fonts.ts`, new `fonts/registry.ts`, `index.css`                                                | Font list shows per-family previews; 14 families render identically on canvas and in SVG              | L    |
+| B2  | **Font embedding in export (blocking for B1).** Inline `@font-face` with base64 WOFF2 in the SVG `<defs><style>` for every family used on the page; rasterizer waits for `document.fonts.ready`.                                                                                                                                                                  | `packages/export/src/svg.ts`, `raster.ts`                                                                           | Export a Playfair design → PNG/PDF/SVG pixel-match the canvas (snapshot test with a tiny WOFF2)       | M    |
+| B3  | **Icon element.** New `icon` element: `{ iconId, color, strokeWidth }`, rendered from a registry of 24×24 path data (lucide is already a dependency), vector in SVG, recolorable, no asset bytes. Schema v5 + migration.                                                                                                                                          | `document/src/schema.ts`, `factories.ts`, `canvas-fabric/src/mapping.ts`, `export/src/svg.ts`, new `packages/icons` | 300+ icons searchable by name/keyword, insert + recolor + export; migration fixture for v4→v5         | L    |
+| B4  | **Elements panel.** Replace the `Shapes` tab with `Elements`: category chips (Shapes · Icons · Photos · Illustrations · Gradients · Grids · Lines), one search field across all, drag-to-canvas with a live ghost preview and drop at pointer. Keep the 8 primitives as the first row.                                                                            | `Sidebar.tsx`, new `panels/ElementsPanel.tsx`, `CanvasStage.tsx`                                                    | Drag from panel to canvas creates the element at the drop point (not page centre); click also inserts | M    |
+| B5  | **Photo library.** 40–60 CC0 photos, bundled at 1600 px WebP (~25 KB each after encode), declared as `url` assets with `source: { type: 'bundled' }` (small schema addition), lazy-loaded, with search by tag and a "see licence" affordance.                                                                                                                     | `packages/document` asset source, new `apps/web/src/assets/photos/*`, `ElementsPanel`                               | Photo inserts as an image element, exports correctly, licence shown, offline-safe                     | M    |
+| B6  | **Template system 12 → 60.** Split templates into _blueprints_ (layout functions with slots and a palette) + _instances_ (data). One blueprint multiplied by palettes/copy produces the catalog; a build-time script renders each to a preview WebP so the dashboard does not render 60 SVGs. Ship 8 collections × 6–8 designs, all original, licence-documented. | `templates/catalog.ts` → `blueprints/*` + `data/*`, `scripts/generate-previews.mjs`                                 | 60 templates, each opens, is editable, exports; catalog bundle adds < 120 KB gz excluding previews    | L    |
+| B7  | **Text panel upgrade.** Style presets as visual rows (size + weight + tracking baked in), font pairing presets ("Editorial", "Bold poster", "Soft serif"), bullet and numbered lists, and all-caps/small-caps as a `textTransform` property.                                                                                                                      | `Sidebar.tsx`, `properties/TextProperties.tsx`, schema `textTransform` + `listStyle`                                | Lists render in Fabric (multi-line bullets) and in SVG/PDF; presets are one click and undoable        | M    |
+| B8  | **Backgrounds: gradients and images.** Extend `Fill` from `solid \| none` to `solid \| linear \| radial \| image \| none` with a migration; adapt `fillToFabric`, SVG `<linearGradient>`/`<radialGradient>` and `<image>` backgrounds; 24 curated gradients in a new Background panel grid.                                                                       | `document/src/schema.ts`, `canvas-fabric/src/mapping.ts`, `export/src/svg.ts`, `panels/BackgroundPanel.tsx`         | Existing documents migrate and render identically; gradient backgrounds export in all three formats   | L    |
 
-### 8.2 Layout Map (vs Current)
+Why B3 as a new element rather than SVG assets: an icon that cannot be recolored is a sticker,
+not a design element; an icon that is an image asset bloats documents and cannot inherit color.
+`icon` keeps the document small, the export vector and the colour live.
 
-| Region | Today | Proposed (Canva-like) |
-|--------|-------|------------------------|
-| **Top bar** | Logo + title input + undo/redo + export + save + zoom | **Left:** ☰ hamburger + File (Save, Download, Share, Present, Settings) + Resize + Title (auto-save pill) · **Center:** (floating toolbar handles most) · **Right:** Share (primary) + Present + User avatar placeholder + Zoom |
-| **Left rail** | 16-icon nav + 72-panel | **12-icon rail (56px)** + **320px panel** with search at top + category chips + large previews (Canva: 160px cards) |
-| **Canvas area** | Gray workspace with centered page | Lighter `bg-[#f2f3f5]` workspace, **page shadow + margins + rulers toggle (Cmd+Shift+R)** |
-| **Bottom strip** | None | **Pages thumbnails** (when pages.length>1): 80px thumbs, add/duplicate/delete |
-| **Right panel** | Always visible, tab-less | **Contextual**: Position, Style, Text, Effects tabs; collapsible; width 300px; hidden when floating toolbar covers it |
-| **Floating toolbar** | None | **Above selection**: dupe/del/lock/forward/back/copy-style/more · **Below image**: crop/flip/filters/adjust |
+---
 
-### 8.3 Visual Language Change
+### Phase C — Canvas power
 
-Update `packages/ui/src/styles/theme.css`:
+Goal: remove every moment where the user thinks "in Canva this would take one gesture".
 
-```css
---color-background: #ffffff;
---color-workspace: #f2f3f5;      /* was #e5e7eb — lighter, Canva-like */
---color-panel: #ffffff;
---color-border: #e6e8eb;
---color-primary: #7a5cf9;        /* Canva-leaning purple, warmer than #4f46e5 */
---color-primary-foreground: #ffffff;
---radius-lg: 12px;                /* was 8px → softer cards */
---radius-xl: 16px;
---shadow-card: 0 1px 4px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
---font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system;
-```
+| ID  | Change                                                                                                                                                                                                                    | Files                                                                                         | Done when                                                                                                | Size |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---- |
+| C1  | **Frames.** `frame` element (shape + `fit` + child image), rendered as a Fabric `clipPath`; drop an image onto a frame to fill it; drag inside to reposition, handles to crop.                                            | `document` (new element), `canvas-fabric/adapters/frame.ts`, `export/src/svg.ts` (`clipPath`) | Drop photo on a frame → cover-cropped, repositionable, exports with the same crop                        | L    |
+| C2  | **On-canvas crop.** Double-click an image → crop mode with darkened outside, 8 handles, aspect presets (1:1, 4:5, 16:9, free), Enter/Escape/click-away to commit or cancel; writes the existing `crop` field.             | `CanvasStage.tsx`, new `canvas/CropOverlay.tsx`, `adapter.ts`                                 | Crop is one gesture and one undo step; numeric fields still work                                         | L    |
+| C3  | **Replace and swap images.** `Replace image` in the image panel and context menu (keeps crop, filters, geometry); drag an image onto an existing image to swap it.                                                        | `PropertiesPanel.tsx`, `CanvasStage.tsx`, `assets/useImageImport.ts`                          | Replacing preserves every property except `assetId`; old asset is garbage-collected only if unreferenced | S    |
+| C4  | **Quick gestures.** Alt-drag duplicates; `Ctrl/⌘ + drag` copies style; double-click text enters edit and selects the word under the cursor; arrow-key nudge path already exists; `Shift` while resizing preserves aspect. | `adapter.ts`, `useKeyboardShortcuts.ts`                                                       | Verified by jsdom/unit tests where possible and manual checklist                                         | M    |
+| C5  | **Copy/paste style and eyedropper.** A `styleClipboard` in the editor store (fill, stroke, corner radius, typography, effects); `Ctrl Alt C/V`; `EyeDropper` API for fill and text colour with hex fallback.              | `EditorProvider.tsx`, `actions.ts`, `useKeyboardShortcuts.ts`                                 | Paste style across element types applies only compatible fields, one undo step                           | S    |
+| C6  | **Rulers, margins and gap guides.** Optional rulers along the workspace edges with pointer tick marks, draggable margin/bleed guides stored per page (non-exporting), and gap snapping between elements during drag.      | `CanvasStage.tsx`, `canvas/Rulers.tsx`, `adapter.ts` guides                                   | Toggleable, persists per document, excluded from export and present mode                                 | L    |
+| C7  | **Brand kit (local).** Up to 5 palettes and 3 font pairs saved in IndexedDB; applies to selection or whole page in one undo step; "extract palette from image" using a 5-colour median cut.                               | new `apps/web/src/brand/*`, `packages/storage/src/brandStore.ts`, `panels/BrandPanel.tsx`     | Palette application recolours shapes/text coherently and is undoable in one step                         | M    |
+| C8  | **Magic resize v1.** Resize document to another preset with a confirmation preview; heuristic repositioning (scale relative anchors, keep text sizes within ±15 %) plus a non-destructive "original size" undo entry.     | `editor-core/src/resizeLayout.ts`, `TopBar.tsx` / `ShareDialog`                               | 1080×1080 → 1080×1920 produces a sane layout on 8 sample docs; always undoable                           | L    |
+| C9  | **History panel.** Scrub through undo stack with labels derived from command types; clicking a state restores it without discarding the future.                                                                           | `editor-core/src/store.ts` (labels), `panels/HistoryPanel.tsx`                                | Labels are human ("Moved rectangle", "Changed font"); no document drift                                  | M    |
+
+C1 and C2 are the two features users will describe as "now it's an editor".
+
+---
+
+### Phase D — Publish and trust
+
+| ID  | Change                                                                                                                                                                                                                                        | Files                                              | Done when                                                                               | Size |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------- | ---- |
+| D1  | **Honest share, option 1 (default).** Rename to `Open on this device` / `Copy view link`, state plainly that the link works in this browser only, and surface `.opencanvas` export as the way to move designs. Remove "anyone with the link". | `ShareDialog.tsx`, `share/cloud.ts`                | Copy matches reality; test asserts no cross-origin claim                                | S    |
+| D2  | **Honest share, option 2 (self-hosted).** Add a tiny optional `apps/api` route that stores a document + assets and returns `/s/:id`; only enabled when configured (`VITE_SHARE_ENDPOINT`), otherwise UI stays in D1 mode.                     | new `apps/api`, `share/cloud.ts`                   | Share works across browsers when configured; local mode still truthful                  | L    |
+| D3  | **Export matrix.** Format (PNG · JPEG · WebP · SVG · PDF), scale (1×/2×/3×/custom), transparent background, page range, and "PDF (print)" with 3 mm bleed + crop marks for print presets.                                                     | `ExportControls.tsx`, `export/*`                   | Every option is real and covered by a headless test; download names carry size and page | M    |
+| D4  | **Vector text PDF.** Embed the used WOFF2 subsets in the PDF and draw text as text; raster fallback only for filters.                                                                                                                         | `export/src/pdf.ts`, new `export/src/fontEmbed.ts` | Text is selectable in the PDF; A4 poster at 100 % is sharp                              | L    |
+| D5  | **Copy image to clipboard** (PNG @2×) alongside download, plus "Copy as SVG" for pasting into other tools.                                                                                                                                    | `useDesignExport.ts`                               | Works in Chromium/Firefox with `ClipboardItem`; graceful message otherwise              | S    |
+| D6  | **Present polish.** Fullscreen, page counter, arrow/space navigation (exists), plus "present from current page" and a black/white backdrop toggle; no editing chrome leaking in.                                                              | `PresentMode.tsx`                                  | Escape exits and restores focus to the canvas                                           | S    |
+
+D1 is non-negotiable and can ship on day one; it is a 30-line honesty fix with a test.
+
+---
+
+## 9. Deep specs
+
+### 9.1 Schema roadmap (v4 → v6)
+
+| Version | Adds                                                             | Migration                                                                                                     | Touches                                                              |
+| ------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| v5      | `icon` element                                                   | identity + defaults (`color: '#111827'`, `strokeWidth: 2`)                                                    | schema, factories, adapter mapping, SVG, PDF raster, fixtures        |
+| v6      | `Fill` = solid + linear + radial + image; `bundled` asset source | normalise existing `{type:'solid'}` untouched; add `source.type === 'bundled'` default `'url'` for old assets | schema, mapping, SVG gradients, BackgroundPanel, template blueprints |
 
 Rules:
-- Cards with `rounded-xl shadow-card` instead of `rounded-md border`.
-- Buttons: primary has `h-9 px-4 rounded-full` like Canva (pill).
-- Panels: no hard borders, use `shadow-sm` between rail and panel.
-- Click targets ≥ 36px (a11y).
 
-### 8.4 Interaction Details Canva Gets Right (Copy These)
+- One element/property family per version. Every bump ships a `migrations.test.ts` fixture pair
+  (old JSON → new JSON) and an `export` golden.
+- Renderers must be total: a v6 document opened by a v5 build is rejected by version check, not
+  rendered partially.
+- `Fill` stays a discriminated union; no optional-everything bag.
 
-1. **Drag preview:** While dragging from left panel, show semi-transparent ghost that snaps to canvas; page highlights.
-2. **Hover lift:** Template cards scale 1.02 + shadow on hover.
-3. **Inline text editing:** Double-click text edits in place with floating format bar (font, size, color, align) — not only right panel.
-4. **Smart duplicate:** Alt+drag copies; Cmd+D keeps offset direction consistent.
-5. **Nudge with precision:** Arrow = 1px, Shift+Arrow = 10px (already done) + show distance badge between selected + nearest neighbor.
-6. **Empty states with personality:** “No designs yet” → show 3 template CTAs with illustrations, not just text.
-7. **Command palette:** Cmd+K → “Add heading”, “Change background”, “Export PDF” (quick wins for power users).
-8. **Onboarding:** First visit → 30-sec tour: “1. Choose a template, 2. Drag elements, 3. Export”.
-
----
-
-## 9. Data Model & API Changes
-
-### 9.1 Schema Versioning
-
-Bump `CURRENT_SCHEMA_VERSION` to `2` for group support (structural change). Add migration `v1→v2` that wraps existing elements arrays verbatim (no data change; only type registry grows) — but new `group` type is forward-incompatible, so old clients see “Update OpenCanvas” error (existing newer-version path).
-
-Subsequent additive fields (`crop`, `adjust`, `effect`, `listStyle`, frame types) **do not bump version** — they have defaults and older readers ignore unknown keys (Zod strips). This keeps import lenient.
-
-### 9.2 Proposed Schema Additions
+### 9.2 The `icon` element
 
 ```ts
 // packages/document/src/schema.ts
-
-// — New element types —
-LineElement: { type:'line', x,y, x2,y2, stroke, strokeWidth }
-PathElement: { type:'path', pathData:string, fill, stroke }
-GroupElement: { type:'group', children: ElementSchema[], width,height,x,y,rotation,... }
-FrameElement: { type:'frame', shape:'rect'|'ellipse'|'custom', pathData?, cornerRadius?, 
-                assetId?, fit, crop?, flipX?, flipY? }
-
-// — Augment ImageElement —
-ImageElement += { 
-  crop?: { x,y,width,height },  // unit rect
-  flipX?: boolean, flipY?: boolean,
-  adjust?: { brightness:number, contrast:number, saturate:number, blur:number },
-  shadow?: { color:HexColor, offsetX,offsetY, blur }
-}
-
-// — Augment TextElement —
-TextElement += {
-  listStyle?: 'none'|'bullet'|'numbered',
-  listIndent?: number,
-  effect?: { type:'shadow'|'lift'|'hollow'|'background', color?, blur?, offsetX?, offsetY? },
-  verticalAlign?: 'top'|'middle'|'bottom'
-}
-
-// — Page —
-Page += { guides?: { margins:{top,right,bottom,left}, bleed?: number } }
-
-// — Document —
-Document += { brandKitId?: string }
+export const IconElementSchema = ElementBaseSchema.extend({
+  type: z.literal('icon'),
+  iconId: z.string().min(1).max(64), // key in @opencanvas/icons
+  color: HexColorSchema.default('#111827'),
+  strokeWidth: z.number().min(0.5).max(6).default(2),
+});
 ```
 
-### 9.3 Command Vocabulary Extensions
+- `packages/icons` exports `ICONS: Record<string, { paths: string[]; keywords: string[] }>` derived
+  from lucide's SVG data, tree-shakeable and zipped into a ~60 KB gz chunk.
+- Fabric renders a `Group` of `Path`s with `stroke = color`, `fill = 'none'`, scaled from a 24×24
+  viewBox; hit-testing and resize work through the existing mapping.
+- SVG export writes `<g transform …>` + `<path d=…>`; no rasterization, no network.
+- Search happens in the panel over `keywords`, not over 300 DOM nodes.
 
-```ts
-page.add | page.delete | page.reorder | page.duplicate
-group    | ungroup
-element.update already covers new fields via ElementPatch
-document.resize gains options: { anchor:'center'|'top-left', scaleContent:boolean }
-```
+### 9.3 Frames without a new geometry system
 
-### 9.4 Asset Model
+Reuse `rect` geometry: `frame` is `{ ...rect, type:'frame', fit:'cover'|'fill', assetId? }`.
+The adapter adds the frame as a Fabric `Rect` with `clipPath` and an internal `Image`. Export
+emits `<clipPath id>` + `<image>`. No nested transforms, no new coordinate space — which is where
+Fabric group bugs live.
 
-Keep `assets: Record<id, ImageAsset>` with `source:{type:'local'|'url'}`. Add optional `kind:'icon'|'illustration'` tag for filtering. Template assets use `url` source pointing to bundled `/templates/assets/...` (copied to `public/templates/` at build); import flow downloads bytes into project blob store on first open (lazy).
-
----
-
-## 10. Engineering Plan by Package
-
-### `packages/document` (source of truth)
-1. Add new element schemas + factories (`createGroupElement`, `createLineElement`, etc.).
-2. Geometry helpers: `getGroupBounds(children)`, `decomposeGroupTransform`.
-3. Migration v1→v2 + fixtures (5 template fixtures exported from Canva-like designs).
-4. Thumbnail helper: `getElementThumbnailBounds`.
-
-### `packages/editor-core`
-1. New commands handlers in `reducer.ts` (`group`, `ungroup`, page commands).
-2. Selectors: `selectAllPages`, `selectPageThumbnails`, `selectGroups`.
-3. Arrange: `groupBounds()`, `ungroupElements()`, extend `alignElements` to work across groups (flatten or treat group as single box — choose single-box for v1).
-4. Store: `activePageId` + new `selectedPageIds` (for multi-page actions later), `historyLimit` increase to 100.
-
-### `packages/canvas-fabric`
-1. Mapping: line/path/group/frame → Fabric objects (`fabric.Line`, `fabric.Path`, `fabric.Group`, `fabric.Rect` with clipPath).
-2. Reconciliation: groups require recursive sync (by id); maintain `Map<groupId, Map<childId, object>>`.
-3. Interactions: group drag → report `element.update` with decomposed child patches OR single group patch (pick single group X/Y for v1 — simpler undo).
-4. Guides: extend `AligningGuidelines` with margin guides (canvas size fractions).
-5. Crop UI: overlay rect with handles → updates `crop` via `element.updateMany` with `mergeKey:'crop'`.
-
-### `packages/storage`
-1. Multi-page already stored; ensure `projectStore.save` snapshots all pages.
-2. Thumbnail caching: Dexie table `thumbnails` with `projectId→dataUrl` and LRU eviction (max 10MB).
-3. Template asset resolver: fetch `url` assets, cache in blob store on first access.
-
-### `packages/export`
-1. SVG: handle line/path/group/frame/crop/adjust/effects → `<filter>` + `<clipPath>`. Text: bullets/numbered, effect shadows.
-2. PDF: keep raster path for complex filters; vector path for simple docs (choose raster when filter/effect present).
-3. Rasterizer: respect `flipX/flipY` (SVG transform `scale(-1 1)`), `crop` (clipPath).
-
-### `packages/ui`
-1. New primitives: `Slider`, `Tabs`, `Popover`, `Dialog`, `Command` (palette), `Card`, `Badge`.
-2. Theme tokens refresh (radii, shadows, spacing).
-3. `Thumbnail` component (aspect-ratio box with skeleton).
-
-### `apps/web`
-1. **Phase order:**
-   - Week 1–2: Pages strip + group.
-   - Week 3–4: Primitives + icon library + frames/grids.
-   - Week 5–6: Template gallery + dashboard grid + left rail search.
-   - Week 7–8: Typography + image editing + floating toolbar.
-   - Week 9+: Brand Kit, Resize, Present.
-
-2. **Key files to add:**
-```
-apps/web/src/templates/ (registry, loaders, 30+ JSON templates)
-apps/web/src/editor/canvas/ (crop overlay, rulers component)
-apps/web/src/editor/panels/ (BrandPanel, TextEffectsPanel, ImageAdjustPanel, PositionPanel)
-apps/web/src/editor/toolbar/FloatingToolbar.tsx
-apps/web/src/home/HomeGallery.tsx  (new home route)
-apps/web/src/pages/PagesStrip.tsx
-```
-
-3. **Routing:** Extend `router.ts` with `home`, `templates`, `brand`.
-
----
-
-## 11. Brand, Templates & Content Strategy
-
-### Templates (Ship 30 by M5, 100 by M6)
-
-**Categories (Canva-parity):**
-- Social: Instagram Post/Story/Reel Cover, Facebook Post, X Post, LinkedIn Banner, YouTube Thumbnail
-- Marketing: Poster, Flyer, Business Card, Brochure (front)
-- Presentation: Cover slide, Section header, Quote slide
-- Personal: Resume (1-pager), Invitation, Certificate
-- Print: A4 Poster, Menu, Newsletter
-
-**Licensing tiers:**
-1. **Original OpenCanvas templates** — staff/community-authored, CC0. Priority 1.
-2. **Adapted public domain** — e.g., open-licensed poster layouts from OpenClipart, Unsplash photos (CC0), Google Fonts (OFL).
-3. **Placeholder premium** — Canva-style but marked “Community template — replace images”.
-
-**Production pipeline:**
-- Figma → export JSON via script `scripts/figma-to-opencanvas.mjs` (map frames→pages, text→TextElement, rect→RectElement).
-- Each template has `preview.png` (800×600) generated at build (`vite` plugin rasterizes SVG).
-- License manifest `templates/LICENSES.json` listing photo/font licenses per template (AGPL requires attribution preservation).
-
-### Brand Kit Content
-- Starter palettes: 5 curated (Vibrant, Earthy, Pastel, Mono, Bold) — apply in one click.
-- Font pairs: 8 pairings (e.g., Playfair+Inter, Anton+DM Sans) with usage notes.
-
----
-
-## 12. Quality, A11y & Performance Targets
-
-| Metric | Today | Target (M6) | How |
-|--------|-------|-------------|-----|
-| **Lighthouse Performance** | ~90 | ≥ 92 | Thumbnails lazy-loaded, Fabric `renderOnAddRemove:false`, worker raster |
-| **A11y** | Basic | ≥ 95 | All panels keyboard-navigable, thumbnails have alt, color contrast ≥ 4.5:1 |
-| **Bundle** | vite (unknown) | ≤ 350kb gzipped app shell | Code-split gallery/Editor, dynamic import `jspdf` |
-| **Canvas FPS** | ? | ≥ 55 fps on 50 elements @1080p | `objectCaching:false` already; add `skipOffscreen:true` |
-| **Undo latency** | instant | < 50ms | Keep structural sharing, historyLimit 100 |
-| **Export** | PNG/SVG/PDF | + JPG, vector PDF | — |
-| **E2E** | None | Playwright: 15 flows | Add `tests/e2e/` per existing `docs/ci/github-actions-ci.yml` placeholder |
-
-**Testing additions per milestone:** Vitest for new schemas/reducers; Fabric jsdom tests for group/frame mapping; Testing Library integration tests for gallery/crop/toolbar; Playwright for drag-drop + multi-page.
-
----
-
-## 13. Metrics & Validation
-
-Track locally (no cloud telemetry required):
-
-| Question | Signal |
-|---------|--------|
-| Do users find templates? | Home → template click rate, search query length |
-| Is editor usable? | Time to first element added (target < 15s), drop success rate |
-| Do exports succeed? | Export error rate (target < 1%), format split |
-| Is performance OK? | Canvas render time (perf.mark), thumbnail generation time |
-
-Add opt-in `posthog` later; until then, rely on Playwright + manual dogfooding checklist.
-
-**Dogfooding checklist (each milestone):**
-- [ ] Non-engineer creates a poster from template in < 3 min without help
-- [ ] All template text is editable and exports correctly
-- [ ] Undo after every destructive action restores perfectly
-- [ ] Keyboard-only user can add shape, move, delete, export
-
----
-
-## 14. Risks & Mitigations
-
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| **Fabric.js groups are fragile** — selection/transform bugs | High | High | Build thin `FabricGroupAdapter` isolation; fallback: store groups as flattened with `groupId` tag instead of nested geometry |
-| **Font licensing** | Medium | High | Only bundle OFL fonts; Google Fonts opt-in with user-provided URL; keep `@fontsource` installs pinned |
-| **Template explosion** — 100 templates bloat bundle | Medium | Medium | Store templates as lazy JSON chunks; previews as WebP; registry is tree-shaken |
-| **Scope creep** — trying to be full Canva | High | High | Enforce P0/P1/P2; each PR ≤ 400 lines; “No fake buttons” rule stays |
-| **AGPL + hosted templates** — license compliance | Low | High | Ship source + LICENSE; template photos must be CC0/OFL; keep `docs/ci/github-actions-ci.yml` pattern for deploy |
-| **Performance regression** with multi-page thumbs | Medium | Medium | Thumbnail worker + cache; virtualized page strip |
-| **Accessibility debt** | Medium | High | Add `eslint-plugin-jsx-a11y` in M4; require a11y test in CI |
-
----
-
-## 15. Quick Wins: First 2 Weeks
-
-Ship these *before* deep structural work — immediate Canva feel lift with < 100 lines each:
-
-| # | Win | Effort | File | Impact |
-|---|-----|--------|------|--------|
-| 1 | **Workspace refresh**: lighter bg, page shadow, 24px padding, rounded page (8px) | 1h | `theme.css`, `CanvasStage.tsx` | ⭐⭐⭐ |
-| 2 | **Primary button as pill**: `rounded-full` for Export/Share, larger hit area | 30m | `packages/ui/button.tsx` | ⭐⭐ |
-| 3 | **Dashboard cards**: 2-col grid with SVG thumbnail (render 200px SVG → img) + file name + size + updatedAt | 1 day | `Dashboard.tsx`, new `Thumbnail.tsx` | ⭐⭐⭐ |
-| 4 | **Search filter in Shapes/Elements**: input filters 3 items now, scales to 20+ later | 1h | `Sidebar.tsx` | ⭐⭐ |
-| 5 | **Floating duplicate/delete**: small toolbar on selection (calls existing actions) | 3h | new `FloatingToolbar.tsx` + `CanvasStage` anchor calc | ⭐⭐⭐ |
-| 6 | **R to add rect, T to add text**: keyboard shortcuts (add to `useKeyboardShortcuts.ts`) | 1h | `useKeyboardShortcuts.ts` | ⭐⭐ |
-| 7 | **Empty state illustration**: simple SVG poster mock + 2 CTAs (template/blank) | 2h | `Dashboard.tsx` | ⭐⭐ |
-| 8 | **Eyedropper for fill**: use `EyeDropper` API where available, fallback to prompt | 2h | `PropertiesPanel.tsx` | ⭐ |
-| 9 | **Lock aspect ratio** toggle on selected element | 2h | `PropertiesPanel.tsx` + store `aspectLock` transient state | ⭐⭐ |
-| 10 | **Copy style / Paste style**: store `styleClipboard` (fill/stroke/typography/corners) in `EditorProvider` | 4h | `EditorProvider.tsx`, `actions.ts` | ⭐⭐ |
-
-*Doing 1+3+5 alone makes the app photograph like Canva for screenshots — do them first.*
-
----
-
-## Appendix A: Canva Jobs-To-Be-Done Map
-
-| Job | Canva flow | OpenCanvas target flow |
-|-----|-----------|-----------------------|
-| **"I need an Instagram post fast"** | Home → Instagram Post template → edit text → Download PNG | Home → Instagram Post (preset) template → edit → Export PNG |
-| **"I need a poster with my photo"** | Upload → drag to frame → adjust → Print PDF | Upload → drag to frame/grid → crop → Export PDF Print |
-| **"Make all my posts on-brand"** | Brand Kit → apply palette/fonts → resize for each platform | Brand panel → apply palette → Magic Resize |
-| **"Collaborate with teammate"** | Share link → comment → resolve | Share link (self-hosted) → local comments (v1) → real-time (v2) |
-| **"Animate my presentation"** | Animate → Present → record | Present mode → slide transitions (v2) |
-| **"Fix my photo"** | Edit photo → adjust/filters/BG remover | Adjust (brightness/contrast) → filters (v1), BG remover (v2) |
-| **"Find the right font"** | Search fonts → pairing suggestions | Font picker with categories + pairs |
-| **"Organize complex design"** | Layers + groups + pages | Layers + groups + pages |
-
-Every milestone should close at least one full job end-to-end and be demoable as that job.
-
----
-
-## Appendix B: Proposed File Tree Additions
+### 9.4 Fonts and export (the landmine)
 
 ```
-packages/document/src/
-  elements/line.ts, path.ts, group.ts, frame.ts
-  migrations/v1-to-v2.ts
-
-packages/editor-core/src/
-  pages.ts
-  groups.ts
-  history.test.ts (extended)
-
-packages/canvas-fabric/src/
-  adapters/groupAdapter.ts
-  adapters/frameAdapter.ts
-  rulers/RulerOverlay.tsx
-  guides.ts (extended)
-
-packages/storage/src/
-  thumbnails.ts
-  brandStore.ts
-
-apps/web/src/
-  home/HomeRoute.tsx
-  home/TemplateGallery.tsx
-  home/TemplateCard.tsx
-  templates/registry.ts + templates/*.json + templates/assets/**
-  pages/PagesStrip.tsx
-  editor/toolbar/FloatingToolbar.tsx
-  editor/crop/CropOverlay.tsx
-  editor/panels/PositionPanel.tsx
-  editor/panels/TextEffectsPanel.tsx
-  editor/panels/ImageAdjustPanel.tsx
-  editor/panels/BrandPanel.tsx
-  brand/BrandContext.ts
-  scripts/generate-previews.mjs
-  scripts/figma-to-opencanvas.mjs
-
-tests/e2e/
-  home-gallery.spec.ts
-  multi-page.spec.ts
-  group.spec.ts
-  crop.spec.ts
+registry (family → url, weights) ──► FontFace load on demand ──► canvas reflow
+                                    └──► export: base64 @font-face in <defs><style>
 ```
 
-Total new code estimated: **~6k lines** across M4–M7 (consistent with ~300–400 lines/PR × 18 PRs).
+- Only load a family when it is chosen or present in the document (parse the model on open).
+- SVG export inlines only the used families; a subset of Inter + Playfair adds ~40–90 KB, which is
+  acceptable for a design file.
+- PDF (D4) embeds the same base64 bytes with jsPDF `addFileToVFS` / `addFont`.
+- Snapshot test: a one-glyph document with a tiny test WOFF2 must produce an SVG containing
+  `@font-face` and a PNG whose glyph bounding box differs from the fallback.
+
+### 9.5 Magic resize heuristic (C8)
+
+1. Compute anchor deltas: each element keeps its proportional centre and its distance to the
+   nearest page edge as a ratio.
+2. Text keeps font size unless it would overflow the new width by > 20 %, then scales down to fit.
+3. Images keep aspect and may grow, never squash; frames scale to page ratio.
+4. Show a before/after preview; the whole operation is one `document.resize` + `element.updateMany`
+   pair inside a single history step.
 
 ---
 
-## Appendix C: Out-of-Scope / Later
+## 10. Visual and interaction spec
 
-These are real Canva features intentionally deferred — they would dilute focus before core is solid:
+Canva reads as Canva because of a small number of consistent decisions. Adopt them literally.
 
-- **Video timeline & audio** — needs media engine (`@opencanvas/media`) beyond Fabric.
-- **Real-time multiplayer** — keep commands serializable now; add OT later (Milestone 5 Cloud).
-- **Magic AI suite** — text generation, image generation, background remover (behind provider abstraction, user key, full disclosure).
-- **Print fulfillment** — Canva Print is a business, not just a feature.
-- **App marketplace** — plugin SDK after core stabilizes.
-- **Full design system audit** — Canva’s brand kit is deep (tone, voice, illustration). Start with local palettes/fonts.
+**Chrome**
+
+- Top bar 52 px, white, one 1 px bottom border, brand mark left, document name centred-left,
+  `Share` primary pill right, `Download` secondary right.
+- Left rail 72 px, icon 24 px over an 11 px label, active state = filled dark pill (not purple).
+- Panel 360 px, section headers 13 px semibold with 16 px padding, collapsible with remembered state.
+- Canvas workspace `#f2f3f5`, page shadow already implemented, 32 px minimum gutter, zoom bottom-right.
+- Selection toolbar floats above the object, 36 px tall, pill, 6 px gap from the bounding box.
+
+**Type**
+
+- UI: 13 px body / 12 px labels / 20 px page titles / Inter only.
+- Canvas defaults: heading 64 px bold, subheading 32 px semibold, body 18 px — with tracking
+  `-0.02em` on headings (this single detail is most of "Canva typography looks better").
+- Presets ship as complete styles (family + size + weight + line height + tracking + colour),
+  not as three naked buttons.
+
+**Colour**
+
+- Keep `--color-primary: #7a5cf9` for focus and primary actions; introduce a neutral ramp
+  (`#111827`, `#374151`, `#6b7280`, `#e5e7eb`, `#f9fafb`) and use violet only for accent.
+  Today violet is used for the active shape card, the tip card, and primary CTAs — reducing it
+  increases perceived polish.
+
+**Motion**
+
+- 120 ms ease-out for panel/toolbar appearance, 180 ms for dialogs, no bounce; respect
+  `prefers-reduced-motion` (currently unused).
+
+**States**
+
+- Every async action has loading, empty, error and retry states (the dashboard already models
+  this well — replicate its pattern in panels).
 
 ---
 
-## Next Steps
+## 11. Quality gates and budgets
 
-1. **Review with maintainers:** Approve pillars & milestone split; confirm AGPL-compatible asset sourcing.
-2. **Land Quick Wins (Week 1–2):** PRs for workspace refresh, dashboard cards, floating toolbar — visible payoff before deep work.
-3. **Kick off M4:** First PR = `document` v2 schema + group factories + migration fixtures (reviewable, < 300 lines).
-4. **Template sprint:** Parallel track — designers produce first 15 templates in Figma while engineers ship M4.
-5. **CI:** Add Playwright project + a11y checks in `.github/workflows/ci.yml` (owner copies from `docs/ci/github-actions-ci.yml` as before).
+| Gate          | Rule                                                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tests         | Each phase adds: model unit tests, one adapter reconciliation test, one export golden, one jsdom integration test. Target +120 tests by end of D |
+| E2E           | Playwright project added in Phase A: `home → template → edit → download`, `upload → frame → export`, `share copy`                                |
+| Perf          | First meaningful editor paint < 1.5 s on a mid laptop; 60 fps drag with 200 elements; template catalog < 200 KB gz; icon chunk lazy              |
+| A11y          | `eslint-plugin-jsx-a11y`, axe smoke on dashboard/editor, every icon-only button labelled, focus visible, panels reachable by keyboard            |
+| Bundle        | Panel/template/icon code split; no template payload in the editor entry chunk                                                                    |
+| Reviewability | ≤ 400 changed lines per PR (excluding fixtures/generated data), one vertical slice                                                               |
 
 ---
 
-*This plan preserves what makes OpenCanvas distinct (local-first, owned documents, reviewable PRs) while borrowing the best of Canva’s product sense: make creation start from inspiration, keep editing forgiving, and let export just work. The path is incremental, testable, and shippable every two weeks.*
+## 12. Risks
 
+| Risk                                                                       | Likelihood | Impact | Mitigation                                                                                                                      |
+| -------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Font licensing or weight                                                   | Medium     | High   | OFL/Apache only, pinned `@fontsource`, licence file per family, subset + `font-display: swap`                                   |
+| Template quality problem (60 mediocre designs are worse than 12 good ones) | High       | High   | Blueprints reviewed as a contact sheet before instancing; ship 8 per collection, not 60 at once                                 |
+| `Fill` union breaks every renderer                                         | Medium     | High   | One PR per renderer with golden tests; migration is identity by design; feature flag `gradients` until all three exporters pass |
+| Icon element inflates document size                                        | Low        | Medium | Store id + colour only; cap `maxIconsPerPage`; registry is app code, not document data                                          |
+| Fabric clipPath frames regress selection                                   | Medium     | High   | Frame adapter is isolated with its own tests; fallback is mask-as-image-crop (already exists)                                   |
+| Users mistake D1 local share for real sharing                              | Low        | Medium | Explicit copy + `.opencanvas` path in the same dialog                                                                           |
+| Scope creep (video, AI, marketplace)                                       | High       | High   | Section 15 is a decision record; features there need a new plan, not a PR                                                       |
+
+---
+
+## 13. Metrics
+
+Instrument locally (no telemetry by default): a dev-only counter module, plus manual benchmarks.
+
+- **Time to first export** for a new user following the template path: target < 3 min.
+- **Template usage**: % of new projects started from a template (target > 50 %).
+- **Asset inserts per design** (icons + photos): target ≥ 3 — this is the proxy for "library
+  depth is working".
+- **Export format mix**: PDF share rising after D3/D4 (print-ready is why people pick Canva).
+- **Abandonment in the editor**: sessions ending with 0 edits (target < 15 %).
+- **Scorecard re-score** after each phase by the same rubric in §2.
+
+---
+
+## 14. First ten working days
+
+Ordered, each item shippable on its own.
+
+1. `D1` honest share copy + test (0.5 day) — removes a false claim immediately.
+2. `A1` download menu (1 day) — the top bar starts looking like a product.
+3. `A2` zoom to canvas corner (0.5 day).
+4. `A4` type/density pass (1.5 days) — highest visual return per line of CSS.
+5. `A3` toolbar anchored to selection (1.5 days) — the single strongest "feels like Canva" cue.
+6. `A5` dashboard size catalog + continue-editing hero (2 days).
+7. `A7` empty-canvas coaching (0.5 day).
+8. `B1` + `B2` first four fonts **with** embedding (2 days) — proves the export path before scaling to 14.
+9. `B3` icon element schema + migration + 40 icons end-to-end (2 days) — proves the library path.
+
+At the end of day ten the app should be screenshot-competitive with Canva on the editor screen and
+already export a design in a font that is not Arial.
+
+---
+
+## 15. Explicit non-goals
+
+Written down so they do not leak into PRs:
+
+- **Video editor, audio, animation timeline.** Different product surface; needs a media engine.
+- **Real-time multiplayer and comments.** Commands are already serializable; do this after D2
+  introduces a server, not before.
+- **Canva's AI suite.** Optional assistive generation can arrive as a later, key-gated milestone;
+  it is not what makes the product feel like Canva.
+- **App marketplace / plugin SDK.** Premature before the document model stabilises at v6.
+- **Print fulfilment, stock subscriptions, social auto-publishing.** Business lines, not features.
+- **A pixel-perfect visual clone.** OpenCanvas keeps its indigo accent and its own brand voice;
+  "Canva-like" here means interaction grammar, content density and export confidence.
+
+---
+
+_Decision rule for every future proposal: does it increase the number of good things a user can
+put on a page, or reduce the number of gestures needed to make them look right? If neither, it is
+not Canva parity — it is backlog._
