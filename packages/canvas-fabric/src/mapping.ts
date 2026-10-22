@@ -481,6 +481,110 @@ export function computeImageFit(
   };
 }
 
+/** A rectangle of a bitmap, in the bitmap's own pixels. */
+export interface CropWindow {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Smallest crop the document schema accepts, per axis (see `ImageCropSchema`). */
+const MIN_CROP_FRACTION = 0.05;
+
+/**
+ * The part of the bitmap a frame shows right now, in natural pixels — the window a drag inside
+ * the mask moves. `null` when there is nothing to pan: no photo, `fill` (the whole photo is
+ * stretched into the mask) or a photo whose aspect ratio already matches the mask.
+ */
+export function frameCropWindow(
+  element: FrameElement,
+  natural: { width: number; height: number },
+): CropWindow | null {
+  if (!element.assetId || element.fit !== 'cover') return null;
+  const naturalWidth = Math.max(1, natural.width);
+  const naturalHeight = Math.max(1, natural.height);
+  // `computeImageFit` reports the window in the bitmap's own pixels, already including any
+  // user crop's origin.
+  const fit = computeImageFit(element, natural, 'cover', element.crop);
+  const window: CropWindow = {
+    x: fit.cropX,
+    y: fit.cropY,
+    width: fit.width,
+    height: fit.height,
+  };
+  if (window.width >= naturalWidth - 0.5 && window.height >= naturalHeight - 0.5) return null;
+  return window;
+}
+
+/** Moves a crop window by `(dx, dy)` pixels, keeping it inside the bitmap. */
+export function moveCropWindow(
+  window: CropWindow,
+  natural: { width: number; height: number },
+  dx: number,
+  dy: number,
+): CropWindow {
+  const naturalWidth = Math.max(1, natural.width);
+  const naturalHeight = Math.max(1, natural.height);
+  const width = Math.min(window.width, naturalWidth);
+  const height = Math.min(window.height, naturalHeight);
+  return {
+    x: Math.min(Math.max(window.x + dx, 0), naturalWidth - width),
+    y: Math.min(Math.max(window.y + dy, 0), naturalHeight - height),
+    width,
+    height,
+  };
+}
+
+/**
+ * A crop window as the normalized `crop` the document stores. Windows below the schema's minimum
+ * are grown around their centre so the same area of the photo stays visible: the mask clips the
+ * overlap anyway, and a slightly wider window only means `cover` trims it again.
+ */
+export function cropWindowToCrop(
+  window: CropWindow,
+  natural: { width: number; height: number },
+): NonNullable<FrameElement['crop']> {
+  const naturalWidth = Math.max(1, natural.width);
+  const naturalHeight = Math.max(1, natural.height);
+  const width = Math.min(Math.max(window.width / naturalWidth, MIN_CROP_FRACTION), 1);
+  const height = Math.min(Math.max(window.height / naturalHeight, MIN_CROP_FRACTION), 1);
+  const centerX = (window.x + window.width / 2) / naturalWidth;
+  const centerY = (window.y + window.height / 2) / naturalHeight;
+  const round = (value: number) => Math.round(value * 1e6) / 1e6;
+  return {
+    x: round(Math.min(Math.max(centerX - width / 2, 0), 1 - width)),
+    y: round(Math.min(Math.max(centerY - height / 2, 0), 1 - height)),
+    width: round(width),
+    height: round(height),
+  };
+}
+
+/**
+ * The crop a frame shows after the photo is dragged `(dx, dy)` page pixels inside its mask: the
+ * mask holds still and the window moves the opposite way. `null` when nothing can be panned.
+ */
+export function panFramePhoto(
+  element: FrameElement,
+  natural: { width: number; height: number },
+  drag: { x: number; y: number },
+): NonNullable<FrameElement['crop']> | null {
+  const window = frameCropWindow(element, natural);
+  if (!window) return null;
+  // Page pixels -> bitmap pixels. `cover` scales both axes equally.
+  const scale = computeImageFit(element, natural, 'cover', element.crop).scaleX || 1;
+  const moved = moveCropWindow(window, natural, -drag.x / scale, -drag.y / scale);
+  return cropWindowToCrop(moved, natural);
+}
+
+/** Whether a frame holds a photo with something to reveal, i.e. whether it can be panned. */
+export function canPanFramePhoto(
+  element: FrameElement,
+  natural: { width: number; height: number },
+): boolean {
+  return frameCropWindow(element, natural) !== null;
+}
+
 /**
  * Props for an image element given the bitmap that is currently displayed for it. While the
  * real bitmap is still loading the adapter passes its placeholder size with `fit: 'fill'`

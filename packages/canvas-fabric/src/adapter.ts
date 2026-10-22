@@ -35,8 +35,11 @@ import { AligningGuidelines } from 'fabric/extensions';
 import { ICON_VIEWBOX } from '@opencanvas/icons';
 
 import {
+  canPanFramePhoto,
+  cropWindowToCrop,
   elementToFabricProps,
   fillSignature,
+  moveCropWindow,
   fillToFabric,
   frameRadius,
   iconPaths,
@@ -45,6 +48,7 @@ import {
   roundTo,
   topLeftToCenter,
   type BoxGeometry,
+  type CropWindow,
   type FabricFill,
   type FrameFabricProps,
   type PathFabricProps,
@@ -66,6 +70,14 @@ export interface CanvasAdapterCallbacks {
   onTextMeasured: (elementId: string, measuredHeight: number) => void;
   onSelectionChanged: (elementIds: readonly string[]) => void;
   onZoomChanged: (zoom: number) => void;
+  /**
+   * A double click asked to adjust the photo inside a frame, or a click elsewhere left that mode.
+   * `null` means "leave the mode"; the app owns the mode and pushes it back with
+   * `setPhotoPanTarget`.
+   */
+  onPhotoPanChanged?: (elementId: string | null) => void;
+  /** Fired once at the end of a drag that moved the photo inside its frame. */
+  onPhotoPanned?: (elementId: string, crop: NonNullable<FrameElement['crop']>) => void;
   /** Panning, zooming or fitting changed what part of the page is under the viewport. */
   onViewportChanged?: () => void;
   /** A pointer interaction (press, drag, release) started or ended. */
@@ -99,6 +111,12 @@ export interface CanvasScene {
   selectedIds: readonly string[];
   /** Asset records referenced by image elements on the page. */
   assets: DesignDocument['assets'];
+}
+
+/** The parts of Fabric's pointer events the adapter reads. */
+interface PointerEventInfo {
+  target?: FabricObject | undefined;
+  scenePoint?: Point | undefined;
 }
 
 /** Maps an asset record to a URL the browser can load, or `null` when unavailable. */
@@ -249,6 +267,14 @@ export class FabricCanvasAdapter {
   private applying = false;
   private disposed = false;
   private previewPath: Path | null = null;
+  /** The frame whose photo is being adjusted; dragging inside it pans instead of moving. */
+  private photoPanId: string | null = null;
+  private photoPan: {
+    elementId: string;
+    start: Point;
+    window: CropWindow;
+    natural: { width: number; height: number };
+  } | null = null;
 
   constructor(
     element: HTMLCanvasElement,
@@ -400,6 +426,8 @@ export class FabricCanvasAdapter {
       this.syncElements(scene.page.elements);
       this.syncOrder(scene.page.elements);
       this.syncSelection(scene.selectedIds);
+      // A replaced object (new shape or newly filled frame) starts unlocked, so re-assert the mode.
+      this.applyPhotoPanLocks();
       this.canvas.requestRenderAll();
     } finally {
       this.applying = false;
@@ -783,6 +811,122 @@ export class FabricCanvasAdapter {
       props['fill'] = this.paint(element.id, fill);
     }
     applyProps(object, props);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Adjusting the photo inside a frame
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Puts a filled frame into "adjust photo" mode: the frame and its mask stay put and dragging
+   * inside it moves the photo instead. The mode belongs to the app, so this only mirrors it.
+   */
+  setPhotoPanTarget(elementId: string | null): void {
+    if (this.photoPanId === elementId) return;
+    const previous = this.photoPanId === null ? undefined : this.objects.get(this.photoPanId);
+    this.photoPanId = elementId;
+    this.photoPan = null;
+    if (previous) this.restoreObjectLocks(previous);
+    this.applyPhotoPanLocks();
+    this.canvas.requestRenderAll();
+  }
+
+  private applyPhotoPanLocks(): void {
+    if (!this.photoPanId) return;
+    const object = this.objects.get(this.photoPanId);
+    if (!object) return;
+    // Fabric's drag handler checks these locks on every move, so the frame itself cannot move
+    // while the photo pans; handles would only resize the mask in the middle of the gesture.
+    object.set({
+      lockMovementX: true,
+      lockMovementY: true,
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      hasControls: false,
+    });
+    object.setCoords();
+  }
+
+  /** Gives an object back the locks its element asks for. */
+  private restoreObjectLocks(object: ElementObject): void {
+    const id = this.idsByObject.get(object);
+    const locked = (id === undefined ? undefined : this.elements.get(id))?.locked ?? false;
+    object.set({
+      lockMovementX: locked,
+      lockMovementY: locked,
+      lockRotation: locked,
+      lockScalingX: locked,
+      lockScalingY: locked,
+      hasControls: !locked,
+    });
+    object.setCoords();
+  }
+
+  private startPhotoPan(event: PointerEventInfo): void {
+    const elementId = this.photoPanId;
+    if (!elementId) return;
+    const object = this.objects.get(elementId);
+    if (event.target !== object || !(object instanceof FabricImage)) {
+      // Pressing anywhere else leaves the mode, like closing a crop tool.
+      this.callbacks.onPhotoPanChanged?.(null);
+      return;
+    }
+    const natural = this.images.get(elementId)?.natural;
+    if (!natural) return;
+    this.photoPan = {
+      elementId,
+      start: event.scenePoint ?? new Point(0, 0),
+      window: { x: object.cropX, y: object.cropY, width: object.width, height: object.height },
+      natural,
+    };
+  }
+
+  private continuePhotoPan(event: PointerEventInfo): void {
+    const pan = this.photoPan;
+    const point = event.scenePoint;
+    if (!pan || !point) return;
+    const object = this.objects.get(pan.elementId);
+    if (!(object instanceof FabricImage)) return;
+    // The photo follows the pointer, so the visible window moves the other way. `cover` scales
+    // both axes equally, which is why one factor converts page pixels to bitmap pixels.
+    const scale = object.scaleX || 1;
+    const moved = moveCropWindow(
+      pan.window,
+      pan.natural,
+      -(point.x - pan.start.x) / scale,
+      -(point.y - pan.start.y) / scale,
+    );
+    object.set({ cropX: moved.x, cropY: moved.y });
+    this.canvas.requestRenderAll();
+  }
+
+  private finishPhotoPan(): void {
+    const pan = this.photoPan;
+    this.photoPan = null;
+    if (!pan) return;
+    const object = this.objects.get(pan.elementId);
+    if (!(object instanceof FabricImage)) return;
+    const window = {
+      x: object.cropX,
+      y: object.cropY,
+      width: object.width,
+      height: object.height,
+    };
+    if (window.x === pan.window.x && window.y === pan.window.y) return;
+    this.callbacks.onPhotoPanned?.(pan.elementId, cropWindowToCrop(window, pan.natural));
+  }
+
+  /** Double click on a frame with a pannable photo asks the app to enter the mode. */
+  private requestPhotoPan(event: PointerEventInfo): void {
+    const target = event.target;
+    if (!target) return;
+    const elementId = this.idsByObject.get(target);
+    if (!elementId) return;
+    const element = this.elements.get(elementId);
+    const natural = this.images.get(elementId)?.natural;
+    if (element?.type !== 'frame' || !natural || !canPanFramePhoto(element, natural)) return;
+    this.callbacks.onPhotoPanChanged?.(elementId);
   }
 
   /**
@@ -1290,12 +1434,20 @@ export class FabricCanvasAdapter {
       this.callbacks.onTextCommitted(id, event.target.text, roundTo(event.target.height));
     });
 
-    this.canvas.on('mouse:down', () => {
+    this.canvas.on('mouse:down', (event) => {
       this.callbacks.onInteractionChanged?.(true);
+      this.startPhotoPan(event);
+    });
+    this.canvas.on('mouse:move', (event) => {
+      this.continuePhotoPan(event);
     });
     this.canvas.on('mouse:up', () => {
       this.callbacks.onInteractionChanged?.(false);
       this.callbacks.onViewportChanged?.();
+      this.finishPhotoPan();
+    });
+    this.canvas.on('mouse:dblclick', (event) => {
+      this.requestPhotoPan(event);
     });
 
     this.canvas.on('mouse:wheel', (event) => {

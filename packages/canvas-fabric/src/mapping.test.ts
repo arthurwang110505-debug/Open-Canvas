@@ -10,13 +10,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   FABRIC_FONT_SIZE_MULT,
+  canPanFramePhoto,
   centerToTopLeft,
+  cropWindowToCrop,
   elementToFabricProps,
   fillSignature,
   fillToFabric,
+  frameCropWindow,
   frameToFabricProps,
   geometryFromTransform,
+  moveCropWindow,
   normalizeAngle,
+  panFramePhoto,
   patchFromTransform,
   roundTo,
   topLeftToCenter,
@@ -288,5 +293,90 @@ describe('frames', () => {
     expect(props.image).toMatchObject({ width: 400, height: 200, scaleX: 0.5, scaleY: 1 });
     expect(props.width).toBe(200);
     expect(props.height).toBe(200);
+  });
+});
+
+describe('panning a photo inside a frame', () => {
+  const natural = { width: 400, height: 200 };
+
+  it('reports the window cover leaves visible', () => {
+    // A square mask over a 2:1 photo: cover scales to the mask height, cropping 100px each side.
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    expect(frameCropWindow(frame, natural)).toEqual({ x: 100, y: 0, width: 200, height: 200 });
+  });
+
+  it('cannot pan when nothing overflows', () => {
+    const square = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    expect(frameCropWindow(square, { width: 200, height: 200 })).toBeNull();
+    expect(canPanFramePhoto(square, { width: 200, height: 200 })).toBe(false);
+
+    const stretched = createFrameElement({
+      width: 200,
+      height: 200,
+      assetId: 'asset_1',
+      fit: 'fill',
+    });
+    expect(frameCropWindow(stretched, natural)).toBeNull();
+
+    const empty = createFrameElement({ width: 200, height: 200 });
+    expect(frameCropWindow(empty, natural)).toBeNull();
+  });
+
+  it('moves the window opposite to the drag and clamps it to the bitmap', () => {
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    // Dragging the photo right by 40 page px (scale 1) hides 40px on the left and reveals the right.
+    expect(panFramePhoto(frame, natural, { x: 40, y: 0 })).toEqual({
+      x: 0.15,
+      y: 0,
+      width: 0.5,
+      height: 1,
+    });
+    // Dragging further than the crop allows stops at the edge instead of revealing empty space.
+    expect(panFramePhoto(frame, natural, { x: 1000, y: 0 })).toMatchObject({ x: 0 });
+    expect(panFramePhoto(frame, natural, { x: -1000, y: 0 })).toMatchObject({ x: 0.5 });
+  });
+
+  it('converts page pixels to bitmap pixels with the cover scale', () => {
+    // 100px mask over a 400px-wide photo: cover scale 0.5, so a 25px drag is 50 bitmap px.
+    const frame = createFrameElement({ width: 100, height: 100, assetId: 'asset_1' });
+    expect(frameCropWindow(frame, natural)).toMatchObject({ x: 100, width: 200 });
+    expect(panFramePhoto(frame, natural, { x: 25, y: 0 })).toMatchObject({ x: 50 / 400 });
+  });
+
+  it('keeps panning from a previous crop', () => {
+    const frame = createFrameElement({
+      width: 200,
+      height: 200,
+      assetId: 'asset_1',
+      crop: { x: 0.25, y: 0, width: 0.5, height: 1 },
+    });
+    expect(frameCropWindow(frame, natural)).toEqual({ x: 100, y: 0, width: 200, height: 200 });
+    expect(panFramePhoto(frame, natural, { x: 20, y: 0 })).toEqual({
+      x: 0.2,
+      y: 0,
+      width: 0.5,
+      height: 1,
+    });
+  });
+
+  it('grows windows below the schema minimum around their centre', () => {
+    // A 10:1 panorama in a square mask: the visible strip is 0.1 of the photo height.
+    const panorama = { width: 1000, height: 100 };
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    expect(frameCropWindow(frame, panorama)).toMatchObject({ width: 100, height: 100 });
+    const crop = cropWindowToCrop({ x: 0, y: 50, width: 100, height: 1 }, panorama);
+    expect(crop.height).toBe(0.05);
+    expect(crop.width).toBe(0.1);
+    // The window grows around its centre (50.5px), not by snapping one edge in place.
+    expect(crop.y).toBeCloseTo(0.505 - 0.025, 6);
+  });
+
+  it('clamps a window that is asked to leave the bitmap', () => {
+    expect(moveCropWindow({ x: 10, y: 10, width: 200, height: 100 }, natural, -100, 100)).toEqual({
+      x: 0,
+      y: 100,
+      width: 200,
+      height: 100,
+    });
   });
 });
