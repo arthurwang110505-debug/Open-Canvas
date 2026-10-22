@@ -564,7 +564,7 @@ function FrameProperties({ element }: { element: FrameElement }) {
     element.assetId ? state.document.assets[element.assetId] : undefined,
   );
   // Offering the mode for a photo that already fills the mask would be a button that does nothing.
-  const pannable = asset !== undefined && canPanFramePhoto(element, asset);
+  const pannable = asset !== undefined && !element.locked && canPanFramePhoto(element, asset);
   const adjusting = photoPanId === element.id;
 
   return (

@@ -925,7 +925,8 @@ export class FabricCanvasAdapter {
     if (!elementId) return;
     const element = this.elements.get(elementId);
     const natural = this.images.get(elementId)?.natural;
-    if (element?.type !== 'frame' || !natural || !canPanFramePhoto(element, natural)) return;
+    if (element?.type !== 'frame' || element.locked) return;
+    if (!natural || !canPanFramePhoto(element, natural)) return;
     this.callbacks.onPhotoPanChanged?.(elementId);
   }
 

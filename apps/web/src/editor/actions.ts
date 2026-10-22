@@ -345,7 +345,7 @@ export function useEditorActions(): EditorActions {
         if (!state.photoPanId) return;
         const page = selectActivePage(state);
         const element = page.elements.find((candidate) => candidate.id === state.photoPanId);
-        if (element?.type !== 'frame' || !element.assetId) return;
+        if (element?.type !== 'frame' || element.locked || !element.assetId) return;
         const asset = state.document.assets[element.assetId];
         if (!asset) return;
         const crop = panFramePhoto(element, asset, { x: dx, y: dy });

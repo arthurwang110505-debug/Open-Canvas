@@ -196,6 +196,12 @@ describe('FabricCanvasAdapter photo panning', () => {
     expect(callbacks.onPhotoPanChanged).toHaveBeenCalledTimes(1);
   });
 
+  it('does not offer to pan a locked frame', async () => {
+    const { adapter: a, object } = await createFilled({ ...frame, locked: true });
+    a.getFabricCanvas().fire('mouse:dblclick', pointer(object, 0, 0));
+    expect(callbacks.onPhotoPanChanged).not.toHaveBeenCalled();
+  });
+
   it('ignores double clicks on other element types', () => {
     const a = new FabricCanvasAdapter(canvasEl, callbacks, {});
     adapter = a;
