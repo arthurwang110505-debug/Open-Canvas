@@ -8,6 +8,7 @@ import {
   createRectElement,
   createTextElement,
 } from './factories';
+import { linearFill, radialFill } from './fills';
 import { DocumentSchema, ElementSchema, HexColorSchema } from './schema';
 import {
   cloneDocument,
@@ -39,6 +40,93 @@ describe('HexColorSchema', () => {
 
   it.each(['red', '#fff', '#12345', '1a2b3c', '#1a2b3cf', 'rgb(0,0,0)'])('rejects %s', (color) => {
     expect(HexColorSchema.safeParse(color).success).toBe(false);
+  });
+});
+
+describe('gradient fills', () => {
+  const rect = () => ({
+    ...createRectElement({ id: 'r1', width: 200, height: 100 }),
+    fill: {
+      type: 'linear' as const,
+      stops: [
+        { offset: 0, color: '#0f172a' },
+        { offset: 1, color: '#38bdf8' },
+      ],
+    },
+  });
+
+  it('accepts a linear gradient and defaults its angle', () => {
+    const parsed = ElementSchema.parse(rect());
+    expect(parsed).toMatchObject({ fill: { type: 'linear', angle: 180 } });
+  });
+
+  it('accepts a radial gradient and keeps the stops in order', () => {
+    const parsed = ElementSchema.parse({
+      ...rect(),
+      fill: {
+        type: 'radial',
+        stops: [
+          { offset: 0.2, color: '#fef3c7' },
+          { offset: 0.8, color: '#b45309' },
+        ],
+      },
+    });
+    if (parsed.type !== 'rect' || parsed.fill.type !== 'radial') throw new Error('wrong shape');
+    expect(parsed.fill.stops.map((stop) => stop.offset)).toEqual([0.2, 0.8]);
+  });
+
+  it('rejects gradients that would render differently in SVG and on the canvas', () => {
+    // SVG clamps decreasing offsets; the canvas does not. Refuse the document instead.
+    expect(
+      ElementSchema.safeParse({
+        ...rect(),
+        fill: {
+          type: 'linear',
+          stops: [
+            { offset: 0.8, color: '#000000' },
+            { offset: 0.2, color: '#ffffff' },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+
+    // One stop is not a gradient; nine is a mess nobody can edit by hand.
+    expect(
+      ElementSchema.safeParse({
+        ...rect(),
+        fill: { type: 'linear', stops: [{ offset: 0, color: '#000000' }] },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ElementSchema.safeParse({
+        ...rect(),
+        fill: {
+          type: 'linear',
+          angle: 400,
+          stops: [
+            { offset: 0, color: '#000000' },
+            { offset: 1, color: '#ffffff' },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates gradient page backgrounds with the same schema', () => {
+    const doc = createBlankDocument({ id: 'doc_grad', now: fixedDate });
+    const page = doc.pages[0];
+    if (!page) throw new Error('fixture page missing');
+    page.background = {
+      type: 'linear',
+      angle: 135,
+      stops: [
+        { offset: 0, color: '#fdf2f8' },
+        { offset: 1, color: '#c7d2fe' },
+      ],
+    };
+    const result = validateDocument(doc);
+    expect(result.ok, result.ok ? '' : result.error.message).toBe(true);
   });
 });
 
@@ -254,5 +342,24 @@ describe('cloneDocumentAs', () => {
     expect(duplicateName(long)).toHaveLength(LIMITS.maxNameLength);
     expect(duplicateName(long).endsWith(' copy')).toBe(true);
     expect(duplicateName('Flyer')).toBe('Flyer copy');
+  });
+});
+
+describe('fill helpers', () => {
+  it('spaces stops evenly and keeps the ends exact', () => {
+    const fill = linearFill(90, ['#000000', '#808080', '#ffffff']);
+    expect(fill.stops).toEqual([
+      { offset: 0, color: '#000000' },
+      { offset: 0.5, color: '#808080' },
+      { offset: 1, color: '#ffffff' },
+    ]);
+    expect(ElementSchema.safeParse({ ...createRectElement({ id: 'r1' }), fill }).success).toBe(
+      true,
+    );
+  });
+
+  it('refuses a one-colour gradient', () => {
+    expect(() => linearFill(180, ['#000000'])).toThrow(/two colours/);
+    expect(() => radialFill([])).toThrow(/two colours/);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getElementBounds, pageBounds, unionBounds } from './geometry';
+import { getElementBounds, linearGradientCoords, pageBounds, unionBounds } from './geometry';
 
 describe('getElementBounds', () => {
   it('returns the box itself when not rotated', () => {
@@ -62,5 +62,37 @@ describe('unionBounds / pageBounds', () => {
       centerX: 540,
       centerY: 960,
     });
+  });
+});
+
+describe('linearGradientCoords', () => {
+  it('runs top-to-bottom, left-to-right and through the corners', () => {
+    // Trigonometry leaves 1e-16 dust; compare as points, not as float literals.
+    const down = linearGradientCoords(180);
+    expect(down.x1).toBeCloseTo(0.5);
+    expect(down.y1).toBeCloseTo(0);
+    expect(down.x2).toBeCloseTo(0.5);
+    expect(down.y2).toBeCloseTo(1);
+
+    const right = linearGradientCoords(90);
+    expect(right.x1).toBeCloseTo(0);
+    expect(right.y1).toBeCloseTo(0.5);
+    expect(right.x2).toBeCloseTo(1);
+    expect(right.y2).toBeCloseTo(0.5);
+    const diagonal = linearGradientCoords(45);
+    expect(diagonal.x1).toBeCloseTo(0);
+    expect(diagonal.y1).toBeCloseTo(1);
+    expect(diagonal.x2).toBeCloseTo(1);
+    expect(diagonal.y2).toBeCloseTo(0);
+  });
+
+  it('is long enough to reach every corner of the box', () => {
+    for (const angle of [0, 30, 135, 270, 360]) {
+      const { x1, y1, x2, y2 } = linearGradientCoords(angle);
+      const length = Math.hypot(x2 - x1, y2 - y1);
+      // A unit box's diagonal is √2; the gradient line must at least span its projection.
+      expect(length).toBeGreaterThanOrEqual(1);
+      expect(length).toBeLessThanOrEqual(Math.SQRT2 + 1e-9);
+    }
   });
 });

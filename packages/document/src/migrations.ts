@@ -52,6 +52,15 @@ export const MIGRATIONS: readonly Migration[] = [
     // containing an icon it cannot draw instead of rendering it as a blank space.
     migrate: (raw) => ({ ...raw }),
   },
+  {
+    from: 5,
+    to: 6,
+    description: 'Add linear and radial gradient fills',
+    // Purely additive: every existing solid/none fill stays valid, and a page background is a
+    // Fill, so old documents need no rewriting. The bump makes an older build reject a document
+    // with a gradient instead of painting a blank rectangle.
+    migrate: (raw) => ({ ...raw }),
+  },
 ];
 
 export interface MigrateOptions {

@@ -7,3 +7,4 @@ export * from './queries';
 export * from './result';
 export * from './schema';
 export * from './serialization';
+export * from './fills';

@@ -29,7 +29,50 @@ export const NoFillSchema = z.object({
   type: z.literal('none'),
 });
 
-export const FillSchema = z.discriminatedUnion('type', [SolidFillSchema, NoFillSchema]);
+export const GradientStopSchema = z.object({
+  /** Position along the gradient, 0 = start, 1 = end. */
+  offset: z.number().min(0).max(1),
+  color: HexColorSchema,
+});
+
+/**
+ * Stops must not run backwards: SVG clamps a decreasing offset to the previous stop, so an
+ * out-of-order document would render differently in the browser and in an exported file.
+ */
+export const GradientStopsSchema = z
+  .array(GradientStopSchema)
+  .min(2)
+  .max(8)
+  .refine(
+    (stops) => stops.every((stop, index) => index === 0 || stop.offset >= stops[index - 1]!.offset),
+    {
+      message: 'Gradient stops must be ordered by non-decreasing offset',
+    },
+  );
+
+/**
+ * A linear gradient across the filled box. `angle` is in CSS degrees: 0 points to the top,
+ * 90 to the right, 180 (the default) to the bottom. Both the canvas adapter and the SVG
+ * exporter derive their endpoints from `linearGradientCoords`, so they cannot disagree.
+ */
+export const LinearGradientFillSchema = z.object({
+  type: z.literal('linear'),
+  angle: z.number().min(0).max(360).default(180),
+  stops: GradientStopsSchema,
+});
+
+/** A radial gradient centred on the filled box, with the outer stop at its edge. */
+export const RadialGradientFillSchema = z.object({
+  type: z.literal('radial'),
+  stops: GradientStopsSchema,
+});
+
+export const FillSchema = z.discriminatedUnion('type', [
+  SolidFillSchema,
+  NoFillSchema,
+  LinearGradientFillSchema,
+  RadialGradientFillSchema,
+]);
 
 export const StrokeSchema = z.object({
   color: HexColorSchema,
@@ -169,6 +212,10 @@ export const PathElementSchema = ElementBaseSchema.extend({
 // Leaf inferred types — needed before GroupElement interface
 export type HexColor = z.infer<typeof HexColorSchema>;
 export type SolidFill = z.infer<typeof SolidFillSchema>;
+export type GradientStop = z.infer<typeof GradientStopSchema>;
+export type LinearGradientFill = z.infer<typeof LinearGradientFillSchema>;
+export type RadialGradientFill = z.infer<typeof RadialGradientFillSchema>;
+export type GradientFill = LinearGradientFill | RadialGradientFill;
 export type Fill = z.infer<typeof FillSchema>;
 export type Stroke = z.infer<typeof StrokeSchema>;
 export type FontWeight = z.infer<typeof FontWeightSchema>;

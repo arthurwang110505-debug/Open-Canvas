@@ -2,7 +2,7 @@
  * Hard limits for the document format. They protect the editor, exporters and
  * AI validation from pathological input (huge canvases, millions of elements, ...).
  */
-export const CURRENT_SCHEMA_VERSION = 5 as const;
+export const CURRENT_SCHEMA_VERSION = 6 as const;
 
 export const LIMITS = {
   /** Maximum canvas edge length in pixels (browser canvases degrade well before this). */
