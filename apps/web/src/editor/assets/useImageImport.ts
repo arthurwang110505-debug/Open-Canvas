@@ -1,5 +1,7 @@
 import {
   LIMITS,
+  collectReferencedAssetIds,
+  createImageAsset,
   createImageElement,
   fitWithin,
   generateId,
@@ -8,6 +10,7 @@ import {
 import { importImageFile } from '@opencanvas/storage';
 import { useMemo, useState } from 'react';
 
+import { findBundledPhoto } from '../../assets/photos/catalog';
 import { useEditorStore, useNotificationStore } from '../hooks';
 import { useAssetServices } from './useAssetServices';
 
@@ -17,6 +20,13 @@ const INSERT_RATIO = 0.6;
 export interface InsertOptions {
   /** Page point the image should be centered on; defaults to the page center. */
   at?: { x: number; y: number };
+  /** Frame to fill instead of adding a new image element (a photo dropped on a frame). */
+  frameId?: string;
+  /**
+   * Image element to point at the new asset instead of adding one (a photo dropped on an image,
+   * or Replace image in the panel). Geometry, crop and filters all stay.
+   */
+  replaceId?: string;
 }
 
 export interface ImageImport {
@@ -24,6 +34,11 @@ export interface ImageImport {
   importFiles: (files: Iterable<File>, options?: InsertOptions) => Promise<void>;
   /** Places an already registered asset on the active page. */
   insertAsset: (assetId: string, options?: InsertOptions) => void;
+  /**
+   * Places a photo from the bundled library. The document references the photo id instead of
+   * storing bytes, and a photo already used in this document is reused rather than duplicated.
+   */
+  insertPhoto: (photoId: string, options?: InsertOptions) => void;
   /**
    * Removes an unused asset record from the document. Its bytes stay in the session store
    * so Undo can bring the upload back. Nothing prunes unreferenced blobs yet; deleting the project
@@ -52,11 +67,62 @@ export function useImageImport(): ImageImport {
       };
     };
 
+    /** Points an existing frame at an asset; the photo replaces whatever the frame held. */
+    const fillFrame = (frameId: string, asset: ImageAsset, mergeKey: string) => {
+      const { activePageId, dispatch, setSelection } = store.getState();
+      // Select the frame so the panel shows what the drop just changed.
+      setSelection([frameId]);
+      return dispatch(
+        {
+          type: 'element.update',
+          pageId: activePageId,
+          elementId: frameId,
+          // A new photo keeps the frame's shape and starts uncropped.
+          patch: { assetId: asset.id, crop: undefined },
+        },
+        { mergeKey },
+      );
+    };
+
+    /**
+     * Points an existing image at another asset. Every other property stays: the box, the crop
+     * window, the filters and the flips describe the element, not the picture.
+     */
+    const replaceImage = (elementId: string, asset: ImageAsset, mergeKey: string) => {
+      const state = store.getState();
+      const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+      const element = page?.elements.find((candidate) => candidate.id === elementId);
+      if (!page || element?.type !== 'image') return null;
+      const previousAssetId = element.assetId;
+      const updated = state.dispatch(
+        { type: 'element.update', pageId: page.id, elementId, patch: { assetId: asset.id } },
+        { mergeKey },
+      );
+      if (!updated.ok) return updated;
+      // Release the old record when nothing points at it any more. The bytes stay in the asset
+      // store and Undo restores the record with the snapshot, so a replaced upload can come back.
+      const after = store.getState().document;
+      if (
+        previousAssetId !== asset.id &&
+        after.assets[previousAssetId] !== undefined &&
+        !collectReferencedAssetIds(after).has(previousAssetId)
+      ) {
+        store.getState().dispatch({ type: 'asset.remove', assetId: previousAssetId }, { mergeKey });
+      }
+      return updated;
+    };
+
     const addImageElement = (
       asset: ImageAsset,
       options: InsertOptions | undefined,
       mergeKey: string,
     ) => {
+      if (options?.frameId) return fillFrame(options.frameId, asset, mergeKey);
+      if (options?.replaceId) {
+        const replaced = replaceImage(options.replaceId, asset, mergeKey);
+        // The element vanished between the drop and the update: add the photo rather than lose it.
+        if (replaced) return replaced;
+      }
       const { activePageId, dispatch } = store.getState();
       const element = createImageElement({
         assetId: asset.id,
@@ -136,6 +202,41 @@ export function useImageImport(): ImageImport {
           return;
         }
         addImageElement(asset, options, `insert-asset:${generateId()}`);
+      },
+
+      insertPhoto: (photoId: string, options?: InsertOptions) => {
+        const photo = findBundledPhoto(photoId);
+        if (!photo) {
+          notifications.getState().show({
+            kind: 'error',
+            title: 'Photo unavailable',
+            message: 'This version of OpenCanvas does not include that photo.',
+          });
+          return;
+        }
+        const { document } = store.getState();
+        const mergeKey = `insert-photo:${generateId()}`;
+        const existing = Object.values(document.assets).find(
+          (asset) => asset.source.type === 'bundled' && asset.source.photoId === photo.id,
+        );
+        if (existing) {
+          addImageElement(existing, options, mergeKey);
+          return;
+        }
+        const asset = createImageAsset({
+          name: photo.title,
+          mimeType: 'image/webp',
+          width: photo.width,
+          height: photo.height,
+          source: { type: 'bundled', photoId: photo.id },
+        });
+        // Register + add share a merge key so one Undo removes both, as with uploads.
+        const registered = store
+          .getState()
+          .dispatch({ type: 'asset.register', asset }, { mergeKey });
+        if (!registered.ok) return;
+        const added = addImageElement(asset, options, mergeKey);
+        if (!added.ok) store.getState().undo();
       },
 
       removeAsset: (assetId: string) => {

@@ -1,4 +1,10 @@
-import { createBlankDocument, createRectElement } from '@opencanvas/document';
+import {
+  createBlankDocument,
+  createImageAsset,
+  createImageElement,
+  createRectElement,
+  type DesignElement,
+} from '@opencanvas/document';
 import { describe, expect, it } from 'vitest';
 
 import { createEditorStore } from './store';
@@ -18,6 +24,27 @@ function makeStore(options: { mergeWindowMs?: number; historyLimit?: number } = 
     tick += ms;
   };
   return { store, pageId, advance };
+}
+
+/** Registers an asset and adds an image that uses it (image elements need a real asset). */
+function addImage(
+  store: ReturnType<typeof makeStore>['store'],
+  pageId: string,
+  overrides: Partial<Omit<DesignElement & { type: 'image' }, 'type'>> = {},
+): void {
+  const asset = createImageAsset({
+    id: 'asset_1',
+    name: 'photo.webp',
+    mimeType: 'image/webp',
+    width: 400,
+    height: 200,
+  });
+  store.getState().dispatch({ type: 'asset.register', asset });
+  store.getState().dispatch({
+    type: 'element.add',
+    pageId,
+    element: createImageElement({ id: 'img', assetId: asset.id, ...overrides }),
+  });
 }
 
 function ids(store: ReturnType<typeof makeStore>['store']): string[] {
@@ -235,6 +262,124 @@ describe('createEditorStore', () => {
     expect(state.dirty).toBe(false);
     expect(state.canUndo()).toBe(false);
     expect(state.selectedIds).toEqual([]);
+  });
+
+  it('keeps adjust-photo mode only while its frame is being edited', () => {
+    const { store, pageId } = makeStore();
+    const { dispatch, setPhotoPan, setSelection } = store.getState();
+    dispatch({ type: 'element.add', pageId, element: createRectElement({ id: 'f' }) });
+    dispatch({ type: 'element.add', pageId, element: createRectElement({ id: 'other' }) });
+
+    setSelection(['f']);
+    setPhotoPan('f');
+    expect(store.getState().photoPanId).toBe('f');
+    // Re-selecting the same frame keeps the mode: it is a UI state, not a selection side effect.
+    setSelection(['f']);
+    expect(store.getState().photoPanId).toBe('f');
+
+    // Selecting something else ends it, as does clearing the selection.
+    setSelection(['other']);
+    expect(store.getState().photoPanId).toBeNull();
+    setSelection(['f']);
+    setPhotoPan('f');
+    store.getState().clearSelection();
+    expect(store.getState().photoPanId).toBeNull();
+  });
+
+  it('leaves adjust-photo mode when its frame goes away', () => {
+    const { store, pageId } = makeStore();
+    const { dispatch } = store.getState();
+    dispatch({ type: 'element.add', pageId, element: createRectElement({ id: 'f' }) });
+    store.getState().setSelection(['f']);
+    store.getState().setPhotoPan('f');
+
+    // Deleting the frame (undoably) drops the target with it.
+    dispatch({ type: 'element.delete', pageId, elementIds: ['f'] });
+    expect(store.getState().photoPanId).toBeNull();
+  });
+
+  it('applies a crop as one undoable change', () => {
+    const { store, pageId } = makeStore();
+    addImage(store, pageId, { x: 10, y: 20, width: 100 });
+    const before = store.getState().past.length;
+
+    store.getState().beginCrop('img');
+    expect(store.getState().cropId).toBe('img');
+    // `createImageElement` defaults the height to 200 when only the width is given.
+    expect(store.getState().cropDraft).toEqual({
+      box: { x: 10, y: 20, width: 100, height: 200 },
+    });
+
+    // Dragging revises the draft without touching the document.
+    const box = { x: 12, y: 20, width: 120, height: 90 };
+    store.getState().updateCropDraft({ box, crop: { x: 0.1, y: 0.1, width: 0.5, height: 0.5 } });
+    const element = () => store.getState().document.pages[0]?.elements[0];
+    expect(element()).toMatchObject({ x: 10, y: 20, width: 100, height: 200 });
+    expect(store.getState().past).toHaveLength(before);
+
+    store.getState().applyCrop();
+    expect(store.getState().cropId).toBeNull();
+    expect(store.getState().cropDraft).toBeNull();
+    expect(element()).toMatchObject({ ...box, crop: { x: 0.1, y: 0.1, width: 0.5, height: 0.5 } });
+    expect(store.getState().past).toHaveLength(before + 1);
+
+    store.getState().undo();
+    expect(element()).toMatchObject({ x: 10, y: 20, width: 100, height: 200 });
+    expect((element() as { crop?: unknown }).crop).toBeUndefined();
+  });
+
+  it('drops an unchanged crop without an undo step', () => {
+    const { store, pageId } = makeStore();
+    store.getState().dispatch({
+      type: 'element.add',
+      pageId,
+      element: createImageElement({ id: 'img', assetId: 'asset_1', width: 100 }),
+    });
+    addImage(store, pageId, { width: 100 });
+    const before = store.getState().past.length;
+    store.getState().beginCrop('img');
+    store.getState().applyCrop();
+    expect(store.getState().past).toHaveLength(before);
+    expect(store.getState().cropId).toBeNull();
+  });
+
+  it('cancels without touching the document', () => {
+    const { store, pageId } = makeStore();
+    addImage(store, pageId, { width: 100 });
+    store.getState().beginCrop('img');
+    store.getState().updateCropDraft({ box: { x: 0, y: 0, width: 50, height: 50 } });
+    store.getState().cancelCrop();
+    expect(store.getState().cropId).toBeNull();
+    expect(store.getState().document.pages[0]?.elements[0]).toMatchObject({ width: 100 });
+  });
+
+  it('only crops images on the active page', () => {
+    const { store, pageId } = makeStore();
+    store.getState().dispatch({
+      type: 'element.add',
+      pageId,
+      element: createRectElement({ id: 'rect' }),
+    });
+    store.getState().beginCrop('rect');
+    expect(store.getState().cropId).toBeNull();
+    store.getState().beginCrop('ghost');
+    expect(store.getState().cropId).toBeNull();
+  });
+
+  it('keeps crop mode exclusive with the other canvas modes', () => {
+    const { store, pageId } = makeStore();
+    store.getState().dispatch({
+      type: 'element.add',
+      pageId,
+      element: createImageElement({ id: 'img', assetId: 'asset_1', width: 100 }),
+    });
+    store.getState().beginCrop('img');
+    store.getState().setPhotoPan('img');
+    expect(store.getState().cropId).toBeNull();
+
+    store.getState().beginCrop('img');
+    store.getState().clearSelection();
+    expect(store.getState().cropId).toBeNull();
   });
 
   it('clamps zoom', () => {

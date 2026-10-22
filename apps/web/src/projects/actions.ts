@@ -1,4 +1,10 @@
-import { cloneDocumentAs, createBlankDocument, err, type DesignDocument, type Result } from '@opencanvas/document';
+import {
+  cloneDocumentAs,
+  createBlankDocument,
+  err,
+  type DesignDocument,
+  type Result,
+} from '@opencanvas/document';
 import { applyCommand } from '@opencanvas/editor-core';
 import type { ProjectStore, ProjectStoreError, ProjectSummary } from '@opencanvas/storage';
 

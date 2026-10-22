@@ -1,12 +1,9 @@
 import { renderPageToSvg } from '@opencanvas/export';
-import { blobToDataUrl } from '@opencanvas/storage';
 import { useEffect, useState } from 'react';
 
+import { resolveAssetHref } from '../editor/assets/assetHref';
 import { useProjects } from './useProjects';
 import type { ProjectSummary } from '@opencanvas/storage';
-
-const TRANSPARENT_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 
 // Simple in-memory cache so navigating back to dashboard doesn't re-render all thumbnails
 const svgCache = new Map<string, string>();
@@ -23,14 +20,19 @@ interface ProjectThumbnailProps {
 export function ProjectThumbnail({ project }: ProjectThumbnailProps) {
   const { store } = useProjects();
   const cacheKey = `${project.id}::${project.updatedAt}`;
-  const [svg, setSvg] = useState<string | null>(() => svgCache.get(cacheKey) ?? null);
+  // The cache is keyed by project + updatedAt, so a changed key derives a new value in render
+  // (React's recommended pattern) instead of setting state synchronously inside the effect.
+  const [rendered, setRendered] = useState<{ key: string; svg: string | null }>(() => ({
+    key: cacheKey,
+    svg: svgCache.get(cacheKey) ?? null,
+  }));
+  if (rendered.key !== cacheKey) {
+    setRendered({ key: cacheKey, svg: svgCache.get(cacheKey) ?? null });
+  }
+  const svg = rendered.key === cacheKey ? rendered.svg : null;
 
   useEffect(() => {
-    const cached = svgCache.get(cacheKey);
-    if (cached) {
-      setSvg(cached);
-      return;
-    }
+    if (svgCache.has(cacheKey)) return;
     let cancelled = false;
     void (async () => {
       const loaded = await store.load(project.id);
@@ -43,15 +45,8 @@ export function ProjectThumbnail({ project }: ProjectThumbnailProps) {
       if (!firstPage) return;
 
       const blobStore = store.assetBlobStore(project.id);
-      const resolveImageHref = async (asset: { id: string }) => {
-        try {
-          const blob = await blobStore.get(asset.id);
-          if (blob) return await blobToDataUrl(blob);
-        } catch {
-          // ignore
-        }
-        return TRANSPARENT_PNG;
-      };
+      const resolveImageHref = (asset: Parameters<typeof resolveAssetHref>[0]) =>
+        resolveAssetHref(asset, blobStore);
 
       // Render at full size — CSS scales the SVG to the card; this keeps vectors crisp
       let result = await renderPageToSvg(doc, {
@@ -66,7 +61,7 @@ export function ProjectThumbnail({ project }: ProjectThumbnailProps) {
       if (cancelled) return;
       if (result.ok) {
         svgCache.set(cacheKey, result.value);
-        setSvg(result.value);
+        setRendered({ key: cacheKey, svg: result.value });
       }
     })();
     return () => {

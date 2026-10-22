@@ -20,6 +20,7 @@ function renderEditor() {
 }
 
 async function insertRectangle(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('tab', { name: 'Elements' }));
   await user.click(screen.getByRole('button', { name: 'Rectangle' }));
   return screen.getByRole('complementary', { name: 'Properties' });
 }
@@ -30,7 +31,7 @@ describe('EditorPage', () => {
     expect(screen.getByRole('textbox', { name: 'Design name' })).toHaveValue('Test design');
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled();
-    expect(screen.getByRole('tab', { name: 'Shapes' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Design' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('No unsaved changes');
     expect(screen.getByLabelText('Design canvas')).toBeInTheDocument();
@@ -138,6 +139,98 @@ describe('EditorPage', () => {
     expect(within(panel).getByLabelText('Weight')).toHaveValue('800');
   });
 
+  it('offers the bundled families and previews the chosen font', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add a heading' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const font = within(panel).getByLabelText('Font');
+
+    // Bundled families are grouped, and only weights the family ships are offered.
+    expect(within(font).getByRole('group', { name: 'Serif' })).toBeInTheDocument();
+    await user.selectOptions(font, 'Playfair Display');
+    expect(font).toHaveValue('Playfair Display');
+    expect(within(panel).getByTestId('font-specimen')).toHaveStyle({
+      fontFamily: '"Playfair Display"',
+    });
+
+    // Playfair Display starts at 400, so 800 is not a real weight for it.
+    const weight = within(panel).getByLabelText<HTMLSelectElement>('Weight');
+    expect([...weight.options].map((option) => option.value)).toEqual([
+      '400',
+      '500',
+      '600',
+      '700',
+      '800',
+      '900',
+    ]);
+  });
+
+  it('toggles bulleted and numbered lists without changing the text', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add a heading' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const bullets = within(panel).getByRole('button', { name: 'Bulleted list' });
+    const numbers = within(panel).getByRole('button', { name: 'Numbered list' });
+
+    expect(bullets).toHaveAttribute('aria-pressed', 'false');
+    await user.click(bullets);
+    expect(bullets).toHaveAttribute('aria-pressed', 'true');
+    expect(within(panel).getByLabelText('Content')).toHaveValue('Add a heading');
+    await user.click(numbers);
+    expect(bullets).toHaveAttribute('aria-pressed', 'false');
+    expect(numbers).toHaveAttribute('aria-pressed', 'true');
+    await user.click(numbers);
+    expect(numbers).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('inserts a text style preset with its size, tracking and casing baked in', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add a label' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    expect(within(panel).getByLabelText('Content')).toHaveValue('Add a label');
+    expect(within(panel).getByLabelText('Size')).toHaveValue('22');
+    expect(within(panel).getByLabelText('Letter spacing')).toHaveValue('4');
+    expect(within(panel).getByLabelText('Casing')).toHaveValue('uppercase');
+  });
+
+  it('inserts a font pairing as one undoable step', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add Editorial pairing' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    // The heading is selected so it can be edited straight away.
+    expect(within(panel).getByLabelText('Content')).toHaveValue('Add a heading');
+    expect(within(panel).getByLabelText('Font')).toHaveValue('Playfair Display');
+    expect(within(panel).getByLabelText('Weight')).toHaveValue('700');
+
+    await user.keyboard('{Control>}a{/Control}');
+    expect(screen.getByRole('heading', { name: '2 elements selected' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+  });
+
+  it('changes display casing without rewriting the text', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add a heading' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const casing = within(panel).getByLabelText('Casing');
+
+    expect(casing).toHaveValue('none');
+    await user.selectOptions(casing, 'uppercase');
+    expect(casing).toHaveValue('uppercase');
+    // Display-only: the content field keeps the wording the author typed.
+    expect(within(panel).getByLabelText('Content')).toHaveValue('Add a heading');
+
+    // Rapid changes share one undo step.
+    await user.selectOptions(casing, 'capitalize');
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(within(panel).getByLabelText('Casing')).toHaveValue('none');
+  });
+
   it('reorders layers through the arrange controls', async () => {
     const { user } = renderEditor();
     await insertRectangle(user);
@@ -154,6 +247,53 @@ describe('EditorPage', () => {
     await user.selectOptions(within(panel).getByLabelText('Preset'), 'youtube-thumbnail');
     expect(within(panel).getByLabelText('Width')).toHaveValue('1280');
     expect(within(panel).getByLabelText('Height')).toHaveValue('720');
+  });
+
+  it('applies a template to the current page in one undoable step', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('button', { name: 'Use Pastel Summer Sale template' }));
+
+    expect(screen.queryByText('Start your design')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByText('Start your design')).toBeInTheDocument();
+  });
+
+  it('can insert a template as a new page instead of replacing the current one', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('checkbox', { name: /Add as a new page/i }));
+    await user.click(screen.getByRole('button', { name: 'Use Pastel Summer Sale template' }));
+
+    expect(screen.getByRole('button', { name: /Go to page 2 \(current\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Go to page 1/ })).toBeInTheDocument();
+  });
+
+  it('offers a starting point on an empty page and gets out of the way after the first insert', async () => {
+    const { user } = renderEditor();
+    expect(screen.getByText('Start your design')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Add a shape' }));
+
+    expect(screen.queryByText('Start your design')).not.toBeInTheDocument();
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    expect(within(panel).getByRole('heading', { name: 'Rectangle' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+  });
+
+  it('opens a zoom menu with presets in the workspace corner', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('button', { name: /Zoom level/ }));
+    await user.click(screen.getByRole('menuitem', { name: '200%' }));
+    expect(screen.getByRole('button', { name: /Zoom level/ })).toHaveTextContent('200%');
+  });
+
+  it('keeps the selection toolbar available after inserting an element', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Elements' }));
+    await user.click(screen.getByRole('button', { name: 'Ellipse' }));
+    expect(screen.getByRole('toolbar', { name: 'Selection actions' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Duplicate selection' })).toBeEnabled();
   });
 
   it('exposes zoom controls once the canvas is mounted', async () => {
@@ -173,7 +313,9 @@ const _exhaustive: Record<DesignElement['type'], true> = {
   ellipse: true,
   text: true,
   image: true,
+  icon: true,
   path: true,
+  frame: true,
   group: true,
 };
 void _exhaustive;

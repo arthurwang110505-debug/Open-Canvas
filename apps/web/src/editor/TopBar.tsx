@@ -1,17 +1,11 @@
-import { formatZoom, selectCanRedo, selectCanUndo } from '@opencanvas/editor-core';
+import { selectCanRedo, selectCanUndo } from '@opencanvas/editor-core';
 import { Button, Input, Separator, Tooltip } from '@opencanvas/ui';
-import { Magnet, Maximize, Minus, MonitorPlay, Plus, Redo2, Share2, Undo2 } from 'lucide-react';
+import { Magnet, MonitorPlay, Redo2, Share2, Undo2 } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 
 import { useEditorActions } from './actions';
 import { ExportControls } from './ExportControls';
-import {
-  useCanvasController,
-  useCanvasReady,
-  useEditor,
-  usePersistenceState,
-  useSnappingEnabled,
-} from './hooks';
+import { useCanvasController, useEditor, usePersistenceState, useSnappingEnabled } from './hooks';
 import { ShareDialog } from '../share/ShareDialog';
 import { PresentMode } from '../share/PresentMode';
 
@@ -59,61 +53,6 @@ function DocumentTitle() {
       maxLength={200}
       className="h-8 w-56 border-transparent bg-transparent font-medium hover:border-input focus-visible:bg-background"
     />
-  );
-}
-
-function ZoomControls() {
-  const zoom = useEditor((state) => state.zoom);
-  const ready = useCanvasReady();
-  const canvas = useCanvasController();
-  return (
-    <div className="flex items-center gap-0.5" role="group" aria-label="Zoom">
-      <Tooltip content="Zoom out (Ctrl −)">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Zoom out"
-          disabled={!ready}
-          onClick={() => canvas.zoomOut()}
-        >
-          <Minus />
-        </Button>
-      </Tooltip>
-      <Tooltip content="Reset to 100% (Ctrl 1)">
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`Zoom level ${formatZoom(zoom)}. Reset to 100%`}
-          disabled={!ready}
-          onClick={() => canvas.zoomTo(1)}
-          className="w-14 tabular-nums"
-        >
-          {formatZoom(zoom)}
-        </Button>
-      </Tooltip>
-      <Tooltip content="Zoom in (Ctrl +)">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Zoom in"
-          disabled={!ready}
-          onClick={() => canvas.zoomIn()}
-        >
-          <Plus />
-        </Button>
-      </Tooltip>
-      <Tooltip content="Fit to screen (Ctrl 0)">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Fit to screen"
-          disabled={!ready}
-          onClick={() => canvas.fitToScreen()}
-        >
-          <Maximize />
-        </Button>
-      </Tooltip>
-    </div>
   );
 }
 
@@ -195,7 +134,7 @@ export function TopBar() {
 
   return (
     <>
-      <header className="flex h-14 items-center gap-3 border-b border-border bg-panel px-3 shadow-sm">
+      <header className="flex h-[52px] items-center gap-2.5 border-b border-border bg-panel px-3">
         <a
           href="#/"
           aria-label="OpenCanvas: back to your designs"
@@ -216,18 +155,35 @@ export function TopBar() {
         <DocumentTitle />
         <div className="flex items-center gap-0.5" role="group" aria-label="History">
           <Tooltip content="Undo (Ctrl Z)">
-            <Button variant="ghost" size="icon-sm" aria-label="Undo" disabled={!canUndo} onClick={undo}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Undo"
+              disabled={!canUndo}
+              onClick={undo}
+            >
               <Undo2 />
             </Button>
           </Tooltip>
           <Tooltip content="Redo (Ctrl Shift Z)">
-            <Button variant="ghost" size="icon-sm" aria-label="Redo" disabled={!canRedo} onClick={redo}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Redo"
+              disabled={!canRedo}
+              onClick={redo}
+            >
               <Redo2 />
             </Button>
           </Tooltip>
         </div>
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <Button variant="outline" size="sm" className="hidden rounded-full sm:inline-flex" onClick={() => setShowPresent(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden rounded-full sm:inline-flex"
+            onClick={() => setShowPresent(true)}
+          >
             <MonitorPlay className="size-4" /> Present
           </Button>
           <Button size="sm" className="rounded-full shadow-sm" onClick={() => setShowShare(true)}>
@@ -239,11 +195,21 @@ export function TopBar() {
           <SaveStatus />
           <Separator orientation="vertical" className="h-6" />
           <SnapToggle />
-          <ZoomControls />
         </div>
       </header>
-      {showShare ? <ShareDialog document={document} onClose={() => setShowShare(false)} onPresent={() => { setShowShare(false); setShowPresent(true); }} /> : null}
-      {showPresent ? <PresentMode document={document} onClose={() => setShowPresent(false)} /> : null}
+      {showShare ? (
+        <ShareDialog
+          document={document}
+          onClose={() => setShowShare(false)}
+          onPresent={() => {
+            setShowShare(false);
+            setShowPresent(true);
+          }}
+        />
+      ) : null}
+      {showPresent ? (
+        <PresentMode document={document} onClose={() => setShowPresent(false)} />
+      ) : null}
     </>
   );
 }

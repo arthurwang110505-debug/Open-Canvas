@@ -1,14 +1,11 @@
 import { renderPageToSvg } from '@opencanvas/export';
-import { blobToDataUrl } from '@opencanvas/storage';
 import { Button, Tooltip } from '@opencanvas/ui';
 import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { resolveAssetHref } from './assets/assetHref';
 import { useAssetServices } from './assets/useAssetServices';
 import { useEditor } from './hooks';
-
-const TRANSPARENT_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 
 /**
  * Bottom filmstrip showing all pages as SVG thumbnails — Canva-style Page navigator.
@@ -55,16 +52,13 @@ export function PagesStrip() {
   return (
     <div
       aria-label="Pages"
-      className="pointer-events-auto absolute bottom-3 left-1/2 z-20 flex max-w-[min(92%,960px)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-border bg-white px-2 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+      className="pointer-events-auto absolute bottom-3 left-1/2 z-20 flex max-w-[min(78%,720px)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-border bg-white px-2 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
     >
       <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin">
         {pages.map((page, index) => {
           const isActive = page.id === activePageId;
           return (
-            <div
-              key={page.id}
-              className="group relative flex shrink-0 flex-col items-center gap-1"
-            >
+            <div key={page.id} className="group relative flex shrink-0 flex-col items-center gap-1">
               <button
                 type="button"
                 aria-label={`Go to page ${index + 1}${isActive ? ' (current)' : ''}`}
@@ -174,15 +168,8 @@ function PageThumbnail({
 
   useEffect(() => {
     let cancelled = false;
-    const resolveImageHref = async (asset: { id: string }) => {
-      try {
-        const blob = await assetServices.blobStore.get(asset.id);
-        if (blob) return await blobToDataUrl(blob);
-      } catch {
-        // fall through to transparent
-      }
-      return TRANSPARENT_PNG;
-    };
+    const resolveImageHref = (asset: Parameters<typeof resolveAssetHref>[0]) =>
+      resolveAssetHref(asset, assetServices.blobStore);
 
     void (async () => {
       const result = await renderPageToSvg(document, {
@@ -210,13 +197,7 @@ function PageThumbnail({
 
   if (!svg) {
     // Skeleton while SVG renders
-    return (
-      <div
-        aria-hidden="true"
-        className="animate-pulse bg-muted"
-        style={{ width, height }}
-      />
-    );
+    return <div aria-hidden="true" className="animate-pulse bg-muted" style={{ width, height }} />;
   }
 
   return (

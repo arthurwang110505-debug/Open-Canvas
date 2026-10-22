@@ -48,6 +48,7 @@ export function collectReferencedAssetIds(document: DesignDocument): Set<string>
   for (const page of document.pages) {
     for (const element of flattenElements(page.elements)) {
       if (element.type === 'image') ids.add(element.assetId);
+      else if (element.type === 'frame' && element.assetId) ids.add(element.assetId);
     }
   }
   return ids;

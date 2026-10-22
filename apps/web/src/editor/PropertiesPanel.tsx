@@ -2,12 +2,17 @@ import {
   CANVAS_PRESETS,
   LIMITS,
   type DesignElement,
-  type FontWeight,
+  type FrameElement,
+  type FrameShape,
+  type IconElement,
   type ImageElement,
   type ImageFit,
   type TextAlign,
   type TextElement,
+  type TextTransform,
 } from '@opencanvas/document';
+import { canPanFramePhoto } from '@opencanvas/canvas-fabric';
+import { getIcon } from '@opencanvas/icons';
 import {
   movableElements,
   selectActivePage,
@@ -38,6 +43,8 @@ import {
   EyeOff,
   Italic,
   Link,
+  List,
+  ListOrdered,
   Lock,
   LockOpen,
   Trash2,
@@ -48,25 +55,40 @@ import { useId, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { useEditorActions } from './actions';
+import { useImageImport } from './assets/useImageImport';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
-import { FONT_FAMILIES } from './fonts';
-import { useEditor } from './hooks';
+import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
+import { useEditor, useEditorStore } from './hooks';
 import { ColorField, FieldGroup, NumberField } from './panels/fields';
+import { GradientPicker } from './panels/GradientPicker';
+import { IconPicker, IconPreview } from './panels/IconPicker';
+import { PhotoPicker } from './panels/PhotoPicker';
 
-/** Weights bundled for Inter; browsers synthesize the rest for system fonts. */
-const FONT_WEIGHTS: { value: FontWeight; label: string }[] = [
-  { value: 400, label: 'Regular' },
-  { value: 500, label: 'Medium' },
-  { value: 600, label: 'Semibold' },
-  { value: 700, label: 'Bold' },
-  { value: 800, label: 'Extra bold' },
-];
+/** Names for the weights the bundled families expose; anything else shows its number. */
+const FONT_WEIGHT_LABELS: Record<number, string> = {
+  100: 'Thin',
+  200: 'Extra light',
+  300: 'Light',
+  400: 'Regular',
+  500: 'Medium',
+  600: 'Semibold',
+  700: 'Bold',
+  800: 'Extra bold',
+  900: 'Black',
+};
 
 const TEXT_ALIGNMENTS: { value: TextAlign; label: string; icon: React.ReactNode }[] = [
   { value: 'left', label: 'Align left', icon: <AlignLeft /> },
   { value: 'center', label: 'Align center', icon: <AlignCenter /> },
   { value: 'right', label: 'Align right', icon: <AlignRight /> },
   { value: 'justify', label: 'Justify', icon: <AlignJustify /> },
+];
+
+const TEXT_CASES: { value: TextTransform; label: string }[] = [
+  { value: 'none', label: 'As typed' },
+  { value: 'uppercase', label: 'UPPERCASE' },
+  { value: 'lowercase', label: 'lowercase' },
+  { value: 'capitalize', label: 'Capitalize Each Word' },
 ];
 
 const ALIGN_MODES: { mode: AlignMode; label: string; icon: React.ReactNode }[] = [
@@ -107,8 +129,8 @@ function PageProperties() {
 
   return (
     <>
-      <div className="px-3 py-3">
-        <h2 className="text-sm font-semibold">Page</h2>
+      <div className="px-4 py-3.5">
+        <h2 className="text-[15px] font-semibold">Page</h2>
         <p className="text-xs text-muted-foreground">
           {elementCount === 0
             ? 'Nothing on the page yet. Insert a shape or text from the left panel.'
@@ -316,6 +338,7 @@ function TextProperties({ element }: { element: TextElement }) {
   const familyId = useId();
   const weightId = useId();
   const contentId = useId();
+  const casingId = useId();
 
   return (
     <FieldGroup title="Typography">
@@ -334,17 +357,38 @@ function TextProperties({ element }: { element: TextElement }) {
         <Select
           id={familyId}
           value={element.fontFamily}
+          style={{ fontFamily: `"${element.fontFamily}"` }}
           onChange={(event) => updateSelection({ fontFamily: event.target.value })}
         >
-          {!FONT_FAMILIES.includes(element.fontFamily) && (
+          {!FONT_FAMILY_NAMES.includes(element.fontFamily) && (
             <option value={element.fontFamily}>{element.fontFamily}</option>
           )}
-          {FONT_FAMILIES.map((family) => (
-            <option key={family} value={family} style={{ fontFamily: family }}>
-              {family}
-            </option>
+          {FONT_CATEGORIES.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.families.map((font) => (
+                <option
+                  key={font.family}
+                  value={font.family}
+                  style={{ fontFamily: `"${font.family}", sans-serif` }}
+                >
+                  {font.family}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </Select>
+        <p
+          aria-hidden="true"
+          data-testid="font-specimen"
+          className="truncate rounded-md border border-border bg-muted/40 px-2 py-1.5 text-base leading-tight text-foreground"
+          style={{
+            fontFamily: `"${element.fontFamily}"`,
+            fontWeight: element.fontWeight,
+            fontStyle: element.fontStyle,
+          }}
+        >
+          Aa Bb Cc — The quick brown fox
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <NumberField
@@ -363,9 +407,9 @@ function TextProperties({ element }: { element: TextElement }) {
             value={element.fontWeight}
             onChange={(event) => updateSelection({ fontWeight: Number(event.target.value) })}
           >
-            {FONT_WEIGHTS.map((weight) => (
-              <option key={weight.value} value={weight.value}>
-                {weight.label}
+            {fontWeightsFor(element.fontFamily, element.fontWeight).map((weight) => (
+              <option key={weight} value={weight}>
+                {FONT_WEIGHT_LABELS[weight] ?? String(weight)}
               </option>
             ))}
           </Select>
@@ -410,6 +454,61 @@ function TextProperties({ element }: { element: TextElement }) {
             <Underline />
           </Button>
         </Tooltip>
+        <Separator orientation="vertical" className="mx-1 h-6" />
+        <Tooltip content="Bulleted list">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Bulleted list"
+            pressed={element.listStyle === 'bullet'}
+            onClick={() =>
+              updateSelection(
+                { listStyle: element.listStyle === 'bullet' ? 'none' : 'bullet' },
+                `listStyle:${element.id}`,
+              )
+            }
+          >
+            <List />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Numbered list">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Numbered list"
+            pressed={element.listStyle === 'number'}
+            onClick={() =>
+              updateSelection(
+                { listStyle: element.listStyle === 'number' ? 'none' : 'number' },
+                `listStyle:${element.id}`,
+              )
+            }
+          >
+            <ListOrdered />
+          </Button>
+        </Tooltip>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={casingId}>Casing</Label>
+        <Select
+          id={casingId}
+          value={element.textTransform}
+          onChange={(event) =>
+            updateSelection(
+              { textTransform: event.target.value as TextTransform },
+              `textTransform:${element.id}`,
+            )
+          }
+        >
+          {TEXT_CASES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <p className="text-[11px] text-muted-foreground">
+          Changes how the text looks; your wording stays as typed.
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <NumberField
@@ -443,10 +542,208 @@ function TextProperties({ element }: { element: TextElement }) {
   );
 }
 
+const FRAME_SHAPES: { value: FrameShape; label: string }[] = [
+  { value: 'rect', label: 'Rectangle' },
+  { value: 'ellipse', label: 'Ellipse' },
+];
+
+/**
+ * A frame is a mask with a photo in it. The panel keeps the two ideas apart: the mask (shape, fill)
+ * always applies, the photo section only appears once there is something to photograph.
+ */
+function FrameProperties({ element }: { element: FrameElement }) {
+  const { updateSelection } = useEditorActions();
+  const { insertPhoto, importFiles } = useImageImport();
+  const store = useEditorStore();
+  const photoPanId = useEditor((state) => state.photoPanId);
+  const shapeId = useId();
+  const fitId = useId();
+  const [picking, setPicking] = useState(false);
+  const hasPhoto = element.assetId !== undefined;
+  const asset = useEditor((state) =>
+    element.assetId ? state.document.assets[element.assetId] : undefined,
+  );
+  // Offering the mode for a photo that already fills the mask would be a button that does nothing.
+  const pannable = asset !== undefined && !element.locked && canPanFramePhoto(element, asset);
+  const adjusting = photoPanId === element.id;
+
+  return (
+    <FieldGroup title="Shape & photo">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={shapeId}>Shape</Label>
+        <Select
+          id={shapeId}
+          value={element.shape}
+          onChange={(event) =>
+            updateSelection({ shape: event.target.value as FrameShape }, `shape:${element.id}`)
+          }
+        >
+          {FRAME_SHAPES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      {element.shape === 'rect' && (
+        <NumberField
+          label="Corner radius"
+          value={element.cornerRadius}
+          min={0}
+          max={LIMITS.maxElementDimension}
+          unit="px"
+          onCommit={(cornerRadius) =>
+            updateSelection({ cornerRadius }, `cornerRadius:${element.id}`)
+          }
+        />
+      )}
+      <ColorField
+        label="Fill"
+        value={element.fill.type === 'solid' ? element.fill.color : '#e5e7eb'}
+        onCommit={(color) =>
+          updateSelection({ fill: { type: 'solid', color } }, `fill:${element.id}`)
+        }
+      />
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium">Photo</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" onClick={() => setPicking((open) => !open)}>
+              {hasPhoto ? 'Replace photo' : 'Choose photo'}
+            </Button>
+            {hasPhoto && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  updateSelection({ assetId: undefined, crop: undefined }, `photo:${element.id}`)
+                }
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+        </div>
+        {picking && (
+          <PhotoPicker
+            label="Choose a photo"
+            optionLabel={(title) => `Fill with ${title}`}
+            onPick={(photoId) => {
+              insertPhoto(photoId, { frameId: element.id });
+              setPicking(false);
+            }}
+            onUpload={(files) => {
+              void importFiles(files, { frameId: element.id });
+              setPicking(false);
+            }}
+            uploadLabel="Upload a photo for this frame"
+          />
+        )}
+        {hasPhoto && (
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={fitId}>Photo fit</Label>
+            <Select
+              id={fitId}
+              value={element.fit}
+              onChange={(event) =>
+                updateSelection({ fit: event.target.value as ImageFit }, `fit:${element.id}`)
+              }
+            >
+              {IMAGE_FITS.map((fit) => (
+                <option key={fit.value} value={fit.value}>
+                  {fit.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+        {pannable && (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] text-muted-foreground">
+              {adjusting
+                ? 'Drag the photo on the canvas, or nudge it with the arrow keys.'
+                : 'Move the photo inside its frame.'}
+            </p>
+            <Button
+              variant={adjusting ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => store.getState().setPhotoPan(adjusting ? null : element.id)}
+            >
+              {adjusting ? 'Done' : 'Adjust photo'}
+            </Button>
+          </div>
+        )}
+      </div>
+    </FieldGroup>
+  );
+}
+
+function IconProperties({ element }: { element: IconElement }) {
+  const { updateSelection } = useEditorActions();
+  const [picking, setPicking] = useState(false);
+  const icon = getIcon(element.iconId);
+
+  return (
+    <FieldGroup title="Icon">
+      <div className="flex items-center gap-2">
+        <span className="flex size-9 items-center justify-center rounded-lg border border-border bg-muted/40">
+          <IconPreview
+            iconId={element.iconId}
+            color={element.color}
+            strokeWidth={2}
+            className="size-5"
+          />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium capitalize">
+            {element.iconId.replace(/-/g, ' ')}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            {icon ? 'Vector icon' : 'Not in this version of OpenCanvas'}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setPicking((open) => !open)}>
+          {picking ? 'Close' : 'Replace'}
+        </Button>
+      </div>
+      {picking && (
+        <IconPicker
+          selectedId={element.iconId}
+          onPick={(iconId) => {
+            updateSelection({ iconId });
+            setPicking(false);
+          }}
+        />
+      )}
+      <div className="flex flex-col gap-1">
+        <NumberField
+          label="Stroke width"
+          value={element.strokeWidth}
+          min={0.25}
+          max={6}
+          precision={2}
+          onCommit={(strokeWidth) => updateSelection({ strokeWidth }, `strokeWidth:${element.id}`)}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Measured on the icon&apos;s own 24-unit grid, so it scales with the box.
+        </p>
+      </div>
+      <ColorField
+        label="Color"
+        value={element.color}
+        onCommit={(color) => updateSelection({ color }, `color:${element.id}`)}
+      />
+    </FieldGroup>
+  );
+}
+
 function ImageProperties({ element }: { element: ImageElement }) {
   const { updateSelection } = useEditorActions();
+  const { insertPhoto, importFiles } = useImageImport();
+  const store = useEditorStore();
   const asset = useEditor((state) => state.document.assets[element.assetId]);
   const fitId = useId();
+  const [replacing, setReplacing] = useState(false);
   const current = IMAGE_FITS.find((fit) => fit.value === element.fit);
   const filters = element.filters ?? { brightness: 100, contrast: 100, saturate: 100, blur: 0 };
   const hasCrop = !!element.crop;
@@ -498,6 +795,29 @@ function ImageProperties({ element }: { element: ImageElement }) {
           <dt className="text-muted-foreground">Original</dt>
           <dd>{asset ? `${asset.width}×${asset.height} px` : '—'}</dd>
         </dl>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-expanded={replacing}
+          onClick={() => setReplacing((open) => !open)}
+        >
+          {replacing ? 'Close' : 'Replace image'}
+        </Button>
+        {replacing && (
+          <PhotoPicker
+            label="Replace with a photo"
+            optionLabel={(title) => `Replace with ${title}`}
+            onPick={(photoId) => {
+              insertPhoto(photoId, { replaceId: element.id });
+              setReplacing(false);
+            }}
+            onUpload={(files) => {
+              void importFiles(files, { replaceId: element.id });
+              setReplacing(false);
+            }}
+            uploadLabel="Upload a replacement image"
+          />
+        )}
       </FieldGroup>
       <FieldGroup title="Adjust">
         <NumberField
@@ -507,7 +827,12 @@ function ImageProperties({ element }: { element: ImageElement }) {
           max={300}
           precision={0}
           unit="%"
-          onCommit={(v) => updateSelection({ filters: { ...filters, brightness: v } }, `filter-brightness:${element.id}`)}
+          onCommit={(v) =>
+            updateSelection(
+              { filters: { ...filters, brightness: v } },
+              `filter-brightness:${element.id}`,
+            )
+          }
         />
         <NumberField
           label="Contrast"
@@ -516,7 +841,12 @@ function ImageProperties({ element }: { element: ImageElement }) {
           max={300}
           precision={0}
           unit="%"
-          onCommit={(v) => updateSelection({ filters: { ...filters, contrast: v } }, `filter-contrast:${element.id}`)}
+          onCommit={(v) =>
+            updateSelection(
+              { filters: { ...filters, contrast: v } },
+              `filter-contrast:${element.id}`,
+            )
+          }
         />
         <NumberField
           label="Saturation"
@@ -525,7 +855,12 @@ function ImageProperties({ element }: { element: ImageElement }) {
           max={300}
           precision={0}
           unit="%"
-          onCommit={(v) => updateSelection({ filters: { ...filters, saturate: v } }, `filter-saturate:${element.id}`)}
+          onCommit={(v) =>
+            updateSelection(
+              { filters: { ...filters, saturate: v } },
+              `filter-saturate:${element.id}`,
+            )
+          }
         />
         <NumberField
           label="Blur"
@@ -534,20 +869,37 @@ function ImageProperties({ element }: { element: ImageElement }) {
           max={32}
           precision={1}
           unit="px"
-          onCommit={(v) => updateSelection({ filters: { ...filters, blur: v } }, `filter-blur:${element.id}`)}
+          onCommit={(v) =>
+            updateSelection({ filters: { ...filters, blur: v } }, `filter-blur:${element.id}`)
+          }
         />
-        {(filters.brightness !== 100 || filters.contrast !== 100 || filters.saturate !== 100 || filters.blur !== 0) ? (
+        {filters.brightness !== 100 ||
+        filters.contrast !== 100 ||
+        filters.saturate !== 100 ||
+        filters.blur !== 0 ? (
           <Button
             variant="ghost"
             size="sm"
             className="rounded-full"
-            onClick={() => updateSelection({ filters: { brightness: 100, contrast: 100, saturate: 100, blur: 0 } })}
+            onClick={() =>
+              updateSelection({
+                filters: { brightness: 100, contrast: 100, saturate: 100, blur: 0 },
+              })
+            }
           >
             Reset filters
           </Button>
         ) : null}
       </FieldGroup>
       <FieldGroup title="Crop">
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          onClick={() => store.getState().beginCrop(element.id)}
+        >
+          Crop on canvas
+        </Button>
         {hasCrop && crop ? (
           <>
             <div className="grid grid-cols-2 gap-2">
@@ -601,18 +953,37 @@ function ImageProperties({ element }: { element: ImageElement }) {
               />
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1 rounded-full" onClick={() => updateSelection({ crop: undefined })}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 rounded-full"
+                onClick={() => updateSelection({ crop: undefined })}
+              >
                 Reset crop
               </Button>
-              <Button variant="outline" size="sm" className="flex-1 rounded-full" onClick={() => updateSelection({ crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 } })}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 rounded-full"
+                onClick={() =>
+                  updateSelection({ crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 } })
+                }
+              >
                 Center 80%
               </Button>
             </div>
           </>
         ) : (
           <div className="flex flex-col gap-2">
-            <p className="text-xs text-muted-foreground">No crop — showing full image. Crop selects a sub-rectangle of the source (0–100%).</p>
-            <Button variant="outline" size="sm" className="rounded-full" onClick={() => updateSelection({ crop: { x: 0, y: 0, width: 1, height: 1 } })}>
+            <p className="text-xs text-muted-foreground">
+              No crop — showing full image. Crop selects a sub-rectangle of the source (0–100%).
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              onClick={() => updateSelection({ crop: { x: 0, y: 0, width: 1, height: 1 } })}
+            >
               Enable crop
             </Button>
           </div>
@@ -626,15 +997,19 @@ function ElementProperties({ element }: { element: DesignElement }) {
   const { updateSelection } = useEditorActions();
   const assets = useEditor((state) => state.document.assets);
   const key = (field: string) => `${field}:${element.id}`;
-  const hasStroke = element.type === 'rect' || element.type === 'ellipse' || element.type === 'path';
-  const stroke = hasStroke ? (element as { stroke?: { color: string; width: number } }).stroke : undefined;
+  const hasStroke =
+    element.type === 'rect' || element.type === 'ellipse' || element.type === 'path';
+  const stroke = hasStroke
+    ? (element as { stroke?: { color: string; width: number } }).stroke
+    : undefined;
   const [aspectLocked, setAspectLocked] = useState(false);
+  const [gradientOpen, setGradientOpen] = useState(false);
   const aspect = element.height !== 0 ? element.width / element.height : 1;
 
   return (
     <>
-      <div className="px-3 py-4">
-        <h2 className="text-sm font-semibold">{ELEMENT_TYPE_LABELS[element.type]}</h2>
+      <div className="px-4 py-3.5">
+        <h2 className="text-[15px] font-semibold">{ELEMENT_TYPE_LABELS[element.type]}</h2>
         <p className="truncate text-xs text-muted-foreground" title={element.id}>
           {describeElement(element, assets)}
         </p>
@@ -719,7 +1094,9 @@ function ElementProperties({ element }: { element: DesignElement }) {
             {aspectLocked ? <Link className="size-3.5" /> : <Unlink className="size-3.5" />}
             {aspectLocked ? 'Aspect locked' : 'Lock aspect'}
           </Button>
-          {aspectLocked ? <span className="text-xs text-muted-foreground">W/H stays proportional</span> : null}
+          {aspectLocked ? (
+            <span className="text-xs text-muted-foreground">W/H stays proportional</span>
+          ) : null}
         </div>
       </FieldGroup>
       {(element.type === 'rect' || element.type === 'ellipse' || element.type === 'path') && (
@@ -727,9 +1104,17 @@ function ElementProperties({ element }: { element: DesignElement }) {
           {element.type !== 'path' && (
             <>
               <ColorField
-                label={element.fill.type === 'none' ? 'Fill (none)' : 'Fill'}
+                label={
+                  element.fill.type === 'none'
+                    ? 'Fill (none)'
+                    : element.fill.type === 'solid'
+                      ? 'Fill'
+                      : 'Fill (gradient)'
+                }
                 value={element.fill.type === 'solid' ? element.fill.color : '#ffffff'}
-                onCommit={(color) => updateSelection({ fill: { type: 'solid', color } }, key('fill'))}
+                onCommit={(color) =>
+                  updateSelection({ fill: { type: 'solid', color } }, key('fill'))
+                }
               />
               <label className="flex items-center gap-2 text-xs text-foreground">
                 <input
@@ -767,7 +1152,10 @@ function ElementProperties({ element }: { element: DesignElement }) {
               className="w-24"
               onCommit={(width) =>
                 element.type === 'path'
-                  ? updateSelection({ stroke: { color: stroke?.color ?? '#111827', width: Math.max(1, width) } }, key('strokeWidth'))
+                  ? updateSelection(
+                      { stroke: { color: stroke?.color ?? '#111827', width: Math.max(1, width) } },
+                      key('strokeWidth'),
+                    )
                   : updateSelection(
                       width <= 0
                         ? { stroke: undefined }
@@ -779,17 +1167,45 @@ function ElementProperties({ element }: { element: DesignElement }) {
           </div>
           {element.type === 'path' && (
             <ColorField
-              label={element.fill.type === 'none' ? 'Fill (none)' : 'Fill'}
+              label={
+                element.fill.type === 'none'
+                  ? 'Fill (none)'
+                  : element.fill.type === 'solid'
+                    ? 'Fill'
+                    : 'Fill (gradient)'
+              }
               value={element.fill.type === 'solid' ? element.fill.color : '#ffffff'}
               onCommit={(color) => updateSelection({ fill: { type: 'solid', color } }, key('fill'))}
             />
           )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={gradientOpen ? 'secondary' : 'outline'}
+              size="sm"
+              aria-expanded={gradientOpen}
+              onClick={() => setGradientOpen((open) => !open)}
+              className="rounded-full"
+            >
+              Gradient
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {element.fill.type === 'linear' || element.fill.type === 'radial'
+                ? 'Gradient applied'
+                : 'Pick a preset'}
+            </span>
+          </div>
+          {gradientOpen ? (
+            <GradientPicker
+              value={element.fill}
+              onPick={(fill, mergeKey) => updateSelection({ fill }, mergeKey ?? key('fill'))}
+            />
+          ) : null}
           {element.type === 'path' && (
             <label className="flex items-center gap-2 text-xs text-foreground">
               <input
                 type="checkbox"
-                checked={(element as any).closed}
-                onChange={(event) => updateSelection({ closed: event.target.checked } as any)}
+                checked={element.closed}
+                onChange={(event) => updateSelection({ closed: event.target.checked })}
                 className="accent-primary"
               />
               Closed shape
@@ -808,6 +1224,8 @@ function ElementProperties({ element }: { element: DesignElement }) {
         </FieldGroup>
       )}
       {element.type === 'text' && <TextProperties element={element} />}
+      {element.type === 'icon' && <IconProperties element={element} />}
+      {element.type === 'frame' && <FrameProperties element={element} />}
       {element.type === 'image' && <ImageProperties element={element} />}
       <AlignControls elements={[element]} />
       <ArrangeControls elements={[element]} />
@@ -822,7 +1240,7 @@ function MultiSelectionProperties({ elements }: { elements: DesignElement[] }) {
   return (
     <>
       <div className="px-3 py-3">
-        <h2 className="text-sm font-semibold">{elements.length} elements selected</h2>
+        <h2 className="text-[15px] font-semibold">{elements.length} elements selected</h2>
         <p className="text-xs text-muted-foreground">
           Drag to move them together. Shared properties apply to every selected element.
         </p>
@@ -852,7 +1270,7 @@ export function PropertiesPanel() {
   return (
     <aside
       aria-label="Properties"
-      className="flex h-full w-72 flex-col overflow-y-auto border-l border-border bg-panel"
+      className="flex h-full w-[300px] flex-col overflow-y-auto border-l border-border bg-panel"
     >
       {selected.length === 0 && <PageProperties />}
       {single && <ElementProperties key={single.id} element={single} />}

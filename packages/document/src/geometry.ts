@@ -37,6 +37,29 @@ export function boundsFromEdges(left: number, top: number, right: number, bottom
   };
 }
 
+/**
+ * Endpoints of a CSS-style linear gradient inside a unit box (objectBoundingBox coordinates),
+ * given an angle in degrees where 0 points up and 90 points right. The line runs through the
+ * centre and is long enough for the gradient to reach every corner, per the CSS Images spec.
+ */
+export function linearGradientCoords(angle: number): {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+} {
+  const radians = (angle * Math.PI) / 180;
+  const dx = Math.sin(radians);
+  const dy = -Math.cos(radians);
+  const length = Math.abs(dx) + Math.abs(dy);
+  return {
+    x1: 0.5 - (dx * length) / 2,
+    y1: 0.5 - (dy * length) / 2,
+    x2: 0.5 + (dx * length) / 2,
+    y2: 0.5 + (dy * length) / 2,
+  };
+}
+
 /** Smallest axis-aligned box containing the (possibly rotated) element. */
 export function getElementBounds(box: BoxLike): Bounds {
   if (box.rotation % 360 === 0) {
@@ -75,4 +98,12 @@ export function unionBounds(list: readonly Bounds[]): Bounds {
 
 export function pageBounds(size: { width: number; height: number }): Bounds {
   return boundsFromEdges(0, 0, size.width, size.height);
+}
+
+/**
+ * The corner radius a rounded shape actually draws with. Both renderers clamp the stored value to
+ * half the shorter edge, so a radius larger than the box never produces inverted corners.
+ */
+export function clampedCornerRadius(cornerRadius: number, width: number, height: number): number {
+  return Math.min(Math.max(0, cornerRadius), width / 2, height / 2);
 }

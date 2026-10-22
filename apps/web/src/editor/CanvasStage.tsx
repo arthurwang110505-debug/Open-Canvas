@@ -1,13 +1,24 @@
 import { createPathElement } from '@opencanvas/document';
 import { FabricCanvasAdapter } from '@opencanvas/canvas-fabric';
 import { selectActivePage, type EditorStoreState } from '@opencanvas/editor-core';
-import { cn } from '@opencanvas/ui';
+import { Button, cn } from '@opencanvas/ui';
+import { LayoutTemplate, Square, Type } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type DragEvent, type PointerEvent } from 'react';
 
+import { useEditorActions } from './actions';
 import { useAssetServices } from './assets/useAssetServices';
 import { useImageImport } from './assets/useImageImport';
-import { useCanvasController, useEditorStore, useNotificationStore } from './hooks';
+import { hasElementDrag, readElementDragPayload } from './elements/drag';
+import { CropOverlay } from './canvas/CropOverlay';
+import { ZoomControl } from './ZoomControl';
+import { useCanvasController, useEditor, useEditorStore, useNotificationStore } from './hooks';
 import { useDraw } from './draw/DrawContext';
+
+/** What a dropped photo replaces: a frame it fills or an image it swaps. */
+interface DropTarget {
+  kind: 'frame' | 'image';
+  id: string;
+}
 
 function sceneChanged(next: EditorStoreState, previous: EditorStoreState): boolean {
   return (
@@ -26,12 +37,17 @@ export function CanvasStage() {
   const controller = useCanvasController();
   const notifications = useNotificationStore();
   const assetServices = useAssetServices();
-  const { importFiles } = useImageImport();
+  const { importFiles, insertPhoto } = useImageImport();
   const { enabled: drawEnabled, strokeColor, strokeWidth } = useDraw();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const adapterRef = useRef<FabricCanvasAdapter | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  // Screen-space preview of what a dragged element will become, while it hovers the canvas.
+  const [ghost, setGhost] = useState<{ x: number; y: number; size: number } | null>(null);
+  const zoom = useEditor((state) => state.zoom);
+  const actions = useEditorActions();
+  const isEmpty = useEditor((state) => selectActivePage(state).elements.length === 0);
   const isDrawingRef = useRef(false);
   const pointsRef = useRef<{ x: number; y: number }[]>([]);
 
@@ -72,7 +88,16 @@ export function CanvasStage() {
           );
         },
         onSelectionChanged: (ids) => store.getState().setSelection(ids),
+        onPhotoPanChanged: (elementId) => store.getState().setPhotoPan(elementId),
+        onCropRequested: (elementId) => store.getState().beginCrop(elementId),
+        onPhotoPanned: (elementId, crop) => {
+          const { activePageId, dispatch } = store.getState();
+          dispatch({ type: 'element.update', pageId: activePageId, elementId, patch: { crop } });
+        },
         onZoomChanged: (zoom) => store.getState().setZoom(zoom),
+        onViewportChanged: () => controller.bumpViewport(),
+        onInteractionChanged: (interacting) => controller.setInteracting(interacting),
+        onTextEditingChanged: (editing) => controller.setEditingText(editing),
         onAssetError: (elementId, assetId, error) => {
           const asset = store.getState().document.assets[assetId];
           notifications.getState().show({
@@ -110,8 +135,23 @@ export function CanvasStage() {
     adapter.fitToViewport();
     controller.attach(adapter);
 
+    adapter.setPhotoPanTarget(store.getState().photoPanId);
+    const openCropId = store.getState().cropId;
+    if (openCropId) adapter.beginCropEdit(openCropId);
+
     const unsubscribe = store.subscribe((state, previous) => {
       if (sceneChanged(state, previous)) renderScene();
+      // Adjust-photo mode lives in the store (the properties panel toggles it too), so the
+      // canvas follows it rather than owning it.
+      if (state.photoPanId !== previous.photoPanId) adapter.setPhotoPanTarget(state.photoPanId);
+      // Crop mode shows the photo uncropped on the canvas; the DOM overlay draws the box.
+      if (state.cropId !== previous.cropId) {
+        if (state.cropId) adapter.beginCropEdit(state.cropId);
+        else adapter.endCropEdit();
+      }
+      if (state.cropId !== null && state.cropDraft !== previous.cropDraft && state.cropDraft) {
+        adapter.previewCrop(state.cropDraft);
+      }
     });
 
     const observer = new ResizeObserver(() => {
@@ -120,18 +160,23 @@ export function CanvasStage() {
     observer.observe(container);
 
     let fontsCancelled = false;
-    if (typeof document.fonts !== 'undefined') {
-      document.fonts.ready
-        .then(() => {
-          if (!fontsCancelled) adapter.invalidateTextLayout();
-        })
-        .catch((error: unknown) => {
-          console.warn('Web fonts failed to load; text metrics may be approximate.', error);
-        });
+    // `fonts.ready` resolves once at startup; a family picked later (see the font menu) arrives
+    // afterwards, and `loadingdone` is what tells the canvas to re-measure with the real metrics.
+    const remeasureText = () => {
+      if (!fontsCancelled) adapter.invalidateTextLayout();
+    };
+    const fonts = typeof document === 'undefined' ? undefined : document.fonts;
+    if (fonts) {
+      fonts.ready.catch((error: unknown) => {
+        console.warn('Web fonts failed to load; text metrics may be approximate.', error);
+      });
+      fonts.addEventListener('loadingdone', remeasureText);
+      void fonts.ready.then(remeasureText);
     }
 
     return () => {
       fontsCancelled = true;
+      fonts?.removeEventListener('loadingdone', remeasureText);
       observer.disconnect();
       unsubscribe();
       controller.detach(adapter);
@@ -144,7 +189,12 @@ export function CanvasStage() {
   useEffect(() => {
     const adapter = adapterRef.current;
     if (!adapter) return;
-    const canvas = adapter.getFabricCanvas() as unknown as { selection: boolean; isDrawingMode: boolean; discardActiveObject: () => unknown; renderAll: () => void };
+    const canvas = adapter.getFabricCanvas() as unknown as {
+      selection: boolean;
+      isDrawingMode: boolean;
+      discardActiveObject: () => unknown;
+      renderAll: () => void;
+    };
     canvas.selection = !drawEnabled;
     canvas.isDrawingMode = false;
     if (drawEnabled) {
@@ -153,17 +203,133 @@ export function CanvasStage() {
     }
   }, [drawEnabled]);
 
+  // A cancelled drag never reaches this element's `onDrop`, so clear the preview whenever the
+  // gesture ends anywhere on the page.
+  useEffect(() => {
+    const clear = () => {
+      setGhost(null);
+      setDropActive(false);
+    };
+    window.addEventListener('dragend', clear);
+    return () => window.removeEventListener('dragend', clear);
+  }, []);
+
   const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('Files');
 
+  const pagePoint = (event: DragEvent<HTMLDivElement>) =>
+    Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
+      ? controller.clientToPage(event.clientX, event.clientY)
+      : null;
+
+  /**
+   * What a dropped photo lands on: the top-most unlocked frame or image whose box contains the
+   * point. A photo dropped on a frame fills it and one dropped on an image swaps it, so the drop
+   * never stacks a second picture on top of the first.
+   */
+  const dropTargetAt = (point: { x: number; y: number } | null): DropTarget | null => {
+    if (!point) return null;
+    const state = store.getState();
+    const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+    if (!page) return null;
+    // The canvas is the page: a drop that lands slightly outside still belongs to the design.
+    const { width, height } = state.document.size;
+    const x = Math.min(Math.max(point.x, 0), width);
+    const y = Math.min(Math.max(point.y, 0), height);
+    for (let index = page.elements.length - 1; index >= 0; index -= 1) {
+      const element = page.elements[index];
+      if (
+        (element?.type === 'frame' || element?.type === 'image') &&
+        element.visible &&
+        !element.locked &&
+        x >= element.x &&
+        x <= element.x + element.width &&
+        y >= element.y &&
+        y <= element.y + element.height
+      ) {
+        return { kind: element.type, id: element.id };
+      }
+    }
+    return null;
+  };
+
+  /** Insert options that swap or fill the target instead of adding an element. */
+  const targetOptions = (target: DropTarget | null, at: { x: number; y: number } | undefined) =>
+    target?.kind === 'frame'
+      ? { frameId: target.id }
+      : target?.kind === 'image'
+        ? { replaceId: target.id }
+        : at
+          ? { at }
+          : undefined;
+
+  /** The element's eventual page size in screen pixels, or `null` for an unknown drag. */
+  const ghostSize = (event: DragEvent<HTMLDivElement>): number | null => {
+    const payload = readElementDragPayload(event.dataTransfer);
+    if (!payload) return null;
+    const { size } = store.getState().document;
+    const fraction =
+      payload.kind === 'icon'
+        ? 0.2
+        : payload.kind === 'photo'
+          ? 0.45
+          : payload.kind === 'frame'
+            ? 0.4
+            : 0.3;
+    return Math.round(Math.min(size.width, size.height) * fraction * zoom);
+  };
+
+  const onDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (hasElementDrag(event.dataTransfer)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      const payload = readElementDragPayload(event.dataTransfer);
+      // Over a frame or an image the drop replaces a picture instead of adding one, so a
+      // "new element" preview would be a lie.
+      if (payload?.kind === 'photo' && dropTargetAt(pagePoint(event))) {
+        setGhost(null);
+        return;
+      }
+      const size = ghostSize(event);
+      const container = containerRef.current;
+      if (size && container) {
+        const rect = container.getBoundingClientRect();
+        setGhost({
+          x: event.clientX - rect.left - size / 2,
+          y: event.clientY - rect.top - size / 2,
+          size,
+        });
+      }
+      return;
+    }
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setDropActive(true);
+  };
+
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    const payload = readElementDragPayload(event.dataTransfer);
+    if (payload) {
+      event.preventDefault();
+      setGhost(null);
+      const at = pagePoint(event) ?? undefined;
+      if (payload.kind === 'icon') actions.addIcon(payload.iconId, at);
+      else if (payload.kind === 'photo') {
+        // A photo dropped on a frame fills it and one dropped on an image swaps it; anywhere
+        // else it becomes a new image element.
+        insertPhoto(payload.photoId, targetOptions(dropTargetAt(pagePoint(event)), at));
+      } else if (payload.kind === 'frame') actions.addFrame(payload.frame, at);
+      else actions.addShape(payload.shape, at);
+      return;
+    }
     if (!hasFiles(event)) return;
     event.preventDefault();
     setDropActive(false);
-    const at =
-      Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
-        ? controller.clientToPage(event.clientX, event.clientY)
-        : null;
-    void importFiles(Array.from(event.dataTransfer.files), at ? { at } : undefined);
+    const point = pagePoint(event);
+    void importFiles(
+      Array.from(event.dataTransfer.files),
+      targetOptions(dropTargetAt(point), point ?? undefined),
+    );
   };
 
   // Drawing handlers — page-coords via controller.clientToPage, preview via adapter
@@ -203,22 +369,26 @@ export function CanvasStage() {
       if (!drawEnabled || !isDrawingRef.current) return;
       isDrawingRef.current = false;
       try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {}
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // The pointer may already have been released (pointercancel); nothing to undo.
+      }
       const pts = pointsRef.current;
       adapterRef.current?.setPreviewPath(null, strokeColor, strokeWidth);
       pointsRef.current = [];
       if (pts.length < 2) return;
       // Create path element via factory (computes bounds + relative points)
       try {
-        const element = createPathElement(pts, { stroke: { color: strokeColor, width: strokeWidth } });
+        const element = createPathElement(pts, {
+          stroke: { color: strokeColor, width: strokeWidth },
+        });
         const { activePageId, dispatch } = store.getState();
         dispatch({ type: 'element.add', pageId: activePageId, element });
       } catch (err) {
         console.warn('Failed to create path', err);
       }
     },
-    [drawEnabled, controller, store, strokeColor, strokeWidth],
+    [drawEnabled, store, strokeColor, strokeWidth],
   );
 
   const handlePointerLeave = useCallback(() => {
@@ -234,21 +404,11 @@ export function CanvasStage() {
         dropActive && 'ring-2 ring-ring ring-inset',
         drawEnabled && 'cursor-crosshair',
       )}
-      style={
-        {
-          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(0,0,0,0.04) 1px, transparent 0)',
-          backgroundSize: '20px 20px',
-        } as React.CSSProperties
-      }
-      onDragOver={(event) => {
-        if (!hasFiles(event)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'copy';
-        setDropActive(true);
-      }}
+      onDragOver={onDragOver}
       onDragLeave={(event) => {
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
         setDropActive(false);
+        setGhost(null);
       }}
       onDrop={onDrop}
       onPointerDown={handlePointerDown}
@@ -258,10 +418,57 @@ export function CanvasStage() {
       onPointerCancel={handlePointerUp}
     >
       <canvas ref={canvasRef} aria-label="Design canvas" />
+      <CropOverlay />
+      <ZoomControl />
+      {isEmpty && !drawEnabled && !dropActive ? (
+        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center px-6">
+          <div className="pointer-events-none flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border border-border/80 bg-white/95 px-6 py-5 text-center shadow-[0_12px_40px_rgba(16,24,40,0.12)] backdrop-blur">
+            <span className="grid size-10 place-items-center rounded-xl bg-secondary text-secondary-foreground">
+              <LayoutTemplate className="size-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">Start your design</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Add something to the page, or drop an image anywhere.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              <Button
+                size="sm"
+                className="pointer-events-auto rounded-full"
+                onClick={() => actions.addText('heading')}
+              >
+                <Type /> Add a text box
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="pointer-events-auto rounded-full"
+                onClick={() => actions.addShape('rect')}
+              >
+                <Square /> Add a shape
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Tip: press <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">R</kbd>{' '}
+              for a rectangle,{' '}
+              <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">T</kbd> for text.
+            </p>
+          </div>
+        </div>
+      ) : null}
       {drawEnabled && (
         <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background shadow">
           Drawing — drag on canvas. Press D or click Draw to exit.
         </div>
+      )}
+      {ghost && (
+        <div
+          aria-hidden="true"
+          data-testid="element-drop-ghost"
+          className="pointer-events-none absolute z-10 rounded-md border-2 border-dashed border-primary/70 bg-primary/10"
+          style={{ left: ghost.x, top: ghost.y, width: ghost.size, height: ghost.size }}
+        />
       )}
       {dropActive && (
         <div

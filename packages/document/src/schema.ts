@@ -29,7 +29,50 @@ export const NoFillSchema = z.object({
   type: z.literal('none'),
 });
 
-export const FillSchema = z.discriminatedUnion('type', [SolidFillSchema, NoFillSchema]);
+export const GradientStopSchema = z.object({
+  /** Position along the gradient, 0 = start, 1 = end. */
+  offset: z.number().min(0).max(1),
+  color: HexColorSchema,
+});
+
+/**
+ * Stops must not run backwards: SVG clamps a decreasing offset to the previous stop, so an
+ * out-of-order document would render differently in the browser and in an exported file.
+ */
+export const GradientStopsSchema = z
+  .array(GradientStopSchema)
+  .min(2)
+  .max(8)
+  .refine(
+    (stops) => stops.every((stop, index) => index === 0 || stop.offset >= stops[index - 1]!.offset),
+    {
+      message: 'Gradient stops must be ordered by non-decreasing offset',
+    },
+  );
+
+/**
+ * A linear gradient across the filled box. `angle` is in CSS degrees: 0 points to the top,
+ * 90 to the right, 180 (the default) to the bottom. Both the canvas adapter and the SVG
+ * exporter derive their endpoints from `linearGradientCoords`, so they cannot disagree.
+ */
+export const LinearGradientFillSchema = z.object({
+  type: z.literal('linear'),
+  angle: z.number().min(0).max(360).default(180),
+  stops: GradientStopsSchema,
+});
+
+/** A radial gradient centred on the filled box, with the outer stop at its edge. */
+export const RadialGradientFillSchema = z.object({
+  type: z.literal('radial'),
+  stops: GradientStopsSchema,
+});
+
+export const FillSchema = z.discriminatedUnion('type', [
+  SolidFillSchema,
+  NoFillSchema,
+  LinearGradientFillSchema,
+  RadialGradientFillSchema,
+]);
 
 export const StrokeSchema = z.object({
   color: HexColorSchema,
@@ -86,6 +129,16 @@ export const EllipseElementSchema = ElementBaseSchema.extend({
 export const FontWeightSchema = z.number().int().min(100).max(900).multipleOf(100);
 export const TextAlignSchema = z.enum(['left', 'center', 'right', 'justify']);
 export const FontStyleSchema = z.enum(['normal', 'italic']);
+/**
+ * Display casing. The document keeps the text the author typed; renderers apply the transform,
+ * so switching from uppercase back to none never loses their words (or their lowercase).
+ */
+export const TextTransformSchema = z.enum(['none', 'uppercase', 'lowercase', 'capitalize']);
+/**
+ * List decoration. Renderers draw the marker in front of each rendered line, so the stored text
+ * stays clean and switching lists off leaves plain paragraphs behind.
+ */
+export const ListStyleSchema = z.enum(['none', 'bullet', 'number']);
 
 export const TextElementSchema = ElementBaseSchema.extend({
   type: z.literal('text'),
@@ -100,6 +153,9 @@ export const TextElementSchema = ElementBaseSchema.extend({
   /** Additional spacing between characters in pixels. */
   letterSpacing: z.number().min(-100).max(1000).default(0),
   underline: z.boolean().default(false),
+  /** Applied at render time; the stored `text` stays exactly as typed. */
+  textTransform: TextTransformSchema.default('none'),
+  listStyle: ListStyleSchema.default('none'),
   color: HexColorSchema,
 });
 
@@ -134,6 +190,46 @@ export const ImageElementSchema = ElementBaseSchema.extend({
   crop: ImageCropSchema.optional(),
 });
 
+/**
+ * An icon is vector data, not an image asset: the document stores which icon it is, and the
+ * renderer looks the geometry up in `@opencanvas/icons`. That keeps documents small, makes colour
+ * and stroke width live properties, and lets an icon scale without losing sharpness.
+ */
+export const IconElementSchema = ElementBaseSchema.extend({
+  type: z.literal('icon'),
+  /** Key in the bundled catalogue, e.g. `heart`. Unknown ids render as nothing (see below). */
+  iconId: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Icon ids look like "heart" or "arrow-right"'),
+  color: HexColorSchema.default('#111827'),
+  /** Stroke width in the icon's own 24×24 units; scales with the element. */
+  strokeWidth: z.number().min(0.25).max(6).default(2),
+});
+
+/**
+ * A mask with a photo inside it. The element owns the box and the shape; the photo is an asset
+ * reference, so a frame can be empty (a placeholder the user can drop a photo into) or filled
+ * without changing its geometry. Because the mask is the element's own shape, resizing a frame
+ * re-masks the photo instead of stretching it.
+ */
+export const FrameShapeSchema = z.enum(['rect', 'ellipse']);
+
+export const FrameElementSchema = ElementBaseSchema.extend({
+  type: z.literal('frame'),
+  shape: FrameShapeSchema.default('rect'),
+  /** Clamped to half the shorter edge when drawn, exactly like a rectangle's radius. */
+  cornerRadius: z.number().min(0).max(LIMITS.maxElementDimension).default(0),
+  /** Asset shown inside the mask; absent means an empty placeholder. */
+  assetId: IdSchema.optional(),
+  /** `cover` fills the mask and crops the overflow (default); `fill` stretches the photo. */
+  fit: ImageFitSchema.default('cover'),
+  crop: ImageCropSchema.optional(),
+  /** Drawn inside the mask behind the photo — the whole element while it is empty. */
+  fill: FillSchema.default({ type: 'solid', color: '#e5e7eb' }),
+});
+
 export const PathPointSchema = z.object({
   x: CoordinateSchema,
   y: CoordinateSchema,
@@ -151,11 +247,17 @@ export const PathElementSchema = ElementBaseSchema.extend({
 // Leaf inferred types — needed before GroupElement interface
 export type HexColor = z.infer<typeof HexColorSchema>;
 export type SolidFill = z.infer<typeof SolidFillSchema>;
+export type GradientStop = z.infer<typeof GradientStopSchema>;
+export type LinearGradientFill = z.infer<typeof LinearGradientFillSchema>;
+export type RadialGradientFill = z.infer<typeof RadialGradientFillSchema>;
+export type GradientFill = LinearGradientFill | RadialGradientFill;
 export type Fill = z.infer<typeof FillSchema>;
 export type Stroke = z.infer<typeof StrokeSchema>;
 export type FontWeight = z.infer<typeof FontWeightSchema>;
 export type TextAlign = z.infer<typeof TextAlignSchema>;
 export type FontStyle = z.infer<typeof FontStyleSchema>;
+export type TextTransform = z.infer<typeof TextTransformSchema>;
+export type ListStyle = z.infer<typeof ListStyleSchema>;
 
 export type RectElement = z.infer<typeof RectElementSchema>;
 export type EllipseElement = z.infer<typeof EllipseElementSchema>;
@@ -166,6 +268,9 @@ export type ImageFilters = z.infer<typeof ImageFiltersSchema>;
 export type ImageCrop = z.infer<typeof ImageCropSchema>;
 export type PathPoint = z.infer<typeof PathPointSchema>;
 export type PathElement = z.infer<typeof PathElementSchema>;
+export type IconElement = z.infer<typeof IconElementSchema>;
+export type FrameShape = z.infer<typeof FrameShapeSchema>;
+export type FrameElement = z.infer<typeof FrameElementSchema>;
 
 export interface GroupElement {
   id: string;
@@ -181,29 +286,38 @@ export interface GroupElement {
   type: 'group';
   children: DesignElement[];
 }
-export type DesignElement = RectElement | EllipseElement | TextElement | ImageElement | PathElement | GroupElement;
+export type DesignElement =
+  | RectElement
+  | EllipseElement
+  | TextElement
+  | ImageElement
+  | PathElement
+  | IconElement
+  | FrameElement
+  | GroupElement;
 export type ElementType = DesignElement['type'];
 
 // Group — recursive container. Children are stored relative to the group's origin (x,y).
 // Use a non-lazy object for the group itself so `discriminatedUnion` can recognise it;
 // only the children array is lazy to allow nesting (group inside group).
-let ElementSchema: z.ZodType<DesignElement>;
 export const GroupElementSchema = ElementBaseSchema.extend({
   type: z.literal('group'),
   children: z.array(z.lazy(() => ElementSchema)).max(LIMITS.maxElementsPerPage),
 });
 
-ElementSchema = z.lazy(() =>
+// `z.lazy` defers evaluation, so the self-reference in GroupElementSchema is safe.
+export const ElementSchema: z.ZodType<DesignElement> = z.lazy(() =>
   z.discriminatedUnion('type', [
     RectElementSchema,
     EllipseElementSchema,
     TextElementSchema,
     ImageElementSchema,
     PathElementSchema,
+    IconElementSchema,
+    FrameElementSchema,
     GroupElementSchema,
   ]),
 );
-export { ElementSchema };
 
 // ---------------------------------------------------------------------------
 // Assets
@@ -218,9 +332,24 @@ export const UrlAssetSourceSchema = z.object({
   url: z.string().min(1).max(LIMITS.maxUrlLength),
 });
 
+/**
+ * Bytes ship with the app under a stable id (the bundled photo library). Documents reference the
+ * id, so a project file stays small, the photo works offline, and a build that lacks the photo
+ * renders it as missing instead of dropping the element.
+ */
+export const BundledAssetSourceSchema = z.object({
+  type: z.literal('bundled'),
+  photoId: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Photo ids look like "alpine-lake"'),
+});
+
 export const AssetSourceSchema = z.discriminatedUnion('type', [
   LocalAssetSourceSchema,
   UrlAssetSourceSchema,
+  BundledAssetSourceSchema,
 ]);
 
 export const ImageAssetSchema = z.object({
@@ -283,12 +412,25 @@ export const DocumentSchema = z
   .superRefine((doc, ctx) => {
     const pageIds = new Set<string>();
     const elementIds = new Set<string>();
-    const walk = (elements: readonly unknown[], path: (string | number)[], check: (el: { id: string; type: string; assetId?: string; children?: readonly unknown[] }, p: (string | number)[]) => void) => {
+    const walk = (
+      elements: readonly unknown[],
+      path: (string | number)[],
+      check: (
+        el: { id: string; type: string; assetId?: string; children?: readonly unknown[] },
+        p: (string | number)[],
+      ) => void,
+    ) => {
       elements.forEach((elRaw, idx) => {
-        const el = elRaw as { id: string; type: string; assetId?: string; children?: readonly unknown[] };
+        const el = elRaw as {
+          id: string;
+          type: string;
+          assetId?: string;
+          children?: readonly unknown[];
+        };
         const p = [...path, idx];
         check(el, p);
-        if (el.type === 'group' && Array.isArray(el.children)) walk(el.children, [...p, 'children'], check);
+        if (el.type === 'group' && Array.isArray(el.children))
+          walk(el.children, [...p, 'children'], check);
       });
     };
     doc.pages.forEach((page, pageIndex) => {
@@ -304,16 +446,23 @@ export const DocumentSchema = z
         if (elementIds.has(element.id)) {
           ctx.addIssue({
             code: 'custom',
-            path: elementPath as (string | number)[],
+            path: elementPath,
             message: `Duplicate element id "${element.id}"`,
           });
         }
         elementIds.add(element.id);
-        if (element.type === 'image' && element.assetId !== undefined && !(element.assetId in doc.assets)) {
+        // Frames hold a photo the same way images do, so the same check applies to both.
+        const referenced =
+          element.type === 'image'
+            ? element.assetId
+            : element.type === 'frame'
+              ? element.assetId
+              : undefined;
+        if (referenced !== undefined && !(referenced in doc.assets)) {
           ctx.addIssue({
             code: 'custom',
             path: [...elementPath, 'assetId'] as (string | number)[],
-            message: `Image references unknown asset "${element.assetId}"`,
+            message: `Image references unknown asset "${referenced}"`,
           });
         }
       });

@@ -1,14 +1,22 @@
-import type {
-  DesignElement,
-  EllipseElement,
-  Fill,
-  ImageElement,
-  ImageFit,
-  PathElement,
-  PathPoint,
-  RectElement,
-  TextElement,
+import {
+  clampedCornerRadius,
+  linearGradientCoords,
+  type DesignElement,
+  type EllipseElement,
+  type Fill,
+  type FrameElement,
+  type FrameShape,
+  type IconElement,
+  type ImageElement,
+  type ImageFit,
+  type PathElement,
+  type PathPoint,
+  type RectElement,
+  type TextElement,
+  type ListStyle,
+  type TextTransform,
 } from '@opencanvas/document';
+import { getIcon, ICON_VIEWBOX, iconShapeToPathData, type IconShape } from '@opencanvas/icons';
 
 /**
  * Pure conversion helpers between the OpenCanvas geometry convention and Fabric.js.
@@ -119,13 +127,48 @@ export function geometryFromTransform(
  */
 export const FABRIC_FONT_SIZE_MULT = 1.13;
 
-export function fillToFabric(fill: Fill): string {
+/**
+ * A fill as plain data, so this module never imports Fabric and stays unit-testable. The adapter
+ * turns a gradient spec into a real `Gradient`; its coordinates are fractions of the shape's
+ * bounding box, matching SVG's `objectBoundingBox` units exactly.
+ */
+export type FabricFill =
+  | string
+  | {
+      type: 'linear';
+      coords: { x1: number; y1: number; x2: number; y2: number };
+      colorStops: { offset: number; color: string }[];
+    }
+  | {
+      type: 'radial';
+      coords: { x1: number; y1: number; r1: number; x2: number; y2: number; r2: number };
+      colorStops: { offset: number; color: string }[];
+    };
+
+export function fillToFabric(fill: Fill): FabricFill {
   switch (fill.type) {
     case 'solid':
       return fill.color;
     case 'none':
       return '';
+    case 'linear':
+      return {
+        type: 'linear',
+        coords: linearGradientCoords(fill.angle),
+        colorStops: fill.stops.map((stop) => ({ offset: stop.offset, color: stop.color })),
+      };
+    case 'radial':
+      return {
+        type: 'radial',
+        coords: { x1: 0.5, y1: 0.5, r1: 0, x2: 0.5, y2: 0.5, r2: 0.5 },
+        colorStops: fill.stops.map((stop) => ({ offset: stop.offset, color: stop.color })),
+      };
   }
+}
+
+/** Identifies a fill's appearance, so the adapter can skip re-creating an identical gradient. */
+export function fillSignature(fill: FabricFill): string {
+  return typeof fill === 'string' ? `solid:${fill}` : JSON.stringify(fill);
 }
 
 export interface CommonFabricProps {
@@ -147,7 +190,7 @@ export interface CommonFabricProps {
 export interface RectFabricProps extends CommonFabricProps {
   width: number;
   height: number;
-  fill: string;
+  fill: FabricFill;
   stroke: string;
   strokeWidth: number;
   strokeUniform: true;
@@ -158,7 +201,7 @@ export interface RectFabricProps extends CommonFabricProps {
 export interface EllipseFabricProps extends CommonFabricProps {
   rx: number;
   ry: number;
-  fill: string;
+  fill: FabricFill;
   stroke: string;
   strokeWidth: number;
   strokeUniform: true;
@@ -175,6 +218,10 @@ export interface TextFabricProps extends CommonFabricProps {
   lineHeight: number;
   charSpacing: number;
   underline: boolean;
+  /** Display casing; the element keeps the text as typed and the renderer applies this. */
+  textTransform: TextTransform;
+  /** Marker drawn before each rendered line; the stored text is never prefixed. */
+  listStyle: ListStyle;
   fill: string;
   editable: boolean;
 }
@@ -207,7 +254,34 @@ export interface PathFabricProps extends CommonFabricProps {
   strokeUniform: true;
   strokeLineCap: 'round';
   strokeLineJoin: 'round';
-  fill: string;
+  fill: FabricFill;
+}
+
+/**
+ * An icon is drawn on a fixed 24×24 grid and mapped onto the element box with one scale, which is
+ * exactly what the SVG exporter emits. Fabric describes that as a group of paths whose intrinsic
+ * size is the grid plus `scaleX`/`scaleY`; see `iconPaths`.
+ */
+export interface IconFabricProps extends Omit<CommonFabricProps, 'scaleX' | 'scaleY'> {
+  scaleX: number;
+  scaleY: number;
+}
+
+/**
+ * A frame is a mask plus an optional photo. The mask is the element's own shape, and the photo is
+ * laid out with the same crop/scale maths as an image element, so a frame resized on the canvas
+ * re-masks the photo instead of stretching it.
+ */
+export interface FrameFabricProps extends CommonFabricProps {
+  width: number;
+  height: number;
+  shape: FrameShape;
+  /** Effective corner radius, already clamped to half the shorter edge. */
+  cornerRadius: number;
+  /** Painted inside the mask: the whole element while the frame is empty. */
+  fill: FabricFill;
+  /** Photo layout, present only when the frame holds an image. */
+  image?: ImageFitProps;
 }
 
 export type ElementFabricProps =
@@ -215,7 +289,9 @@ export type ElementFabricProps =
   | { kind: 'ellipse'; props: EllipseFabricProps }
   | { kind: 'text'; props: TextFabricProps }
   | { kind: 'image'; props: ImageFabricProps }
-  | { kind: 'path'; props: PathFabricProps };
+  | { kind: 'path'; props: PathFabricProps }
+  | { kind: 'icon'; props: IconFabricProps }
+  | { kind: 'frame'; props: FrameFabricProps };
 
 function commonProps(element: DesignElement): CommonFabricProps {
   const center = topLeftToCenter(element);
@@ -280,6 +356,30 @@ export function pathToFabricProps(element: PathElement): PathFabricProps {
   };
 }
 
+/**
+ * One drawable path per catalogue shape, in grid units. `filled` marks the handful of shapes the
+ * set draws solid (`fill="currentColor"`), so the caller can give them a fill instead of a stroke.
+ */
+export function iconPaths(element: IconElement): { d: string; filled: boolean }[] {
+  const icon = getIcon(element.iconId);
+  if (!icon) return [];
+  return icon.shapes
+    .map(([tag, attributes]: IconShape) => ({
+      d: iconShapeToPathData([tag, attributes]),
+      filled: attributes['fill'] === 'currentColor',
+    }))
+    .filter((path) => path.d.length > 0);
+}
+
+export function iconToFabricProps(element: IconElement): IconFabricProps {
+  return {
+    ...commonProps(element),
+    // The element box is the grid scaled by these factors; `commonProps` centred it already.
+    scaleX: element.width / ICON_VIEWBOX,
+    scaleY: element.height / ICON_VIEWBOX,
+  };
+}
+
 export function ellipseToFabricProps(element: EllipseElement): EllipseFabricProps {
   return {
     ...commonProps(element),
@@ -306,12 +406,19 @@ export function textToFabricProps(element: TextElement): TextFabricProps {
     // Fabric expresses letter spacing in thousandths of an em.
     charSpacing: (element.letterSpacing / element.fontSize) * 1000,
     underline: element.underline,
+    textTransform: element.textTransform,
+    listStyle: element.listStyle,
     fill: element.color,
     editable: !element.locked,
   };
 }
 
-export function imageCssFilter(filters: { brightness: number; contrast: number; saturate: number; blur: number }): string {
+export function imageCssFilter(filters: {
+  brightness: number;
+  contrast: number;
+  saturate: number;
+  blur: number;
+}): string {
   const parts: string[] = [];
   if (filters.brightness !== 100) parts.push(`brightness(${filters.brightness}%)`);
   if (filters.contrast !== 100) parts.push(`contrast(${filters.contrast}%)`);
@@ -374,6 +481,110 @@ export function computeImageFit(
   };
 }
 
+/** A rectangle of a bitmap, in the bitmap's own pixels. */
+export interface CropWindow {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Smallest crop the document schema accepts, per axis (see `ImageCropSchema`). */
+const MIN_CROP_FRACTION = 0.05;
+
+/**
+ * The part of the bitmap a frame shows right now, in natural pixels — the window a drag inside
+ * the mask moves. `null` when there is nothing to pan: no photo, `fill` (the whole photo is
+ * stretched into the mask) or a photo whose aspect ratio already matches the mask.
+ */
+export function frameCropWindow(
+  element: FrameElement,
+  natural: { width: number; height: number },
+): CropWindow | null {
+  if (!element.assetId || element.fit !== 'cover') return null;
+  const naturalWidth = Math.max(1, natural.width);
+  const naturalHeight = Math.max(1, natural.height);
+  // `computeImageFit` reports the window in the bitmap's own pixels, already including any
+  // user crop's origin.
+  const fit = computeImageFit(element, natural, 'cover', element.crop);
+  const window: CropWindow = {
+    x: fit.cropX,
+    y: fit.cropY,
+    width: fit.width,
+    height: fit.height,
+  };
+  if (window.width >= naturalWidth - 0.5 && window.height >= naturalHeight - 0.5) return null;
+  return window;
+}
+
+/** Moves a crop window by `(dx, dy)` pixels, keeping it inside the bitmap. */
+export function moveCropWindow(
+  window: CropWindow,
+  natural: { width: number; height: number },
+  dx: number,
+  dy: number,
+): CropWindow {
+  const naturalWidth = Math.max(1, natural.width);
+  const naturalHeight = Math.max(1, natural.height);
+  const width = Math.min(window.width, naturalWidth);
+  const height = Math.min(window.height, naturalHeight);
+  return {
+    x: Math.min(Math.max(window.x + dx, 0), naturalWidth - width),
+    y: Math.min(Math.max(window.y + dy, 0), naturalHeight - height),
+    width,
+    height,
+  };
+}
+
+/**
+ * A crop window as the normalized `crop` the document stores. Windows below the schema's minimum
+ * are grown around their centre so the same area of the photo stays visible: the mask clips the
+ * overlap anyway, and a slightly wider window only means `cover` trims it again.
+ */
+export function cropWindowToCrop(
+  window: CropWindow,
+  natural: { width: number; height: number },
+): NonNullable<FrameElement['crop']> {
+  const naturalWidth = Math.max(1, natural.width);
+  const naturalHeight = Math.max(1, natural.height);
+  const width = Math.min(Math.max(window.width / naturalWidth, MIN_CROP_FRACTION), 1);
+  const height = Math.min(Math.max(window.height / naturalHeight, MIN_CROP_FRACTION), 1);
+  const centerX = (window.x + window.width / 2) / naturalWidth;
+  const centerY = (window.y + window.height / 2) / naturalHeight;
+  const round = (value: number) => Math.round(value * 1e6) / 1e6;
+  return {
+    x: round(Math.min(Math.max(centerX - width / 2, 0), 1 - width)),
+    y: round(Math.min(Math.max(centerY - height / 2, 0), 1 - height)),
+    width: round(width),
+    height: round(height),
+  };
+}
+
+/**
+ * The crop a frame shows after the photo is dragged `(dx, dy)` page pixels inside its mask: the
+ * mask holds still and the window moves the opposite way. `null` when nothing can be panned.
+ */
+export function panFramePhoto(
+  element: FrameElement,
+  natural: { width: number; height: number },
+  drag: { x: number; y: number },
+): NonNullable<FrameElement['crop']> | null {
+  const window = frameCropWindow(element, natural);
+  if (!window) return null;
+  // Page pixels -> bitmap pixels. `cover` scales both axes equally.
+  const scale = computeImageFit(element, natural, 'cover', element.crop).scaleX || 1;
+  const moved = moveCropWindow(window, natural, -drag.x / scale, -drag.y / scale);
+  return cropWindowToCrop(moved, natural);
+}
+
+/** Whether a frame holds a photo with something to reveal, i.e. whether it can be panned. */
+export function canPanFramePhoto(
+  element: FrameElement,
+  natural: { width: number; height: number },
+): boolean {
+  return frameCropWindow(element, natural) !== null;
+}
+
 /**
  * Props for an image element given the bitmap that is currently displayed for it. While the
  * real bitmap is still loading the adapter passes its placeholder size with `fit: 'fill'`
@@ -394,9 +605,34 @@ export function imageToFabricProps(
   };
 }
 
+/** Corner radius a frame draws with; the same clamp the rectangle renderer applies. */
+export function frameRadius(element: {
+  cornerRadius: number;
+  width: number;
+  height: number;
+}): number {
+  return clampedCornerRadius(element.cornerRadius, element.width, element.height);
+}
+
+export function frameToFabricProps(
+  element: FrameElement,
+  natural: { width: number; height: number } = { width: element.width, height: element.height },
+  fit: ImageFit = element.fit,
+): FrameFabricProps {
+  return {
+    ...commonProps(element),
+    width: element.width,
+    height: element.height,
+    shape: element.shape,
+    cornerRadius: frameRadius(element),
+    fill: fillToFabric(element.fill),
+    ...(element.assetId ? { image: computeImageFit(element, natural, fit, element.crop) } : {}),
+  };
+}
+
 export interface ElementToFabricContext {
-  /** Bitmap size used for image elements (placeholder or decoded image). */
-  imageSource: (element: ImageElement) => {
+  /** Bitmap size used for image and frame elements (placeholder or decoded image). */
+  imageSource: (element: ImageElement | FrameElement) => {
     natural: { width: number; height: number };
     fit: ImageFit;
   };
@@ -419,8 +655,21 @@ export function elementToFabricProps(
     }
     case 'path':
       return { kind: 'path', props: pathToFabricProps(element) };
+    case 'icon':
+      return { kind: 'icon', props: iconToFabricProps(element) };
+    case 'frame': {
+      const source = context?.imageSource(element);
+      return {
+        kind: 'frame',
+        props: source
+          ? frameToFabricProps(element, source.natural, source.fit)
+          : frameToFabricProps(element),
+      };
+    }
     case 'group':
-      throw new Error('Group elements are handled by FabricCanvasAdapter directly, not via elementToFabricProps.');
+      throw new Error(
+        'Group elements are handled by FabricCanvasAdapter directly, not via elementToFabricProps.',
+      );
   }
 }
 

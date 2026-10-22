@@ -1,12 +1,27 @@
-import { createEllipseElement, createRectElement, createTextElement } from '@opencanvas/document';
+import {
+  createEllipseElement,
+  createFrameElement,
+  createRectElement,
+  createTextElement,
+  linearFill,
+  radialFill,
+} from '@opencanvas/document';
 import { describe, expect, it } from 'vitest';
 
 import {
   FABRIC_FONT_SIZE_MULT,
+  canPanFramePhoto,
   centerToTopLeft,
+  cropWindowToCrop,
   elementToFabricProps,
+  fillSignature,
+  fillToFabric,
+  frameCropWindow,
+  frameToFabricProps,
   geometryFromTransform,
+  moveCropWindow,
   normalizeAngle,
+  panFramePhoto,
   patchFromTransform,
   roundTo,
   topLeftToCenter,
@@ -143,7 +158,16 @@ describe('elementToFabricProps', () => {
       textAlign: 'center',
       fill: '#123456',
       editable: true,
+      textTransform: 'none',
+      listStyle: 'none',
     });
+  });
+
+  it('passes the document casing through without touching the text', () => {
+    const text = createTextElement({ text: 'Spring Sale', textTransform: 'uppercase' });
+    const mapped = elementToFabricProps(text);
+    if (mapped.kind !== 'text') throw new Error('expected text');
+    expect(mapped.props).toMatchObject({ text: 'Spring Sale', textTransform: 'uppercase' });
   });
 
   it('locks interaction for locked elements', () => {
@@ -179,5 +203,180 @@ describe('patchFromTransform', () => {
     );
     expect(patch.fontSize).toBe(40);
     expect(patch.width).toBe(400);
+  });
+});
+
+describe('gradient fills', () => {
+  it('converts a linear fill into fraction coordinates the SVG exporter also uses', () => {
+    const fill = fillToFabric(linearFill(90, ['#0f172a', '#38bdf8']));
+    // 90° runs left to right; percentages are object-bounding-box fractions, matching SVG.
+    if (typeof fill === 'string') throw new Error('expected a gradient spec');
+    expect(fill).toMatchObject({
+      type: 'linear',
+      colorStops: [
+        { offset: 0, color: '#0f172a' },
+        { offset: 1, color: '#38bdf8' },
+      ],
+    });
+    expect(fill.coords.x1).toBeCloseTo(0);
+    expect(fill.coords.x2).toBeCloseTo(1);
+    expect(fill.coords.y1).toBeCloseTo(0.5);
+    expect(fill.coords.y2).toBeCloseTo(0.5);
+  });
+
+  it('converts a radial fill into a centred circle', () => {
+    expect(fillToFabric(radialFill(['#ffffff', '#000000']))).toMatchObject({
+      type: 'radial',
+      coords: { x1: 0.5, y1: 0.5, r1: 0, x2: 0.5, y2: 0.5, r2: 0.5 },
+    });
+  });
+
+  it('passes solid and empty fills through unchanged', () => {
+    expect(fillToFabric({ type: 'solid', color: '#ff0000' })).toBe('#ff0000');
+    expect(fillToFabric({ type: 'none' })).toBe('');
+  });
+
+  it('gives identical paints the same signature and different ones a different signature', () => {
+    const a = fillToFabric(linearFill(90, ['#000000', '#ffffff']));
+    const b = fillToFabric(linearFill(90, ['#000000', '#ffffff']));
+    const c = fillToFabric(linearFill(91, ['#000000', '#ffffff']));
+    expect(fillSignature(a)).toBe(fillSignature(b));
+    expect(fillSignature(a)).not.toBe(fillSignature(c));
+  });
+
+  it('carries the gradient into the mapped element properties', () => {
+    const mapped = elementToFabricProps(
+      createRectElement({ id: 'r1', fill: linearFill(180, ['#fef3c7', '#b45309']) }),
+    );
+    if (mapped.kind !== 'rect') throw new Error('expected a rect');
+    expect(mapped.props.fill).toMatchObject({ type: 'linear' });
+  });
+});
+
+describe('frames', () => {
+  it('maps an empty frame to its shape, clamped radius and fill', () => {
+    const frame = createFrameElement({
+      width: 200,
+      height: 100,
+      cornerRadius: 999,
+      fill: { type: 'solid', color: '#e5e7eb' },
+    });
+    const props = frameToFabricProps(frame);
+    expect(props).toMatchObject({
+      width: 200,
+      height: 100,
+      shape: 'rect',
+      cornerRadius: 50,
+      fill: '#e5e7eb',
+      left: frame.x + 100,
+      top: frame.y + 50,
+    });
+    expect(props.image).toBeUndefined();
+  });
+
+  it('lays a photo out with the same cover maths as an image element', () => {
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    const props = frameToFabricProps(frame, { width: 400, height: 200 }, 'cover');
+    expect(props.image).toMatchObject({
+      width: 200,
+      height: 200,
+      cropX: 100,
+      cropY: 0,
+      scaleX: 1,
+      scaleY: 1,
+    });
+  });
+
+  it('lets the fit mode stretch the photo and keeps the frame box', () => {
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1', fit: 'fill' });
+    const props = frameToFabricProps(frame, { width: 400, height: 200 }, 'fill');
+    expect(props.image).toMatchObject({ width: 400, height: 200, scaleX: 0.5, scaleY: 1 });
+    expect(props.width).toBe(200);
+    expect(props.height).toBe(200);
+  });
+});
+
+describe('panning a photo inside a frame', () => {
+  const natural = { width: 400, height: 200 };
+
+  it('reports the window cover leaves visible', () => {
+    // A square mask over a 2:1 photo: cover scales to the mask height, cropping 100px each side.
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    expect(frameCropWindow(frame, natural)).toEqual({ x: 100, y: 0, width: 200, height: 200 });
+  });
+
+  it('cannot pan when nothing overflows', () => {
+    const square = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    expect(frameCropWindow(square, { width: 200, height: 200 })).toBeNull();
+    expect(canPanFramePhoto(square, { width: 200, height: 200 })).toBe(false);
+
+    const stretched = createFrameElement({
+      width: 200,
+      height: 200,
+      assetId: 'asset_1',
+      fit: 'fill',
+    });
+    expect(frameCropWindow(stretched, natural)).toBeNull();
+
+    const empty = createFrameElement({ width: 200, height: 200 });
+    expect(frameCropWindow(empty, natural)).toBeNull();
+  });
+
+  it('moves the window opposite to the drag and clamps it to the bitmap', () => {
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    // Dragging the photo right by 40 page px (scale 1) hides 40px on the left and reveals the right.
+    expect(panFramePhoto(frame, natural, { x: 40, y: 0 })).toEqual({
+      x: 0.15,
+      y: 0,
+      width: 0.5,
+      height: 1,
+    });
+    // Dragging further than the crop allows stops at the edge instead of revealing empty space.
+    expect(panFramePhoto(frame, natural, { x: 1000, y: 0 })).toMatchObject({ x: 0 });
+    expect(panFramePhoto(frame, natural, { x: -1000, y: 0 })).toMatchObject({ x: 0.5 });
+  });
+
+  it('converts page pixels to bitmap pixels with the cover scale', () => {
+    // 100px mask over a 400px-wide photo: cover scale 0.5, so a 25px drag is 50 bitmap px.
+    const frame = createFrameElement({ width: 100, height: 100, assetId: 'asset_1' });
+    expect(frameCropWindow(frame, natural)).toMatchObject({ x: 100, width: 200 });
+    expect(panFramePhoto(frame, natural, { x: 25, y: 0 })).toMatchObject({ x: 50 / 400 });
+  });
+
+  it('keeps panning from a previous crop', () => {
+    const frame = createFrameElement({
+      width: 200,
+      height: 200,
+      assetId: 'asset_1',
+      crop: { x: 0.25, y: 0, width: 0.5, height: 1 },
+    });
+    expect(frameCropWindow(frame, natural)).toEqual({ x: 100, y: 0, width: 200, height: 200 });
+    expect(panFramePhoto(frame, natural, { x: 20, y: 0 })).toEqual({
+      x: 0.2,
+      y: 0,
+      width: 0.5,
+      height: 1,
+    });
+  });
+
+  it('grows windows below the schema minimum around their centre', () => {
+    // A 10:1 panorama in a square mask: the visible strip is 0.1 of the photo height.
+    const panorama = { width: 1000, height: 100 };
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    expect(frameCropWindow(frame, panorama)).toMatchObject({ width: 100, height: 100 });
+    const crop = cropWindowToCrop({ x: 0, y: 50, width: 100, height: 1 }, panorama);
+    expect(crop.height).toBe(0.05);
+    expect(crop.width).toBe(0.1);
+    // The window grows around its centre (50.5px), not by snapping one edge in place.
+    expect(crop.y).toBeCloseTo(0.505 - 0.025, 6);
+  });
+
+  it('clamps a window that is asked to leave the bitmap', () => {
+    expect(moveCropWindow({ x: 10, y: 10, width: 200, height: 100 }, natural, -100, 100)).toEqual({
+      x: 0,
+      y: 100,
+      width: 200,
+      height: 100,
+    });
   });
 });

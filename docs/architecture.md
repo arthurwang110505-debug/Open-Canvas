@@ -10,7 +10,8 @@ apps/web ──► packages/editor-core ──► packages/document
    │                                        ▲
    ├────────► packages/canvas-fabric ───────┤
    ├────────► packages/storage ─────────────┤
-   ├────────► packages/export ──────────────┘
+   ├────────► packages/export ──────────────┤
+   ├────────► packages/icons ───────────────┤ (data only, no dependencies)
    └────────► packages/ui
 ```
 
@@ -21,8 +22,13 @@ apps/web ──► packages/editor-core ──► packages/document
   the adapter communicates through callbacks and a `render(scene)` method.
 - `packages/storage` depends only on `document` (+ `dexie`): project store (IndexedDB and
   memory), asset blob stores, autosave scheduling, image import, data URLs.
-- `packages/export` depends only on `document` (+ `jspdf`): it renders the model to SVG, PNG and
-  PDF without the canvas adapter, so exports work headlessly and are unit-testable in node.
+- `packages/export` depends only on `document` and `icons` (+ `jspdf`): it renders the model to
+  SVG, PNG and PDF without the canvas adapter, so exports work headlessly and are unit-testable
+  in node.
+- `packages/icons` is a pure data package: a 24×24 catalogue (372 Lucide icons, ISC licence) with
+  search, id lookup and path-data conversion. It imports nothing, so the canvas, the exporters and
+  any future server can all agree on what `heart` means. `scripts/generate-icons.mjs` regenerates
+  it from the installed icon set; the output is committed, so no build step or network is needed.
 - `apps/web` is the only place where React, the store, the adapter, storage and export meet.
 
 Internal packages are consumed as TypeScript source (`exports` → `src/index.ts`); Vite, Vitest
@@ -31,22 +37,54 @@ Node consumer (`apps/api`) needs it.
 
 ## 2. Document model (`packages/document`)
 
-- **Schema version** `1` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
+- **Schema version** `10` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
 - **Structure**: `DesignDocument { id, name, size, pages[], assets, metadata }` →
   `Page { id, background, elements[] }` → `DesignElement` (discriminated union on `type`:
-  `rect`, `ellipse`, `text`, `image`). Z-order is array order (index 0 = back).
+  `rect`, `ellipse`, `text`, `image`, `path`, `icon`, `frame`, `group`). Z-order is array order
+  (index 0 = back).
+- **Fills** are a discriminated union: `solid`, `none`, `linear` (an angle plus 2–8 ordered
+  stops) and `radial`. Page backgrounds use the same type. Gradient coordinates are expressed as
+  fractions of the shape's box, which is both SVG's `objectBoundingBox` unit and Fabric's
+  `percentage` unit, so the canvas and an exported file paint the same pixels and a resized shape
+  keeps its gradient. Stops must be non-decreasing: SVG clamps unordered offsets silently, and a
+  document that renders two different ways is worse than one that refuses to load.
 - **Assets**: `assets` is a record of `ImageAsset { id, kind, name?, mimeType, width, height,
 byteSize?, source, createdAt }`. It carries **metadata only** — bytes live in an asset store
-  keyed by id (`source: { type: 'local' }`) or behind an http(s) URL (`source: { type: 'url' }`).
+  keyed by id (`source: { type: 'local' }`), behind an http(s) URL (`source: { type: 'url' }`), or
+  in the app's own photo library (`source: { type: 'bundled', photoId }`; see
+  [photos.md](photos.md)).
   `image` elements reference assets by `assetId` and choose a `fit` (`cover` crops to fill the
   box, `fill` stretches). A document-level check rejects images whose asset is not registered,
   so a document can never reference bytes it does not know about.
 - **Geometry convention**: `x`/`y` is the top-left corner of the un-rotated element; `rotation`
   (degrees, clockwise) is applied around that corner. This equals SVG
   `translate(x y) rotate(r)` and is what exporters will implement.
+- **Frames** are a mask with an optional photo: `{ shape: 'rect' | 'ellipse', cornerRadius,
+assetId?, fit, crop?, fill }`. The mask is the element's own shape, so a frame can sit empty as
+  a placeholder and be filled later by a drop, and resizing it re-masks the photo instead of
+  stretching it. The document stores the same asset geometry an image element would (`cover`
+  crops, `fill` stretches, `crop` is a source window), which is why canvas and SVG agree.
+  Adjust-photo mode (double-click a filled frame) is editor state (`photoPanId`), not document
+  state: the adapter locks the frame, pans the photo live by moving its crop window, and reports
+  the final normalized `crop` once, on pointer up.
+- **Crop mode** (`cropId` + `cropDraft` in the store) works on the same `crop` field. While it is
+  open the adapter draws the _whole_ bitmap at the crop scale instead of the visible window
+  (`beginCropEdit`), a DOM overlay dims everything outside the box, and the eight handles call
+  `resizeCrop`, which keeps the picture at a constant scale so a drag reveals photo instead of
+  stretching it. The draft changes on every pointer move and the document only changes once, on
+  apply — one command, one undo step.
+- **Icons** store `{ iconId, color, strokeWidth }` rather than shape data: the geometry lives in
+  `@opencanvas/icons`, so an icon costs ~80 bytes in the document, recolours and scales without
+  loss. `iconId` is validated as a slug, and an id from a newer build renders as nothing while
+  keeping the element intact (the document still round-trips).
 - **Styling**: `Fill` (`solid` | `none`), optional `Stroke`, `opacity`, text typography
   (`fontFamily`, `fontSize`, `fontWeight` 100–900, `fontStyle`, `textAlign`, `lineHeight`
   multiplier, `letterSpacing` px, `underline`, `color`).
+- **Text casing and lists are display-only**: `textTransform` (`none` | `uppercase` |
+  `lowercase` | `capitalize`) and `listStyle` (`none` | `bullet` | `number`) change how the text
+  is drawn, never the stored `text`. Renderers apply the casing before wrapping and add list
+  markers after it, so switching either property off restores the author's wording exactly and
+  exports match the canvas without rewriting the document.
 - **Limits** (`LIMITS`): canvas ≤ 16 384 px, ≤ 2 000 elements per page, ≤ 100 pages, text ≤ 20 000
   chars, etc. They guard the editor, exporters and AI validation against pathological input.
 - **Validation**: `validateDocument(unknown)` and `parseDocument(string | unknown)` return a
@@ -125,6 +163,10 @@ Fabric.js 7 positions objects by **center** (`left`/`top`, `originX/Y` are depre
   updates (only changed props), replaces on type change, removes, re-orders (index 0 is the page
   background rect; the canvas `clipPath` hides content outside the page), and syncs selection
   (single object or `ActiveSelection`).
+- **Icons** become a `Group` of paths on their 24×24 grid, scaled onto the element box by one
+  `scaleX`/`scaleY`. An invisible 24×24 frame child makes the group's box exactly the grid, so a
+  resize maps 1:1 to `width`/`height`; the geometry is baked into the child paths, so a changed
+  icon or colour rebuilds the object (a pure move keeps it).
 - **Loop prevention**: `applying` is true during `render()`; every Fabric event handler returns
   early while it is set, so programmatic updates never echo back as commands.
 - **Interactions → patches**: `object:modified` reads `util.qrDecompose(calcTransformMatrix())`
@@ -214,11 +256,18 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 - Images are embedded through an injected `resolveImageHref` (the app passes base64 data URLs from
   the project blob store, because object URLs die with the tab). A missing asset record, an absent
   resolver and a resolver rejection are distinct typed errors.
+- Icons are emitted as the same 24×24 shapes the canvas draws, wrapped in
+  `scale(width / 24, height / 24)` — vector all the way into the SVG, no rasterization.
 - `createSvgRasterizer()` draws the SVG into a canvas (injectable `loadImage`/`createCanvas`) and
   returns a PNG data URL, refusing sizes beyond `LIMITS.maxCanvasDimension`.
+- `renderPageToSvg(..., { fontFaces })` embeds the page's typefaces as `@font-face` rules with
+  base64 `data:` sources inside `<defs><style>` (`fonts.ts`: `collectFontUsages`,
+  `buildFontFaceCss`). A data-URL font survives both "open the file elsewhere" and the
+  `<img>`-based rasterizer, where the page's own font files are unavailable — which is how PNG
+  and PDF keep the document's typefaces.
 - `renderDocumentToPdf()` renders each page to SVG, rasterizes it (default 2×) and places it on a
-  PDF page sized in jsPDF `px` units (1/96 inch). The PDF is therefore raster; vector text would
-  need font embedding, which is tracked as a follow-up.
+  PDF page sized in jsPDF `px` units (1/96 inch). The PDF is therefore raster but text-accurate;
+  vector text would need jsPDF font registration, still an open follow-up.
 
 ## 5. Web app (`apps/web`)
 
@@ -252,9 +301,10 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   text, download) come from `ExportProvider` and are injectable in tests.
 - `actions.ts` (`useEditorActions`) is the single place UI code turns intents into commands;
   `assets/useImageImport.ts` owns the upload flow (validate → store bytes → register → add).
-- `TopBar` (rename, undo/redo, change status, snapping toggle, zoom/fit), `Sidebar` (Shapes,
-  Text, Uploads, Background, Layers), `PropertiesPanel` (layout, fill & stroke, typography,
-  crop & fit for images, align/distribute, arrange; page size when nothing is selected),
+- `TopBar` (rename, undo/redo, change status, snapping toggle, zoom/fit), `Sidebar` (Design,
+  Shapes, Icons, Text, Draw, Uploads, Background, Layers), `PropertiesPanel` (layout, fill &
+  stroke, typography, icon colour/stroke/replace, crop & fit for images, align/distribute,
+  arrange; page size when nothing is selected),
   `useKeyboardShortcuts`, `ErrorToast` for rejected commands and application failures (import,
   asset loading).
 - `panels/LayersPanel` is a z-order view of the active page (top-most first, i.e. the reversed
@@ -293,7 +343,11 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   bindings only in `apps/web`).
 - shadcn/ui components are hand-authored in `packages/ui` (same conventions: `cva`, `cn`, Radix
   primitives) because the CLI registry is not available in the build environment.
-- Fonts: Inter (SIL OFL 1.1, bundled via `@fontsource/inter`) plus common system families.
+- Fonts: 15 OFL families served from the app (`@fontsource-variable/*` and `@fontsource/*` for
+  the static cuts). `apps/web/src/fonts/catalog.ts` is the single registry used by the editor's
+  `@font-face` stylesheet (`install.ts`) and by export embedding (`embed.ts`). Documents store a
+  family name and weight only, so adding a family is additive; a legacy document naming a system
+  font still opens and exports by name, without embedding.
 
 ## 8. Extension points reserved for later milestones
 
@@ -302,8 +356,8 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   manual crop offsets for images extend `ImageElement` additively. The project-file format
   version is separate from the document schema version, so container changes (compression,
   layout) do not force a document migration.
-- `packages/export`: delivered for SVG/PNG/PDF. Open follow-ups: vector PDF text (font
-  embedding), `contain` fit, and multi-page SVG sheets.
+- `packages/export`: delivered for SVG/PNG/PDF with embedded fonts. Open follow-ups: vector PDF
+  text (jsPDF font registration), `contain` fit, and multi-page SVG sheets.
 - `packages/ai-core`: structured generation validated with `DocumentSchema`/`ElementSchema`,
   applied through `element.add`/`element.update` so AI edits are undoable (Milestone 4).
 - Collaboration: commands are serializable; a future op log can replay them.

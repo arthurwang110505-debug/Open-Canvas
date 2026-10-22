@@ -116,6 +116,18 @@ export interface ColorFieldProps {
 
 const HEX_PATTERN = /^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
+interface EyeDropperResult {
+  sRGBHex: string;
+}
+
+type EyeDropperConstructor = new () => { open: () => Promise<EyeDropperResult> };
+
+/** The EyeDropper API is not in every TypeScript DOM lib yet; resolve it at call time. */
+function eyeDropperConstructor(): EyeDropperConstructor | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return (window as unknown as { EyeDropper?: EyeDropperConstructor }).EyeDropper;
+}
+
 /** Color input paired with an editable hex field; both commit validated hex colors only. */
 export function ColorField({ label, value, onCommit, disabled, className }: ColorFieldProps) {
   const id = useId();
@@ -138,15 +150,15 @@ export function ColorField({ label, value, onCommit, disabled, className }: Colo
     }
   };
 
-  const canPick = typeof window !== 'undefined' && 'EyeDropper' in window;
+  const canPick = eyeDropperConstructor() !== undefined;
 
   const pick = async () => {
-    if (!canPick || disabled) return;
+    const EyeDropper = eyeDropperConstructor();
+    if (!EyeDropper || disabled) return;
     try {
-      // @ts-expect-error — EyeDropper is not in lib.dom yet in some TS versions
-      const picker = new window.EyeDropper();
-      const result: { sRGBHex: string } = await picker.open();
-      if (result?.sRGBHex) onCommit(result.sRGBHex.toLowerCase());
+      const picker = new EyeDropper();
+      const result = await picker.open();
+      if (result.sRGBHex) onCommit(result.sRGBHex.toLowerCase());
     } catch {
       // user cancelled
     }
@@ -206,10 +218,8 @@ export function ColorField({ label, value, onCommit, disabled, className }: Colo
 
 export function FieldGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2 border-b border-border px-3 py-3 last:border-b-0">
-      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {title}
-      </h3>
+    <section className="flex flex-col gap-2.5 border-b border-border px-4 py-3.5 last:border-b-0">
+      <h3 className="text-[13px] font-semibold text-foreground">{title}</h3>
       {children}
     </section>
   );

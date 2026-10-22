@@ -35,6 +35,12 @@ export interface CreateAssetResolverOptions {
   objectUrls: ObjectUrlCache;
   /** Base used to resolve relative URL assets (defaults to the page origin in browsers). */
   baseUrl?: string;
+  /**
+   * Maps a bundled photo id to the URL the app ships it under. The catalogue is app content, not
+   * document content: an id this build does not know resolves to `null` and the image is reported
+   * missing, while the element stays intact.
+   */
+  bundledPhotoUrl?: (photoId: string) => string | null | undefined;
 }
 
 export function createAssetResolver(options: CreateAssetResolverOptions): AssetUrlResolver {
@@ -47,6 +53,8 @@ export function createAssetResolver(options: CreateAssetResolverOptions): AssetU
           options.baseUrl ?? (typeof location === 'undefined' ? undefined : location.href);
         return isSafeAssetUrl(asset.source.url, base) ? asset.source.url : null;
       }
+      case 'bundled':
+        return options.bundledPhotoUrl?.(asset.source.photoId) ?? null;
     }
   };
 }

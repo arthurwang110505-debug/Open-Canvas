@@ -1,4 +1,4 @@
-import type { SvgRasterizer, TextMeasurer } from '@opencanvas/export';
+import type { EmbeddedFontFace, FontUsage, SvgRasterizer, TextMeasurer } from '@opencanvas/export';
 
 /**
  * The browser steps an export needs. They are injectable because jsdom has no canvas backend
@@ -11,4 +11,9 @@ export interface ExportServices {
   measureText?: TextMeasurer;
   /** Hands a finished file to the user. */
   download: (blob: Blob, filename: string) => void;
+  /**
+   * Resolves the fonts the exported pages use to embeddable bytes. A failure is surfaced as an
+   * export error instead of silently rendering the wrong typeface.
+   */
+  resolveFontFaces: (usages: readonly FontUsage[]) => Promise<EmbeddedFontFace[]>;
 }

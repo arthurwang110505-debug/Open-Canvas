@@ -3,15 +3,20 @@ import type {
   DesignDocument,
   DesignElement,
   DocumentSize,
+  IconElement,
+  FrameElement,
   ImageElement,
   ImageFit,
+  ListStyle,
   Page,
+  TextTransform,
 } from '@opencanvas/document';
 import {
   ActiveSelection,
   Canvas,
   Ellipse,
   FabricImage,
+  Gradient,
   type FabricObject,
   type ImageSource,
   Group,
@@ -27,15 +32,31 @@ import {
 } from 'fabric';
 import { AligningGuidelines } from 'fabric/extensions';
 
+import { ICON_VIEWBOX } from '@opencanvas/icons';
+
+import { cropScale, visibleSourceRect, type CropLayout } from './crop';
+
 import {
+  canPanFramePhoto,
+  cropWindowToCrop,
   elementToFabricProps,
+  fillSignature,
+  moveCropWindow,
   fillToFabric,
+  frameRadius,
+  iconPaths,
+  iconToFabricProps,
   patchFromTransform,
   roundTo,
   topLeftToCenter,
   type BoxGeometry,
+  type CropWindow,
+  type FabricFill,
+  type FrameFabricProps,
+  type PathFabricProps,
 } from './mapping';
 import { PLACEHOLDER_SIZE, createPlaceholderBitmap } from './placeholder';
+import { DocumentTextbox } from './textbox';
 
 export interface ElementGeometryChange {
   elementId: string;
@@ -52,6 +73,22 @@ export interface CanvasAdapterCallbacks {
   onSelectionChanged: (elementIds: readonly string[]) => void;
   onZoomChanged: (zoom: number) => void;
   /**
+   * A double click asked to adjust the photo inside a frame, or a click elsewhere left that mode.
+   * `null` means "leave the mode"; the app owns the mode and pushes it back with
+   * `setPhotoPanTarget`.
+   */
+  onPhotoPanChanged?: (elementId: string | null) => void;
+  /** Fired once at the end of a drag that moved the photo inside its frame. */
+  onPhotoPanned?: (elementId: string, crop: NonNullable<FrameElement['crop']>) => void;
+  /** A double click asked to crop an image on the canvas. */
+  onCropRequested?: (elementId: string) => void;
+  /** Panning, zooming or fitting changed what part of the page is under the viewport. */
+  onViewportChanged?: () => void;
+  /** A pointer interaction (press, drag, release) started or ended. */
+  onInteractionChanged?: (interacting: boolean) => void;
+  /** Inline text editing started or ended, so chrome can step out of the way. */
+  onTextEditingChanged?: (editing: boolean) => void;
+  /**
    * Fired when an image element cannot be displayed: the asset record is missing, its bytes
    * are not available, or the browser failed to decode them. The element stays on the
    * canvas with an error placeholder so the user can still select and delete it.
@@ -64,12 +101,26 @@ export interface AssetLoadError {
   message: string;
 }
 
+/** A rectangle in client (viewport) coordinates. */
+export interface ViewportRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 export interface CanvasScene {
   page: Page;
   size: DocumentSize;
   selectedIds: readonly string[];
   /** Asset records referenced by image elements on the page. */
   assets: DesignDocument['assets'];
+}
+
+/** The parts of Fabric's pointer events the adapter reads. */
+interface PointerEventInfo {
+  target?: FabricObject | undefined;
+  scenePoint?: Point | undefined;
 }
 
 /** Maps an asset record to a URL the browser can load, or `null` when unavailable. */
@@ -93,6 +144,12 @@ export interface CanvasAdapterOptions {
   /** Alignment guides and snapping while moving or scaling objects. Defaults to `true`. */
   snapping?: boolean;
 }
+
+/** Fabric's gradient classes are generic over their own type; either kind paints a shape. */
+type AnyGradient = Gradient<'linear'> | Gradient<'radial'>;
+
+/** Cache key for the page rectangle's paint; element ids cannot collide with it (no `$`). */
+const PAGE_BACKGROUND_ID = '$page-background';
 
 const DEFAULT_ACCENT = '#7a5cf9';
 const MIN_ZOOM = 0.05;
@@ -122,7 +179,12 @@ class AssetLoadFailure extends Error {
 const defaultImageLoader: ImageSourceLoader = (url, { signal }) =>
   util.loadImage(url, { signal, crossOrigin: 'anonymous' });
 
-function buildFabricFilters(filtersConfig: { brightness: number; contrast: number; saturate: number; blur: number }): InstanceType<typeof filters.BaseFilter>[] {
+function buildFabricFilters(filtersConfig: {
+  brightness: number;
+  contrast: number;
+  saturate: number;
+  blur: number;
+}): InstanceType<typeof filters.BaseFilter>[] {
   const out: InstanceType<typeof filters.BaseFilter>[] = [];
   if (filtersConfig.brightness !== 100) {
     const b = (filtersConfig.brightness - 100) / 100;
@@ -182,8 +244,19 @@ export class FabricCanvasAdapter {
   private readonly canvas: Canvas;
   private readonly callbacks: CanvasAdapterCallbacks;
   private readonly objects = new Map<string, ElementObject>();
+  /**
+   * Which icon (and which colour/stroke) each icon group was built for. The geometry is baked into
+   * its child paths, so a changed icon needs a new object rather than a property update.
+   */
+  private readonly iconSignatures = new WeakMap<FabricObject, string>();
+  /** What a frame's object was built for; a change means the object must be rebuilt. */
+  private readonly frameSignatures = new WeakMap<FabricObject, string>();
   private readonly idsByObject = new WeakMap<FabricObject, string>();
   private readonly pageBackground: Rect;
+  /** Cached gradients, keyed by element id (page background uses a reserved id). */
+  private readonly gradients = new Map<string, { signature: string; gradient: AnyGradient }>();
+  /** The paint currently applied to the page rectangle, so it is only rebuilt when it changes. */
+  private pageBackgroundSignature = '';
   private readonly clip: Rect;
   private readonly accent: string;
   private readonly resolveAssetUrl: AssetUrlResolver | null;
@@ -198,6 +271,16 @@ export class FabricCanvasAdapter {
   private applying = false;
   private disposed = false;
   private previewPath: Path | null = null;
+  /** The frame whose photo is being adjusted; dragging inside it pans instead of moving. */
+  private photoPanId: string | null = null;
+  /** The image being cropped, and the live box the overlay has dragged it to. */
+  private cropEdit: { elementId: string; layout: CropLayout | null } | null = null;
+  private photoPan: {
+    elementId: string;
+    start: Point;
+    window: CropWindow;
+    natural: { width: number; height: number };
+  } | null = null;
 
   constructor(
     element: HTMLCanvasElement,
@@ -264,7 +347,7 @@ export class FabricCanvasAdapter {
   }
 
   getViewportTransform(): TMat2D {
-    return this.canvas.viewportTransform as TMat2D;
+    return this.canvas.viewportTransform;
   }
 
   getZoom(): number {
@@ -282,12 +365,32 @@ export class FabricCanvasAdapter {
     this.canvas.zoomToPoint(new Point(focal.x, focal.y), clamped);
     this.canvas.requestRenderAll();
     this.callbacks.onZoomChanged(clamped);
+    this.callbacks.onViewportChanged?.();
   }
 
   panBy(deltaX: number, deltaY: number): void {
     if (this.disposed) return;
     this.canvas.relativePan(new Point(deltaX, deltaY));
     this.canvas.requestRenderAll();
+    this.callbacks.onViewportChanged?.();
+  }
+
+  /**
+   * Bounding box of the current selection in client coordinates (viewport pixels), or `null`
+   * when nothing is selected. Used to anchor floating UI to the object rather than the screen.
+   */
+  getSelectionClientRect(): ViewportRect | null {
+    if (this.disposed) return null;
+    const active = this.canvas.getActiveObject();
+    if (!active) return null;
+    const host = this.canvas.getElement().getBoundingClientRect();
+    const bounds = active.getBoundingRect();
+    return {
+      left: host.left + bounds.left,
+      top: host.top + bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+    };
   }
 
   /** Fits and centers the page inside the viewport. */
@@ -316,6 +419,7 @@ export class FabricCanvasAdapter {
     this.canvas.setViewportTransform(transform);
     this.canvas.requestRenderAll();
     this.callbacks.onZoomChanged(zoom);
+    this.callbacks.onViewportChanged?.();
   }
 
   /** Reconciles Fabric objects with the given page, preserving object identity by element id. */
@@ -328,6 +432,8 @@ export class FabricCanvasAdapter {
       this.syncElements(scene.page.elements);
       this.syncOrder(scene.page.elements);
       this.syncSelection(scene.selectedIds);
+      // A replaced object (new shape or newly filled frame) starts unlocked, so re-assert the mode.
+      this.applyPhotoPanLocks();
       this.canvas.requestRenderAll();
     } finally {
       this.applying = false;
@@ -362,6 +468,13 @@ export class FabricCanvasAdapter {
     return { x: roundTo(page.x), y: roundTo(page.y) };
   }
 
+  /** Converts a page point back into CSS pixels relative to the browser viewport. */
+  pageToClient(x: number, y: number): { x: number; y: number } {
+    const bounds = this.canvas.getElement().getBoundingClientRect();
+    const point = new Point(x, y).transform(this.canvas.viewportTransform);
+    return { x: bounds.left + point.x, y: bounds.top + point.y };
+  }
+
   /** Toggles alignment guides and snapping to other objects and the page edges/center. */
   setSnapping(enabled: boolean): void {
     if (this.disposed) return;
@@ -387,7 +500,11 @@ export class FabricCanvasAdapter {
   }
 
   /** Shows a temporary freehand preview while the user is drawing. */
-  setPreviewPath(points: readonly { x: number; y: number }[] | null, stroke: string, strokeWidth: number): void {
+  setPreviewPath(
+    points: readonly { x: number; y: number }[] | null,
+    stroke: string,
+    strokeWidth: number,
+  ): void {
     if (this.disposed) return;
     if (this.previewPath) {
       this.canvas.remove(this.previewPath);
@@ -411,10 +528,8 @@ export class FabricCanvasAdapter {
     const w = Math.max(1, maxX - minX);
     const h = Math.max(1, maxY - minY);
     const rel = points.map((p) => ({ x: p.x - minX, y: p.y - minY }));
-    const [first, ...rest] = rel;
+    const first = rel[0];
     if (!first) return;
-    let d = `M ${first.x} ${first.y}`;
-    for (const p of rest) d += ` L ${p.x} ${p.y}`;
     const center = { x: minX + w / 2, y: minY + h / 2 };
     // Top-left to center conversion without rotation
     const fabricCenter = { x: center.x, y: center.y }; // No rotation for preview
@@ -485,17 +600,60 @@ export class FabricCanvasAdapter {
   // Reconciliation
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Fills
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fabric gradients are objects, not values, so they are cached per element and rebuilt only
+   * when the fill's appearance changes. Their coordinates are fractions of the object's bounding
+   * box, which is exactly SVG's `objectBoundingBox` unit — the canvas and an exported file can
+   * therefore be compared pixel for pixel.
+   */
+  private fillFor(id: string, fill: FabricFill): string | AnyGradient {
+    if (typeof fill === 'string') {
+      this.gradients.delete(id);
+      return fill;
+    }
+    const signature = fillSignature(fill);
+    const cached = this.gradients.get(id);
+    if (cached?.signature === signature) return cached.gradient;
+    const gradient: AnyGradient =
+      fill.type === 'linear'
+        ? new Gradient<'linear'>({
+            type: 'linear',
+            gradientUnits: 'percentage',
+            coords: fill.coords,
+            colorStops: fill.colorStops,
+          })
+        : new Gradient<'radial'>({
+            type: 'radial',
+            gradientUnits: 'percentage',
+            coords: fill.coords,
+            colorStops: fill.colorStops,
+          });
+    this.gradients.set(id, { signature, gradient });
+    return gradient;
+  }
+
+  /** The paint a mapped `fill` calls for, gradient or plain colour. */
+  private paint(id: string, fill: FabricFill): string | AnyGradient {
+    return this.fillFor(id, fill);
+  }
+
   private syncPage(scene: CanvasScene): void {
     const { width, height } = scene.size;
     this.pageSize = { width, height };
     // Center-origin objects: left/top is the page center.
-    this.pageBackground.set({
-      left: width / 2,
-      top: height / 2,
-      width,
-      height,
-      fill: fillToFabric(scene.page.background) || '#ffffff',
-    });
+    const background = fillToFabric(scene.page.background);
+    // The page rectangle is painted even for `none` (white paper, not a transparent hole).
+    const paint = background === '' ? '#ffffff' : this.paint(PAGE_BACKGROUND_ID, background);
+    const signature = fillSignature(background);
+    const props: Record<string, unknown> = { left: width / 2, top: height / 2, width, height };
+    // Re-assigning an identical gradient every frame forces Fabric to repaint the whole page.
+    if (signature !== this.pageBackgroundSignature) props['fill'] = paint;
+    this.pageBackground.set(props);
+    this.pageBackgroundSignature = signature;
     this.pageBackground.setCoords();
     this.clip.set({ left: width / 2, top: height / 2, width, height });
     this.clip.setCoords();
@@ -519,7 +677,7 @@ export class FabricCanvasAdapter {
 
       const existing = this.objects.get(element.id);
       const object =
-        existing && objectMatchesType(existing, element.type)
+        existing && this.objectMatchesElement(existing, element)
           ? existing
           : this.replaceObject(element, existing);
       this.applyElement(object, element);
@@ -530,9 +688,24 @@ export class FabricCanvasAdapter {
         this.canvas.remove(object);
         this.objects.delete(id);
         this.forgetImage(id);
+        this.gradients.delete(id);
       }
     }
     this.elements = nextElements;
+  }
+
+  /**
+   * Whether an existing Fabric object can be updated in place. Type alone is not enough for icons
+   * (their geometry is baked into child paths) or for groups (an icon is also a `Group`).
+   */
+  private objectMatchesElement(object: ElementObject, element: DesignElement): boolean {
+    if (!objectMatchesType(object, element.type)) return false;
+    const icon = this.iconSignatures.get(object);
+    if (element.type === 'icon') return icon === iconSignature(element);
+    const frame = this.frameSignatures.get(object);
+    // A frame switches between a shape and an image object when a photo is added or removed.
+    if (element.type === 'frame') return frame === frameSignature(element);
+    return icon === undefined && frame === undefined;
   }
 
   private replaceObject(
@@ -554,30 +727,389 @@ export class FabricCanvasAdapter {
     if (element.type === 'group') {
       return this.createGroupObject(element);
     }
+    // Icons carry their own shape data, so they are built before the generic property mapping
+    // (which narrows the element type for the renderers below).
+    if (element.type === 'icon') {
+      return this.createIconObject(element);
+    }
+    // Frames are a mask plus an optional photo, so they are built before the generic mapping too.
+    if (element.type === 'frame') {
+      const object = this.buildFrameObject(element);
+      this.frameSignatures.set(object, frameSignature(element));
+      return object;
+    }
     const mapped = elementToFabricProps(element, this.fabricContext);
     switch (mapped.kind) {
       case 'rect':
-        return new Rect(mapped.props);
+        return new Rect({ ...mapped.props, fill: this.paint(element.id, mapped.props.fill) });
       case 'ellipse':
-        return new Ellipse(mapped.props);
+        return new Ellipse({ ...mapped.props, fill: this.paint(element.id, mapped.props.fill) });
       case 'text':
-        return new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
+        return new DocumentTextbox(mapped.props.text, {
+          ...mapped.props,
+          splitByGrapheme: false,
+        });
       case 'image':
         return new FabricImage(this.loadingBitmap, mapped.props);
       case 'path': {
-        const { path, ...rest } = mapped.props;
-        return new Path(path, rest);
+        const { path, fill, ...rest } = mapped.props;
+        return new Path(path, { ...rest, fill: this.paint(element.id, fill) });
+      }
+      case 'icon':
+        throw new Error('Icon elements are built before property mapping.');
+      case 'frame':
+        // Handled above: a frame owns a mask that the generic property mapping cannot express.
+        throw new Error('Frame elements are built before property mapping.');
+    }
+  }
+
+  /**
+   * A filled frame is an image whose visible area is masked by the frame's shape; an empty frame
+   * is the same shape painted with its fill. The mask is expressed in the object's own units and
+   * scaled with it, which keeps the crop correct through resizes.
+   */
+  private buildFrameObject(element: FrameElement): ElementObject {
+    const mapped = elementToFabricProps(element, this.fabricContext);
+    if (mapped.kind !== 'frame') throw new Error('expected frame props');
+    return this.buildFrame(mapped.props, element);
+  }
+
+  private buildFrame(props: FrameFabricProps, element: FrameElement): ElementObject {
+    const { shape, cornerRadius, fill, image, width, height, ...common } = props;
+    if (image) {
+      const object = new FabricImage(this.loadingBitmap, {
+        ...common,
+        ...image,
+      });
+      object.clipPath = frameClip(element, image.scaleX, image.scaleY);
+      return object;
+    }
+    const paint = fill === '' ? 'transparent' : this.paint(element.id, fill);
+    if (shape === 'ellipse') {
+      return new Ellipse({ ...common, rx: width / 2, ry: height / 2, fill: paint });
+    }
+    return new Rect({
+      ...common,
+      width,
+      height,
+      rx: cornerRadius,
+      ry: cornerRadius,
+      fill: paint,
+    });
+  }
+
+  /** Applies a frame's mask, photo layout and fill to an existing object. */
+  private applyFrame(object: ElementObject, element: FrameElement): void {
+    const mapped = elementToFabricProps(element, this.fabricContext);
+    if (mapped.kind !== 'frame') return;
+    const { shape: _shape, cornerRadius: _r, fill, image, width, height, ...common } = mapped.props;
+    if (object instanceof FabricImage && image) {
+      this.ensureImageLoading(object, element);
+      // Images paint their own pixels; the fill is only visible through the mask before load.
+      applyProps(object, { ...common, ...image });
+      object.set({ clipPath: frameClip(element, image.scaleX, image.scaleY) });
+      object.setCoords();
+      return;
+    }
+    const props: Record<string, unknown> = { ...common };
+    if (object instanceof Rect) {
+      props['width'] = width;
+      props['height'] = height;
+      props['rx'] = mapped.props.cornerRadius;
+      props['ry'] = mapped.props.cornerRadius;
+      props['fill'] = this.paint(element.id, fill);
+    } else if (object instanceof Ellipse) {
+      props['rx'] = width / 2;
+      props['ry'] = height / 2;
+      props['fill'] = this.paint(element.id, fill);
+    }
+    applyProps(object, props);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cropping an image on the canvas
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Shows a photo uncropped while its crop is edited. Normally an image's Fabric object is
+   * exactly the visible window; here it becomes the whole bitmap drawn at the crop scale, so the
+   * part a handle would reveal is already on screen (the DOM overlay dims what is outside the
+   * box). The document is not touched until the crop commits.
+   */
+  beginCropEdit(elementId: string): boolean {
+    if (this.disposed) return false;
+    this.endCropEdit();
+    const object = this.objects.get(elementId);
+    const element = this.elements.get(elementId);
+    if (!(object instanceof FabricImage) || element?.type !== 'image') return false;
+    if (!this.images.get(elementId)?.natural) return false;
+    this.cropEdit = { elementId, layout: null };
+    // The overlay owns the pointer while cropping, so the canvas must not fight it for it.
+    object.set({ selectable: false, evented: false, hasControls: false, hasBorders: false });
+    this.renderCropView();
+    this.canvas.requestRenderAll();
+    return true;
+  }
+
+  /** Live geometry from the overlay's drag; nothing is committed until the crop is applied. */
+  previewCrop(layout: CropLayout): void {
+    if (!this.cropEdit) return;
+    this.cropEdit.layout = layout;
+    this.renderCropView();
+    this.canvas.requestRenderAll();
+  }
+
+  /** Leaves crop mode and renders the element as the document describes it again. */
+  endCropEdit(): void {
+    const session = this.cropEdit;
+    if (!session) return;
+    this.cropEdit = null;
+    const object = this.objects.get(session.elementId);
+    const element = this.elements.get(session.elementId);
+    if (object && element) {
+      this.applying = true;
+      try {
+        object.set({ selectable: !element.locked, evented: !element.locked });
+        this.applyElement(object, element);
+        object.setCoords();
+      } finally {
+        this.applying = false;
       }
     }
+    this.canvas.requestRenderAll();
+  }
+
+  private renderCropView(): void {
+    const session = this.cropEdit;
+    if (!session) return;
+    const object = this.objects.get(session.elementId);
+    const element = this.elements.get(session.elementId);
+    const natural = this.images.get(session.elementId)?.natural;
+    if (!(object instanceof FabricImage) || element?.type !== 'image' || !natural) return;
+
+    const layout = session.layout;
+    const box = layout?.box ?? {
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+    };
+    const crop = layout ? layout.crop : element.crop;
+    const shown = { ...element, ...box, crop };
+    const scale = cropScale(shown, natural);
+    const visible = visibleSourceRect(shown, natural);
+
+    // The bitmap turns around its own centre, while the box turns around the element's centre.
+    // Offsetting by the rotated vector between the two centres keeps the visible window exactly
+    // on the box, whatever the element's angle.
+    const radians = (element.rotation * Math.PI) / 180;
+    const dx = (visible.x + visible.width / 2 - natural.width / 2) * scale;
+    const dy = (visible.y + visible.height / 2 - natural.height / 2) * scale;
+    const offsetX = dx * Math.cos(radians) - dy * Math.sin(radians);
+    const offsetY = dx * Math.sin(radians) + dy * Math.cos(radians);
+    const boxCentre = {
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    };
+
+    object.set({
+      left: boxCentre.x - offsetX,
+      top: boxCentre.y - offsetY,
+      width: natural.width,
+      height: natural.height,
+      cropX: 0,
+      cropY: 0,
+      scaleX: scale,
+      scaleY: scale,
+      angle: element.rotation,
+      opacity: element.opacity,
+      visible: element.visible,
+      flipX: element.flipH ?? false,
+      flipY: element.flipV ?? false,
+      strokeWidth: 0,
+    });
+    object.setCoords();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Adjusting the photo inside a frame
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Puts a filled frame into "adjust photo" mode: the frame and its mask stay put and dragging
+   * inside it moves the photo instead. The mode belongs to the app, so this only mirrors it.
+   */
+  setPhotoPanTarget(elementId: string | null): void {
+    if (this.photoPanId === elementId) return;
+    const previous = this.photoPanId === null ? undefined : this.objects.get(this.photoPanId);
+    this.photoPanId = elementId;
+    this.photoPan = null;
+    if (previous) this.restoreObjectLocks(previous);
+    this.applyPhotoPanLocks();
+    this.canvas.requestRenderAll();
+  }
+
+  private applyPhotoPanLocks(): void {
+    if (!this.photoPanId) return;
+    const object = this.objects.get(this.photoPanId);
+    if (!object) return;
+    // Fabric's drag handler checks these locks on every move, so the frame itself cannot move
+    // while the photo pans; handles would only resize the mask in the middle of the gesture.
+    object.set({
+      lockMovementX: true,
+      lockMovementY: true,
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      hasControls: false,
+    });
+    object.setCoords();
+  }
+
+  /** Gives an object back the locks its element asks for. */
+  private restoreObjectLocks(object: ElementObject): void {
+    const id = this.idsByObject.get(object);
+    const locked = (id === undefined ? undefined : this.elements.get(id))?.locked ?? false;
+    object.set({
+      lockMovementX: locked,
+      lockMovementY: locked,
+      lockRotation: locked,
+      lockScalingX: locked,
+      lockScalingY: locked,
+      hasControls: !locked,
+    });
+    object.setCoords();
+  }
+
+  private startPhotoPan(event: PointerEventInfo): void {
+    const elementId = this.photoPanId;
+    if (!elementId) return;
+    const object = this.objects.get(elementId);
+    if (event.target !== object || !(object instanceof FabricImage)) {
+      // Pressing anywhere else leaves the mode, like closing a crop tool.
+      this.callbacks.onPhotoPanChanged?.(null);
+      return;
+    }
+    const natural = this.images.get(elementId)?.natural;
+    if (!natural) return;
+    this.photoPan = {
+      elementId,
+      start: event.scenePoint ?? new Point(0, 0),
+      window: { x: object.cropX, y: object.cropY, width: object.width, height: object.height },
+      natural,
+    };
+  }
+
+  private continuePhotoPan(event: PointerEventInfo): void {
+    const pan = this.photoPan;
+    const point = event.scenePoint;
+    if (!pan || !point) return;
+    const object = this.objects.get(pan.elementId);
+    if (!(object instanceof FabricImage)) return;
+    // The photo follows the pointer, so the visible window moves the other way. `cover` scales
+    // both axes equally, which is why one factor converts page pixels to bitmap pixels.
+    const scale = object.scaleX || 1;
+    const moved = moveCropWindow(
+      pan.window,
+      pan.natural,
+      -(point.x - pan.start.x) / scale,
+      -(point.y - pan.start.y) / scale,
+    );
+    object.set({ cropX: moved.x, cropY: moved.y });
+    this.canvas.requestRenderAll();
+  }
+
+  private finishPhotoPan(): void {
+    const pan = this.photoPan;
+    this.photoPan = null;
+    if (!pan) return;
+    const object = this.objects.get(pan.elementId);
+    if (!(object instanceof FabricImage)) return;
+    const window = {
+      x: object.cropX,
+      y: object.cropY,
+      width: object.width,
+      height: object.height,
+    };
+    if (window.x === pan.window.x && window.y === pan.window.y) return;
+    this.callbacks.onPhotoPanned?.(pan.elementId, cropWindowToCrop(window, pan.natural));
+  }
+
+  /**
+   * A double click on a filled frame opens adjust-photo mode; on an image it opens crop mode.
+   * Anything else is left alone, so a double click on text keeps entering text editing.
+   */
+  private requestDoubleClickAction(event: PointerEventInfo): void {
+    const target = event.target;
+    if (!target) return;
+    const elementId = this.idsByObject.get(target);
+    if (!elementId) return;
+    const element = this.elements.get(elementId);
+    if (!element || element.locked) return;
+    if (element.type === 'image') {
+      this.callbacks.onCropRequested?.(elementId);
+      return;
+    }
+    if (element.type !== 'frame') return;
+    const natural = this.images.get(elementId)?.natural;
+    if (!natural || !canPanFramePhoto(element, natural)) return;
+    this.callbacks.onPhotoPanChanged?.(elementId);
+  }
+
+  /**
+   * Builds the icon as one group of paths in grid units, scaled onto the element box. An invisible
+   * 24×24 frame is included so the group's intrinsic size is exactly the grid: that keeps
+   * `geometryFromTransform` (and therefore every resize) exact, and makes the canvas transform
+   * identical to the exporter's `scale(width / 24, height / 24)`.
+   */
+  private createIconObject(element: IconElement): Group {
+    const props = iconToFabricProps(element);
+    const children: FabricObject[] = iconPaths(element).map(({ d, filled }) => {
+      return new Path(d, {
+        fill: filled ? element.color : 'none',
+        stroke: filled ? undefined : element.color,
+        strokeWidth: element.strokeWidth,
+        strokeLineCap: 'round',
+        strokeLineJoin: 'round',
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+      });
+    });
+    children.push(
+      new Rect({
+        width: ICON_VIEWBOX,
+        height: ICON_VIEWBOX,
+        // Fabric positions a grouped child by its centre, so the frame sits at (12, 12) — the
+        // middle of the grid — and the group's box ends up exactly 24×24.
+        left: ICON_VIEWBOX / 2,
+        top: ICON_VIEWBOX / 2,
+        fill: 'transparent',
+        strokeWidth: 0,
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+      }),
+    );
+    const group = new Group(children, {
+      ...props,
+      selectable: !element.locked,
+      evented: !element.locked,
+      subTargetCheck: false,
+    });
+    this.iconSignatures.set(group, iconSignature(element));
+    return group;
   }
 
   private createGroupObject(group: DesignElement & { type: 'group' }): Group {
     const groupCenter = topLeftToCenter(group);
-    const childObjects: FabricObject[] = (group.children as DesignElement[]).map((child) => {
+    const childObjects: FabricObject[] = group.children.map((child) => {
       // Image inside group not yet fully supported (placeholder)
       if (child.type === 'group') {
         // Nested group: recursively create
-        const nested = this.createGroupObject(child as DesignElement & { type: 'group' });
+        const nested = this.createGroupObject(child);
         // nested is already a Group with absolute positioning? Need to offset to parent group center
         // For nested, its center absolute is topLeftToCenter(child absolute) -> compute relative
         const childAbsCenter = topLeftToCenter({
@@ -588,7 +1120,10 @@ export class FabricCanvasAdapter {
           rotation: child.rotation,
         });
         // Reposition nested group to be relative to parent
-        nested.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
+        nested.set({
+          left: childAbsCenter.x - groupCenter.x,
+          top: childAbsCenter.y - groupCenter.y,
+        });
         return nested;
       }
       if (child.type === 'image') {
@@ -607,26 +1142,41 @@ export class FabricCanvasAdapter {
         obj.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
         return obj;
       }
-      const mapped = elementToFabricProps(child as DesignElement, this.fabricContext);
+      const mapped = elementToFabricProps(child, this.fabricContext);
       let fabricObj: FabricObject;
       switch (mapped.kind) {
         case 'rect':
-          fabricObj = new Rect(mapped.props);
+          fabricObj = new Rect({ ...mapped.props, fill: this.paint(child.id, mapped.props.fill) });
           break;
         case 'ellipse':
-          fabricObj = new Ellipse(mapped.props);
+          fabricObj = new Ellipse({
+            ...mapped.props,
+            fill: this.paint(child.id, mapped.props.fill),
+          });
           break;
         case 'text':
-          fabricObj = new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
+          fabricObj = new DocumentTextbox(mapped.props.text, {
+            ...mapped.props,
+            splitByGrapheme: false,
+          });
           break;
         case 'image':
           fabricObj = new FabricImage(this.loadingBitmap, mapped.props);
           break;
         case 'path': {
-          const { path, ...rest } = mapped.props;
-          fabricObj = new Path(path, rest);
+          const { path, fill, ...rest } = mapped.props;
+          fabricObj = new Path(path, { ...rest, fill: this.paint(child.id, fill) });
           break;
         }
+        case 'icon':
+          if (child.type !== 'icon') throw new Error('Icon props require an icon element.');
+          fabricObj = this.createIconObject(child);
+          break;
+        case 'frame':
+          if (child.type !== 'frame') throw new Error('Frame props require a frame element.');
+          // Inside a group only the mask is drawn; grouped photos load lazily like grouped images.
+          fabricObj = this.buildFrame(mapped.props, child);
+          break;
       }
       const childAbsCenter = topLeftToCenter({
         x: group.x + child.x,
@@ -636,7 +1186,10 @@ export class FabricCanvasAdapter {
         rotation: child.rotation,
       });
       // Override to group-relative coordinates (Fabric Group expects children relative to group center)
-      fabricObj.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
+      fabricObj.set({
+        left: childAbsCenter.x - groupCenter.x,
+        top: childAbsCenter.y - groupCenter.y,
+      });
       // Individual children inside a group should not be interactive
       fabricObj.set({ selectable: false, evented: false, hasControls: false, hasBorders: false });
       return fabricObj;
@@ -662,7 +1215,7 @@ export class FabricCanvasAdapter {
 
   private readonly fabricContext = {
     imageSource: (
-      element: ImageElement,
+      element: ImageElement | FrameElement,
     ): { natural: { width: number; height: number }; fit: ImageFit } => {
       const entry = this.images.get(element.id);
       if (entry?.status === 'ready' && entry.natural && entry.assetId === element.assetId) {
@@ -673,6 +1226,15 @@ export class FabricCanvasAdapter {
   };
 
   private applyElement(object: ElementObject, element: DesignElement): void {
+    // A crop edit shows the photo uncropped; a page render must not undo that view.
+    if (this.cropEdit?.elementId === element.id) {
+      this.renderCropView();
+      return;
+    }
+    if (element.type === 'frame') {
+      this.applyFrame(object, element);
+      return;
+    }
     if (element.type === 'group' && object instanceof Group) {
       const center = topLeftToCenter(element);
       const props: Record<string, unknown> = {
@@ -703,13 +1265,20 @@ export class FabricCanvasAdapter {
     if (element.type === 'path' && object instanceof Path) {
       const mapped = elementToFabricProps(element, this.fabricContext);
       // Path's `path` is the SVG data — set separately
-      const { path, ...rest } = (mapped as { kind: 'path'; props: import('./mapping').PathFabricProps }).props;
-      const props: Record<string, unknown> = { ...rest, path };
+      const { path, fill, ...rest } = (mapped as { kind: 'path'; props: PathFabricProps }).props;
+      const props: Record<string, unknown> = {
+        ...rest,
+        path,
+        fill: this.paint(element.id, fill),
+      };
       // Fabric Path stores path as array internally, but constructor uses string; updating path
       // requires setting `path` property and re-calculating dimensions.
       if ((object as unknown as { path: unknown }).path !== path) {
         (object as unknown as { set: (k: string, v: unknown) => void }).set('path', path);
-        (object as unknown as { set: (k: string, v: unknown) => void }).set('pathOffset', { x: 0, y: 0 });
+        (object as unknown as { set: (k: string, v: unknown) => void }).set('pathOffset', {
+          x: 0,
+          y: 0,
+        });
       }
       let changed = false;
       for (const [key, value] of Object.entries(props)) {
@@ -726,9 +1295,13 @@ export class FabricCanvasAdapter {
       this.ensureImageLoading(object, element);
       // Apply flip/filters; FabricImage uses flipX/flipY from mapping, but filters need applyFilters()
       const f = element.filters ?? { brightness: 100, contrast: 100, saturate: 100, blur: 0 };
-      const desired = buildFabricFilters(f as { brightness: number; contrast: number; saturate: number; blur: number });
+      const desired = buildFabricFilters(f);
       const cur = (object as unknown as { filters: unknown[] }).filters as unknown[] | undefined;
-      const same = cur?.length === desired.length && cur?.every((_, i) => (cur[i] as { type?: string })?.type === (desired[i] as { type?: string })?.type);
+      const same =
+        cur?.length === desired.length &&
+        cur?.every(
+          (_, i) => (cur[i] as { type?: string })?.type === (desired[i] as { type?: string })?.type,
+        );
       if (!same) {
         (object as unknown as { filters: unknown[] }).filters = desired as unknown[];
         try {
@@ -742,12 +1315,26 @@ export class FabricCanvasAdapter {
     if (element.type === 'group') return;
     const mapped = elementToFabricProps(element, this.fabricContext);
     const props: Record<string, unknown> = { ...mapped.props };
+    // Rectangles and ellipses may be gradient-filled; the mapped fill is data, the canvas needs
+    // an object. (Text and images have plain colour fills.)
+    if ((element.type === 'rect' || element.type === 'ellipse') && 'fill' in props) {
+      props['fill'] = this.paint(element.id, props['fill'] as FabricFill);
+    }
     // Never overwrite text the user is currently typing; it is committed on exit.
     if (object instanceof Textbox && object.isEditing) {
       delete props['text'];
     }
     let changed = false;
     for (const [key, value] of Object.entries(props)) {
+      // Casing changes the measured lines, so it needs a re-split rather than a plain assignment.
+      if (key === 'textTransform' && object instanceof DocumentTextbox) {
+        changed = object.setTextTransform(value as TextTransform) || changed;
+        continue;
+      }
+      if (key === 'listStyle' && object instanceof DocumentTextbox) {
+        changed = object.setListStyle(value as ListStyle) || changed;
+        continue;
+      }
       if (object.get(key) !== value) {
         object.set(key, value);
         changed = true;
@@ -821,23 +1408,27 @@ export class FabricCanvasAdapter {
    * A failed load is not retried until the element points at a different asset, so a
    * broken file does not trigger a request on every render.
    */
-  private ensureImageLoading(object: FabricImage, element: ImageElement): void {
+  private ensureImageLoading(
+    object: FabricImage,
+    element: { id: string; assetId?: string | undefined },
+  ): void {
     const current = this.images.get(element.id);
     if (current?.assetId === element.assetId) return;
     current?.abort?.abort();
 
-    const asset = this.assets[element.assetId];
+    const asset = element.assetId === undefined ? undefined : this.assets[element.assetId];
     if (!asset) {
       this.images.set(element.id, {
-        assetId: element.assetId,
+        assetId: element.assetId ?? '',
         status: 'error',
         natural: null,
         abort: null,
       });
       object.setElement(this.errorBitmap);
-      this.callbacks.onAssetError(element.id, element.assetId, {
+      const assetId = element.assetId ?? '';
+      this.callbacks.onAssetError(element.id, assetId, {
         code: 'asset-missing',
-        message: `The image asset "${element.assetId}" is not part of this document.`,
+        message: `The image asset "${assetId}" is not part of this document.`,
       });
       return;
     }
@@ -915,7 +1506,8 @@ export class FabricCanvasAdapter {
     entry.abort = null;
     const object = this.objects.get(elementId);
     const element = this.elements.get(elementId);
-    if (!(object instanceof FabricImage) || element?.type !== 'image') return;
+    const loadsImage = element?.type === 'image' || element?.type === 'frame';
+    if (!(object instanceof FabricImage) || !loadsImage) return;
     this.applying = true;
     try {
       object.setElement(source);
@@ -962,11 +1554,32 @@ export class FabricCanvasAdapter {
     this.canvas.on('selection:updated', emitSelection);
     this.canvas.on('selection:cleared', emitSelection);
 
+    this.canvas.on('text:editing:entered', () => {
+      this.callbacks.onTextEditingChanged?.(true);
+    });
+
     this.canvas.on('text:editing:exited', (event) => {
+      this.callbacks.onTextEditingChanged?.(false);
       if (this.applying) return;
       const id = this.idsByObject.get(event.target);
       if (!id) return;
       this.callbacks.onTextCommitted(id, event.target.text, roundTo(event.target.height));
+    });
+
+    this.canvas.on('mouse:down', (event) => {
+      this.callbacks.onInteractionChanged?.(true);
+      this.startPhotoPan(event);
+    });
+    this.canvas.on('mouse:move', (event) => {
+      this.continuePhotoPan(event);
+    });
+    this.canvas.on('mouse:up', () => {
+      this.callbacks.onInteractionChanged?.(false);
+      this.callbacks.onViewportChanged?.();
+      this.finishPhotoPan();
+    });
+    this.canvas.on('mouse:dblclick', (event) => {
+      this.requestDoubleClickAction(event);
     });
 
     this.canvas.on('mouse:wheel', (event) => {
@@ -995,7 +1608,60 @@ function objectMatchesType(object: ElementObject, type: DesignElement['type']): 
       return object instanceof FabricImage;
     case 'path':
       return object instanceof Path;
+    case 'icon':
+      // An icon is a group of paths; `iconSignatures` tells it apart from a group element.
+      return object instanceof Group;
     case 'group':
       return object instanceof Group;
+    case 'frame':
+      // Whatever a frame currently is: a placeholder shape or an image under a mask.
+      return object instanceof Rect || object instanceof Ellipse || object instanceof FabricImage;
   }
+}
+
+/**
+ * The mask for a frame's photo, in the object's own units. Fabric draws a non-absolute clip path
+ * centred on the object, so the mask is centred on `(0, 0)`; expressing it in object units means
+ * it scales with the photo when the frame is resized on the canvas.
+ */
+function frameClip(element: FrameElement, scaleX: number, scaleY: number): Rect | Ellipse {
+  const sx = Math.abs(scaleX) || 1;
+  const sy = Math.abs(scaleY) || 1;
+  const width = element.width / sx;
+  const height = element.height / sy;
+  const common = {
+    left: 0,
+    top: 0,
+    originX: 'center' as const,
+    originY: 'center' as const,
+    absolutePositioned: false,
+  };
+  if (element.shape === 'ellipse') {
+    return new Ellipse({ ...common, rx: width / 2, ry: height / 2 });
+  }
+  const radius = frameRadius(element);
+  return new Rect({ ...common, width, height, rx: radius / sx, ry: radius / sy });
+}
+
+/** Applies a plain property bag, reporting whether anything actually changed. */
+function applyProps(object: FabricObject, props: Record<string, unknown>): boolean {
+  let changed = false;
+  for (const [key, value] of Object.entries(props)) {
+    if (object.get(key) !== value) {
+      object.set(key, value);
+      changed = true;
+    }
+  }
+  if (changed) object.setCoords();
+  return changed;
+}
+
+/** What a frame's Fabric object was built for: its shape and whether it holds a photo. */
+function frameSignature(element: FrameElement): string {
+  return `${element.shape}\u0000${element.assetId ?? ''}`;
+}
+
+/** Everything baked into an icon's child paths, so a change to any of it means a rebuild. */
+function iconSignature(element: { iconId: string; color: string; strokeWidth: number }): string {
+  return `${element.iconId}\u0000${element.color}\u0000${element.strokeWidth}`;
 }

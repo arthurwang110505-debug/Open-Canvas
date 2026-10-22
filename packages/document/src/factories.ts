@@ -6,7 +6,9 @@ import type {
   DesignElement,
   EllipseElement,
   Fill,
+  FrameElement,
   GroupElement,
+  IconElement,
   ImageAsset,
   ImageElement,
   Page,
@@ -115,7 +117,25 @@ export function createTextElement(overrides: Partial<Omit<TextElement, 'type'>> 
     lineHeight: overrides.lineHeight ?? 1.2,
     letterSpacing: overrides.letterSpacing ?? 0,
     underline: overrides.underline ?? false,
+    textTransform: overrides.textTransform ?? 'none',
+    listStyle: overrides.listStyle ?? 'none',
     color: overrides.color ?? '#111827',
+  };
+}
+
+export function createFrameElement(
+  overrides: Partial<Omit<FrameElement, 'type'>> = {},
+): FrameElement {
+  return {
+    ...baseDefaults({ width: 480, height: 480, ...overrides }),
+    type: 'frame',
+    ...(overrides.name !== undefined ? { name: overrides.name } : {}),
+    shape: overrides.shape ?? 'rect',
+    cornerRadius: overrides.cornerRadius ?? 0,
+    ...(overrides.assetId !== undefined ? { assetId: overrides.assetId } : {}),
+    fit: overrides.fit ?? 'cover',
+    ...(overrides.crop !== undefined ? { crop: overrides.crop } : {}),
+    fill: overrides.fill ?? { type: 'solid', color: '#e5e7eb' },
   };
 }
 
@@ -189,9 +209,29 @@ export function createGroupElement(
   };
 }
 
+/**
+ * Icons default to a square box on the 24-unit grid they are drawn on, so a fresh icon is
+ * stroke-for-stroke what the catalogue defines until the user scales it.
+ */
+export function createIconElement(
+  overrides: Partial<Omit<IconElement, 'type' | 'iconId'>> & Pick<IconElement, 'iconId'>,
+): IconElement {
+  return {
+    ...baseDefaults({ width: 192, height: 192, ...overrides }),
+    type: 'icon',
+    ...(overrides.name !== undefined ? { name: overrides.name } : {}),
+    iconId: overrides.iconId,
+    color: overrides.color ?? '#111827',
+    strokeWidth: overrides.strokeWidth ?? 2,
+  };
+}
+
 export function createPathElement(
   points: readonly PathPoint[],
-  overrides: Partial<Omit<PathElement, 'type' | 'points'>> & { stroke?: Stroke; closed?: boolean } = {},
+  overrides: Partial<Omit<PathElement, 'type' | 'points'>> & {
+    stroke?: Stroke;
+    closed?: boolean;
+  } = {},
 ): PathElement {
   if (points.length < 2) throw new Error('A path must have at least two points.');
   // Compute bounds from points (points are in page coords)
@@ -212,7 +252,7 @@ export function createPathElement(
     ...baseDefaults({ x: minX, y: minY, width, height, ...overrides }),
     type: 'path',
     ...(overrides.name !== undefined ? { name: overrides.name } : {}),
-    points: relPoints as PathPoint[],
+    points: relPoints,
     stroke: overrides.stroke ?? { color: '#111827', width: 4 },
     fill: overrides.fill ?? { type: 'none' },
     closed: overrides.closed ?? false,

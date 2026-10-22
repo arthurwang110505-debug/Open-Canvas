@@ -2,12 +2,14 @@ import {
   createBlankDocument,
   createImageAsset,
   createImageElement,
+  createIconElement,
   createRectElement,
+  createTextElement,
   err,
   ok,
   type DesignDocument,
 } from '@opencanvas/document';
-import type { ExportError } from '@opencanvas/export';
+import type { EmbeddedFontFace, ExportError } from '@opencanvas/export';
 import { MemoryAssetBlobStore } from '@opencanvas/storage';
 import { TooltipProvider } from '@opencanvas/ui';
 import { render, screen, within } from '@testing-library/react';
@@ -23,24 +25,52 @@ const fixedDate = new Date('2026-05-06T07:08:09.000Z');
 const ONE_PIXEL_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
+/** Opens the Download menu and picks a format, like a user would. */
+async function exportFormat(
+  user: ReturnType<typeof userEvent.setup>,
+  format: 'PNG' | 'SVG' | 'PDF',
+) {
+  await user.click(screen.getByRole('button', { name: 'Download' }));
+  await user.click(screen.getByRole('menuitem', { name: `Export ${format}` }));
+}
+
+/** One fake face is enough: the embedder has its own tests, exports only pass it through. */
+const EMBEDDED_INTER: EmbeddedFontFace = {
+  family: 'Inter',
+  weight: '100 900',
+  style: 'normal',
+  data: 'QUFB',
+};
+
 interface Harness {
   user: ReturnType<typeof userEvent.setup>;
   downloads: { blob: Blob; filename: string }[];
   rasterize: ReturnType<typeof vi.fn>;
+  resolveFontFaces: ReturnType<typeof vi.fn>;
 }
 
 function renderEditor(
   document: DesignDocument,
-  options: { rasterizeResult?: 'ok' | 'failed'; blobStore?: MemoryAssetBlobStore } = {},
+  options: {
+    rasterizeResult?: 'ok' | 'failed';
+    blobStore?: MemoryAssetBlobStore;
+    fontFailure?: boolean;
+  } = {},
 ): Harness {
   const downloads: { blob: Blob; filename: string }[] = [];
   const failure: ExportError = { code: 'raster-failed', message: 'No 2D context in this browser.' };
   const rasterize = vi.fn(() =>
     Promise.resolve(options.rasterizeResult === 'failed' ? err(failure) : ok(ONE_PIXEL_PNG)),
   );
+  const resolveFontFaces = vi.fn(() =>
+    options.fontFailure
+      ? Promise.reject(new Error('The font "Inter" could not be embedded: HTTP 404'))
+      : Promise.resolve([EMBEDDED_INTER]),
+  );
   const services: Partial<ExportServices> = {
     rasterize,
     download: (blob, filename) => downloads.push({ blob, filename }),
+    resolveFontFaces,
   };
   const user = userEvent.setup();
   render(
@@ -52,7 +82,7 @@ function renderEditor(
       />
     </TooltipProvider>,
   );
-  return { user, downloads, rasterize };
+  return { user, downloads, rasterize, resolveFontFaces };
 }
 
 function designWithRectangle(): DesignDocument {
@@ -67,7 +97,7 @@ describe('exporting a design', () => {
   it('downloads an SVG rendered from the document model', async () => {
     const { user, downloads } = renderEditor(designWithRectangle());
 
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
 
     const [download] = downloads;
     expect(download?.filename).toBe('Poster.svg');
@@ -83,7 +113,7 @@ describe('exporting a design', () => {
   it('rasterizes at 2× for PNG and hands over an image blob', async () => {
     const { user, downloads, rasterize } = renderEditor(designWithRectangle());
 
-    await user.click(screen.getByRole('button', { name: 'Export PNG' }));
+    await exportFormat(user, 'PNG');
 
     expect(rasterize).toHaveBeenCalledTimes(1);
     const [svg, size, scale] = rasterize.mock.calls[0] as [
@@ -104,7 +134,7 @@ describe('exporting a design', () => {
   it('assembles a PDF from the document pages', async () => {
     const { user, downloads, rasterize } = renderEditor(designWithRectangle());
 
-    await user.click(screen.getByRole('button', { name: 'Export PDF' }));
+    await exportFormat(user, 'PDF');
 
     const [download] = downloads;
     if (!download) throw new Error('expected a download');
@@ -118,10 +148,62 @@ describe('exporting a design', () => {
   it('reports a rasterizer failure instead of downloading a broken file', async () => {
     const { user, downloads } = renderEditor(designWithRectangle(), { rasterizeResult: 'failed' });
 
-    await user.click(screen.getByRole('button', { name: 'Export PNG' }));
+    await exportFormat(user, 'PNG');
 
     expect(await screen.findByText('No 2D context in this browser.')).toBeInTheDocument();
     expect(screen.getByText('Export failed')).toBeInTheDocument();
+    expect(downloads).toEqual([]);
+  });
+
+  it('exports an icon as vector paths, not as an image', async () => {
+    const document = createBlankDocument({ id: 'doc_icon', name: 'Badge', now: fixedDate });
+    document.pages[0]?.elements.push(
+      createIconElement({
+        id: 'i1',
+        x: 100,
+        y: 100,
+        iconId: 'heart',
+        color: '#ef4444',
+        width: 96,
+        height: 96,
+      }),
+    );
+    const { user, downloads } = renderEditor(document);
+
+    await exportFormat(user, 'SVG');
+
+    const svg = await downloads[0]?.blob.text();
+    expect(svg).toContain('<g transform="scale(4 4)">');
+    expect(svg).toContain('stroke="#ef4444"');
+    expect(svg).not.toContain('<image');
+  });
+
+  it('embeds the fonts the page uses so the file keeps its typeface', async () => {
+    const document = createBlankDocument({ id: 'doc_font', name: 'Menu', now: fixedDate });
+    document.pages[0]?.elements.push(
+      createTextElement({ id: 't1', x: 20, y: 20, text: 'Dinner', fontFamily: 'Playfair Display' }),
+    );
+    const { user, downloads, resolveFontFaces } = renderEditor(document);
+
+    await exportFormat(user, 'SVG');
+
+    expect(resolveFontFaces).toHaveBeenCalledWith([
+      { family: 'Playfair Display', weight: 400, style: 'normal' },
+    ]);
+    const svg = await downloads[0]?.blob.text();
+    expect(svg).toContain('<defs>');
+    expect(svg).toContain('@font-face { font-family: &quot;Inter&quot;');
+    expect(svg).toContain('data:font/woff2;base64,QUFB');
+  });
+
+  it('reports a font that cannot be embedded instead of exporting a fallback', async () => {
+    const { user, downloads } = renderEditor(designWithRectangle(), { fontFailure: true });
+
+    await exportFormat(user, 'SVG');
+
+    expect(
+      await screen.findByText('The font "Inter" could not be embedded: HTTP 404'),
+    ).toBeInTheDocument();
     expect(downloads).toEqual([]);
   });
 
@@ -143,11 +225,77 @@ describe('exporting a design', () => {
     await blobStore.put(asset.id, new Blob(['logo-bytes'], { type: 'image/png' }));
 
     const { user, downloads } = renderEditor(document, { blobStore });
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
 
     const svg = await downloads[0]?.blob.text();
     expect(svg).toContain('preserveAspectRatio="xMidYMid slice"');
     expect(svg).toContain(`href="data:image/png;base64,${btoa('logo-bytes')}"`);
+  });
+
+  it('inlines a bundled photo so the export does not depend on the app path', async () => {
+    const document = createBlankDocument({ id: 'doc_photo', name: 'Photo', now: fixedDate });
+    const asset = createImageAsset({
+      id: 'asset_photo',
+      name: 'Alpine lake',
+      mimeType: 'image/webp',
+      width: 1408,
+      height: 768,
+      source: { type: 'bundled', photoId: 'alpine-lake' },
+      now: fixedDate,
+    });
+    document.assets[asset.id] = asset;
+    document.pages[0]?.elements.push(
+      createImageElement({ id: 'i1', assetId: asset.id, width: 200, height: 109 }),
+    );
+    // The photo is served by the app, so the exporter has to fetch the file to inline it.
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        blob: () => Promise.resolve(new Blob(['photo-bytes'], { type: 'image/webp' })),
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const { user, downloads } = renderEditor(document);
+      await exportFormat(user, 'SVG');
+
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('alpine-lake'));
+      const svg = await downloads[0]?.blob.text();
+      expect(svg).toContain(`href="data:image/webp;base64,${btoa('photo-bytes')}"`);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reports a photo this build does not include', async () => {
+    const document = createBlankDocument({
+      id: 'doc_photo_missing',
+      name: 'Photo',
+      now: fixedDate,
+    });
+    const asset = createImageAsset({
+      id: 'asset_photo',
+      name: 'Removed photo',
+      mimeType: 'image/webp',
+      width: 1408,
+      height: 768,
+      source: { type: 'bundled', photoId: 'gone-photo' },
+      now: fixedDate,
+    });
+    document.assets[asset.id] = asset;
+    document.pages[0]?.elements.push(createImageElement({ id: 'i1', assetId: asset.id }));
+
+    const { user, downloads } = renderEditor(document);
+    await exportFormat(user, 'SVG');
+
+    expect(
+      await screen.findByText(
+        'The image "Removed photo" could not be embedded: the photo it uses is not part of this version of OpenCanvas',
+        { exact: false },
+      ),
+    ).toBeInTheDocument();
+    expect(downloads).toEqual([]);
   });
 
   it('reports an image whose bytes are gone', async () => {
@@ -164,7 +312,7 @@ describe('exporting a design', () => {
     document.pages[0]?.elements.push(createImageElement({ id: 'i1', assetId: asset.id }));
 
     const { user, downloads } = renderEditor(document, { blobStore: new MemoryAssetBlobStore() });
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
 
     expect(
       await screen.findByText('The image "logo.png" could not be embedded: its image data', {
@@ -180,11 +328,12 @@ describe('exporting a design', () => {
     const document = createBlankDocument({ id: 'doc_live', name: 'Live', now: fixedDate });
     const { user, downloads } = renderEditor(document);
 
+    await user.click(screen.getByRole('tab', { name: 'Elements' }));
     await user.click(screen.getByRole('button', { name: 'Rectangle' }));
     const properties = screen.getByRole('complementary', { name: 'Properties' });
     expect(within(properties).getByRole('heading', { name: 'Rectangle' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
     const svg = await downloads[0]?.blob.text();
     expect(svg).toContain('<rect width="324" height="324"');
   });
@@ -197,7 +346,7 @@ describe('exporting a design', () => {
     });
     const { user, downloads } = renderEditor(document);
 
-    await user.click(screen.getByRole('button', { name: 'Export SVG' }));
+    await exportFormat(user, 'SVG');
     expect(downloads[0]?.filename).toBe('Poster spring summer.svg');
   });
 });

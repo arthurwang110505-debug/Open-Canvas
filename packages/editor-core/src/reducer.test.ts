@@ -217,6 +217,52 @@ describe('applyCommand', () => {
     expect(result).toBe(doc);
   });
 
+  it('replaces a page with template content in one command', () => {
+    const { doc, pageId } = fixture();
+    const updated = expectOk(
+      applyCommand(doc, {
+        type: 'page.replaceContent',
+        pageId,
+        background: { type: 'solid', color: '#0f172a' },
+        elements: [createTextElement({ id: 'headline', text: 'Spring sale' })],
+      }),
+    );
+    expect(updated.pages[0]?.background).toEqual({ type: 'solid', color: '#0f172a' });
+    expect(elementIds(updated)).toEqual(['headline']);
+  });
+
+  it('rejects invalid template content instead of storing it', () => {
+    const { doc, pageId } = fixture();
+    const bad = { ...createTextElement({ id: 't' }), fontSize: 0 };
+    const result = applyCommand(doc, {
+      type: 'page.replaceContent',
+      pageId,
+      background: { type: 'solid', color: '#ffffff' },
+      elements: [bad],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('invalid-result');
+  });
+
+  it('adds a page seeded with template content', () => {
+    const { doc } = fixture();
+    const updated = expectOk(
+      applyCommand(doc, {
+        type: 'page.add',
+        pageId: 'page_template',
+        background: { type: 'solid', color: '#fef3c7' },
+        elements: [createRectElement({ id: 'tile', width: 120, height: 120 })],
+      }),
+    );
+    expect(updated.pages).toHaveLength(2);
+    expect(updated.pages[1]).toMatchObject({
+      id: 'page_template',
+      background: { type: 'solid', color: '#fef3c7' },
+    });
+    expect(updated.pages[1]?.elements.map((element) => element.id)).toEqual(['tile']);
+  });
+
   it('sets the page background', () => {
     const { doc, pageId } = fixture();
     const updated = expectOk(

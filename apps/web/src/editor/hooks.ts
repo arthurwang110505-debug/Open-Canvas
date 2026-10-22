@@ -2,7 +2,7 @@ import type { EditorStore, EditorStoreState } from '@opencanvas/editor-core';
 import { useContext } from 'react';
 import { useStore } from 'zustand';
 
-import type { CanvasController } from './canvasController';
+import type { CanvasController, CanvasControllerState } from './canvasController';
 import { EditorContext, type EditorContextValue } from './EditorContext';
 import type { NotificationState, NotificationStore } from './notifications';
 import type { PersistenceController, PersistenceState } from './persistence';
@@ -28,6 +28,11 @@ export function useCanvasController(): CanvasController {
 
 export function useCanvasReady(): boolean {
   return useStore(useEditorContext().canvas.state, (state) => state.ready);
+}
+
+/** Subscribes to a slice of canvas-controller state (viewport, interaction, snapping). */
+export function useCanvasState<T>(selector: (state: CanvasControllerState) => T): T {
+  return useStore(useEditorContext().canvas.state, selector);
 }
 
 export function useNotificationStore(): NotificationStore {

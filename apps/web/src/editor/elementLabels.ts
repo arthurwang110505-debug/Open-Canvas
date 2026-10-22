@@ -6,6 +6,8 @@ export const ELEMENT_TYPE_LABELS: Record<DesignElement['type'], string> = {
   text: 'Text',
   image: 'Image',
   path: 'Draw',
+  icon: 'Icon',
+  frame: 'Frame',
   group: 'Group',
 };
 
@@ -37,6 +39,14 @@ export function describeElement(
       return ELEMENT_TYPE_LABELS[element.type];
     case 'path':
       return element.name?.trim() ? element.name.trim() : 'Draw';
+    case 'icon': {
+      // Icons carry no text, so the catalogue id is the most useful label: `heart` → `Heart`.
+      const label = element.iconId.replace(/-/g, ' ');
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    }
+    case 'frame':
+      // A frame is named after the photo inside it, so the layer list reads like the canvas.
+      return element.assetId ? (assets[element.assetId]?.name ?? 'Frame') : 'Empty frame';
     case 'group':
       return element.name?.trim() ? element.name.trim() : `${element.children.length} selected`;
   }

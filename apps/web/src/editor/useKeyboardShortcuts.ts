@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 import { useEditorActions } from './actions';
-import { useCanvasController, useCanvasReady, usePersistence } from './hooks';
+import { useCanvasController, useCanvasReady, useEditorStore, usePersistence } from './hooks';
 import { useDraw } from './draw/DrawContext';
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -21,6 +21,7 @@ export function useKeyboardShortcuts(): void {
   const canvasReady = useCanvasReady();
   const persistence = usePersistence();
   const draw = useDraw();
+  const store = useEditorStore();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -37,6 +38,20 @@ export function useKeyboardShortcuts(): void {
       }
 
       if (isTypingTarget(event.target) || canvas.isEditingText()) return;
+
+      // Crop mode is modal: it owns Enter and Escape, and nothing else reaches the document.
+      if (store.getState().cropId) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          store.getState().applyCrop();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          store.getState().cancelCrop();
+        } else if (!modifier) {
+          event.preventDefault();
+        }
+        return;
+      }
 
       if (modifier && key === 'z') {
         event.preventDefault();
@@ -132,8 +147,13 @@ export function useKeyboardShortcuts(): void {
           actions.deleteSelection();
           return;
         case 'Escape':
+          // Escape unwinds one level at a time: pen, then adjust-photo mode, then the selection.
           if (draw.enabled) {
             draw.setEnabled(false);
+            return;
+          }
+          if (store.getState().photoPanId) {
+            store.getState().setPhotoPan(null);
             return;
           }
           actions.clearSelection();
@@ -146,7 +166,9 @@ export function useKeyboardShortcuts(): void {
           const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
           const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
           event.preventDefault();
-          actions.nudgeSelection(dx, dy);
+          // While adjusting a photo the arrow keys move the picture, not the frame.
+          if (store.getState().photoPanId) actions.nudgePhoto(dx, dy);
+          else actions.nudgeSelection(dx, dy);
           return;
         }
         default:
@@ -156,5 +178,5 @@ export function useKeyboardShortcuts(): void {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [actions, canvas, canvasReady, persistence, draw]);
+  }, [actions, canvas, canvasReady, persistence, draw, store]);
 }

@@ -105,7 +105,8 @@ describe('Dashboard', () => {
     const store = createMemoryProjectStore();
     const { user } = renderDashboard(servicesFor(store));
 
-    await user.selectOptions(screen.getByLabelText('Canvas size'), 'poster-a4');
+    await user.click(screen.getByRole('button', { name: 'Canvas size' }));
+    await user.click(screen.getByRole('menuitem', { name: /Poster A4/ }));
     await user.click(screen.getByRole('button', { name: 'New design' }));
 
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/design\/doc_/));
@@ -115,6 +116,42 @@ describe('Dashboard', () => {
     if (!loaded.ok) return;
     expect(loaded.value.name).toBe('Untitled design');
     expect(loaded.value.size).toEqual({ width: 2480, height: 3508 });
+  });
+
+  it('continues a recent design from the home screen', async () => {
+    const store = await seededStore([
+      makeDocument('doc_new', 'Spring poster', '2026-03-03T09:00:00.000Z'),
+      makeDocument('doc_mid', 'Summer flyer', '2026-03-02T09:00:00.000Z'),
+      makeDocument('doc_old', 'Winter card', '2026-03-01T09:00:00.000Z'),
+    ]);
+    const { user } = renderDashboard(servicesFor(store));
+
+    const recents = await screen.findByRole('region', { name: 'Continue editing' });
+    expect(within(recents).getAllByRole('button')).toHaveLength(3);
+
+    await user.click(within(recents).getByRole('button', { name: /Spring poster/ }));
+    await waitFor(() => expect(window.location.hash).toBe('#/design/doc_new'));
+  });
+
+  it('sorts the design list by name when asked', async () => {
+    const store = await seededStore([
+      makeDocument('doc_b', 'Blue poster', '2026-03-03T09:00:00.000Z'),
+      makeDocument('doc_a', 'Amber flyer', '2026-03-01T09:00:00.000Z'),
+    ]);
+    const { user } = renderDashboard(servicesFor(store));
+
+    const list = await screen.findByRole('list');
+    const namesBefore = within(list)
+      .getAllByRole('heading')
+      .map((heading) => heading.textContent);
+    expect(namesBefore[0]).toBe('Blue poster');
+
+    await user.selectOptions(screen.getByLabelText('Sort designs'), 'name');
+
+    const namesAfter = within(list)
+      .getAllByRole('heading')
+      .map((heading) => heading.textContent);
+    expect(namesAfter).toEqual(['Amber flyer', 'Blue poster']);
   });
 
   it('renames a design and stores the new name', async () => {

@@ -10,20 +10,24 @@ interface Props {
   onClose: () => void;
 }
 
+const ignoreError = () => undefined;
+
 export function PresentMode({ document: doc, initialPageIndex = 0, onClose }: Props) {
   const [idx, setIdx] = useState(initialPageIndex);
-  const [svg, setSvg] = useState<string | null>(null);
+  // Rendered SVG is tagged with the page it belongs to, so switching pages shows a blank frame
+  // until the next render resolves instead of clearing state inside the effect.
+  const [rendered, setRendered] = useState<{ pageId: string; svg: string } | null>(null);
 
   const page = doc.pages[idx];
   const total = doc.pages.length;
+  const svg = page && rendered?.pageId === page.id ? rendered.svg : null;
 
   useEffect(() => {
     let cancelled = false;
-    setSvg(null);
     if (!page) return;
     void (async () => {
       const res = await renderPageToSvg(doc, { pageId: page.id });
-      if (!cancelled && res.ok) setSvg(res.value);
+      if (!cancelled && res.ok) setRendered({ pageId: page.id, svg: res.value });
     })();
     return () => {
       cancelled = true;
@@ -49,9 +53,10 @@ export function PresentMode({ document: doc, initialPageIndex = 0, onClose }: Pr
   // Enter fullscreen on mount
   useEffect(() => {
     const el = globalThis.document.documentElement;
-    if (el.requestFullscreen) void el.requestFullscreen().catch(() => {});
+    if (el.requestFullscreen) void el.requestFullscreen().catch(ignoreError);
     return () => {
-      if (globalThis.document.fullscreenElement) void globalThis.document.exitFullscreen().catch(() => {});
+      if (globalThis.document.fullscreenElement)
+        void globalThis.document.exitFullscreen().catch(ignoreError);
     };
   }, []);
 
@@ -64,8 +69,15 @@ export function PresentMode({ document: doc, initialPageIndex = 0, onClose }: Pr
           {doc.name} — {idx + 1} / {total}
         </p>
         <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-white/60 sm:block">← → to navigate · Esc to exit</span>
-          <Button variant="ghost" size="sm" className="rounded-full bg-white text-black hover:bg-white/90" onClick={onClose}>
+          <span className="hidden text-xs text-white/60 sm:block">
+            ← → to navigate · Esc to exit
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rounded-full bg-white text-black hover:bg-white/90"
+            onClick={onClose}
+          >
             <X className="size-4" /> Exit
           </Button>
         </div>

@@ -4,9 +4,12 @@ import { CURRENT_SCHEMA_VERSION, LIMITS } from './constants';
 import {
   createBlankDocument,
   createEllipseElement,
+  createFrameElement,
+  createIconElement,
   createRectElement,
   createTextElement,
 } from './factories';
+import { linearFill, radialFill } from './fills';
 import { DocumentSchema, ElementSchema, HexColorSchema } from './schema';
 import {
   cloneDocument,
@@ -41,6 +44,93 @@ describe('HexColorSchema', () => {
   });
 });
 
+describe('gradient fills', () => {
+  const rect = () => ({
+    ...createRectElement({ id: 'r1', width: 200, height: 100 }),
+    fill: {
+      type: 'linear' as const,
+      stops: [
+        { offset: 0, color: '#0f172a' },
+        { offset: 1, color: '#38bdf8' },
+      ],
+    },
+  });
+
+  it('accepts a linear gradient and defaults its angle', () => {
+    const parsed = ElementSchema.parse(rect());
+    expect(parsed).toMatchObject({ fill: { type: 'linear', angle: 180 } });
+  });
+
+  it('accepts a radial gradient and keeps the stops in order', () => {
+    const parsed = ElementSchema.parse({
+      ...rect(),
+      fill: {
+        type: 'radial',
+        stops: [
+          { offset: 0.2, color: '#fef3c7' },
+          { offset: 0.8, color: '#b45309' },
+        ],
+      },
+    });
+    if (parsed.type !== 'rect' || parsed.fill.type !== 'radial') throw new Error('wrong shape');
+    expect(parsed.fill.stops.map((stop) => stop.offset)).toEqual([0.2, 0.8]);
+  });
+
+  it('rejects gradients that would render differently in SVG and on the canvas', () => {
+    // SVG clamps decreasing offsets; the canvas does not. Refuse the document instead.
+    expect(
+      ElementSchema.safeParse({
+        ...rect(),
+        fill: {
+          type: 'linear',
+          stops: [
+            { offset: 0.8, color: '#000000' },
+            { offset: 0.2, color: '#ffffff' },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+
+    // One stop is not a gradient; nine is a mess nobody can edit by hand.
+    expect(
+      ElementSchema.safeParse({
+        ...rect(),
+        fill: { type: 'linear', stops: [{ offset: 0, color: '#000000' }] },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ElementSchema.safeParse({
+        ...rect(),
+        fill: {
+          type: 'linear',
+          angle: 400,
+          stops: [
+            { offset: 0, color: '#000000' },
+            { offset: 1, color: '#ffffff' },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates gradient page backgrounds with the same schema', () => {
+    const doc = createBlankDocument({ id: 'doc_grad', now: fixedDate });
+    const page = doc.pages[0];
+    if (!page) throw new Error('fixture page missing');
+    page.background = {
+      type: 'linear',
+      angle: 135,
+      stops: [
+        { offset: 0, color: '#fdf2f8' },
+        { offset: 1, color: '#c7d2fe' },
+      ],
+    };
+    const result = validateDocument(doc);
+    expect(result.ok, result.ok ? '' : result.error.message).toBe(true);
+  });
+});
+
 describe('ElementSchema', () => {
   it('applies defaults for optional styling properties', () => {
     const parsed = ElementSchema.parse({
@@ -59,6 +149,21 @@ describe('ElementSchema', () => {
       visible: true,
       cornerRadius: 0,
     });
+  });
+
+  it('accepts an empty frame and applies its defaults', () => {
+    const frame = createFrameElement({ id: 'f1' });
+    const parsed = ElementSchema.parse({ ...frame, shape: undefined });
+    expect(parsed).toMatchObject({
+      type: 'frame',
+      shape: 'rect',
+      cornerRadius: 0,
+      fit: 'cover',
+      fill: { type: 'solid', color: '#e5e7eb' },
+    });
+    // A frame with no photo is a placeholder, not an invalid element.
+    expect(parsed).not.toHaveProperty('assetId');
+    expect(ElementSchema.safeParse({ ...frame, shape: 'star' }).success).toBe(false);
   });
 
   it('rejects unknown element types', () => {
@@ -80,6 +185,29 @@ describe('ElementSchema', () => {
     expect(ElementSchema.safeParse({ ...base, x: Number.POSITIVE_INFINITY }).success).toBe(false);
     expect(ElementSchema.safeParse({ ...base, x: Number.NaN }).success).toBe(false);
     expect(ElementSchema.safeParse({ ...base, id: 'has spaces' }).success).toBe(false);
+  });
+
+  it('accepts an icon and applies its defaults', () => {
+    const parsed = ElementSchema.parse({
+      type: 'icon',
+      id: 'i1',
+      x: 0,
+      y: 0,
+      width: 96,
+      height: 96,
+      iconId: 'arrow-right',
+    });
+    expect(parsed).toMatchObject({ color: '#111827', strokeWidth: 2 });
+  });
+
+  it('rejects an icon id that could not be looked up', () => {
+    const icon = createIconElement({ id: 'i1', iconId: 'heart' });
+    expect(ElementSchema.safeParse(icon).success).toBe(true);
+    for (const iconId of ['', 'Heart', 'heart ', '../heart', 'x'.repeat(65)]) {
+      expect(ElementSchema.safeParse({ ...icon, iconId }).success).toBe(false);
+    }
+    expect(ElementSchema.safeParse({ ...icon, strokeWidth: 0 }).success).toBe(false);
+    expect(ElementSchema.safeParse({ ...icon, strokeWidth: 12 }).success).toBe(false);
   });
 
   it('validates typography constraints', () => {
@@ -230,5 +358,24 @@ describe('cloneDocumentAs', () => {
     expect(duplicateName(long)).toHaveLength(LIMITS.maxNameLength);
     expect(duplicateName(long).endsWith(' copy')).toBe(true);
     expect(duplicateName('Flyer')).toBe('Flyer copy');
+  });
+});
+
+describe('fill helpers', () => {
+  it('spaces stops evenly and keeps the ends exact', () => {
+    const fill = linearFill(90, ['#000000', '#808080', '#ffffff']);
+    expect(fill.stops).toEqual([
+      { offset: 0, color: '#000000' },
+      { offset: 0.5, color: '#808080' },
+      { offset: 1, color: '#ffffff' },
+    ]);
+    expect(ElementSchema.safeParse({ ...createRectElement({ id: 'r1' }), fill }).success).toBe(
+      true,
+    );
+  });
+
+  it('refuses a one-colour gradient', () => {
+    expect(() => linearFill(180, ['#000000'])).toThrow(/two colours/);
+    expect(() => radialFill([])).toThrow(/two colours/);
   });
 });

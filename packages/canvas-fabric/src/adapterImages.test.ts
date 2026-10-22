@@ -52,7 +52,9 @@ function deferred<T>() {
 
 describe('FabricCanvasAdapter images', () => {
   let canvasEl: HTMLCanvasElement;
-  let callbacks: { [K in keyof CanvasAdapterCallbacks]: Mock<CanvasAdapterCallbacks[K]> };
+  let callbacks: {
+    [K in keyof CanvasAdapterCallbacks]: Mock<NonNullable<CanvasAdapterCallbacks[K]>>;
+  };
   let adapter: FabricCanvasAdapter | null = null;
 
   beforeEach(() => {

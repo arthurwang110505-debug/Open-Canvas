@@ -43,6 +43,56 @@ export const MIGRATIONS: readonly Migration[] = [
     description: 'Add image flip, filters and crop',
     migrate: (raw) => ({ ...raw }),
   },
+  {
+    from: 4,
+    to: 5,
+    description: 'Add icon element',
+    // Purely additive: existing elements are valid unchanged, and a document that has no icons
+    // looks the same in both versions. The bump exists so an older build rejects a document
+    // containing an icon it cannot draw instead of rendering it as a blank space.
+    migrate: (raw) => ({ ...raw }),
+  },
+  {
+    from: 5,
+    to: 6,
+    description: 'Add linear and radial gradient fills',
+    // Purely additive: every existing solid/none fill stays valid, and a page background is a
+    // Fill, so old documents need no rewriting. The bump makes an older build reject a document
+    // with a gradient instead of painting a blank rectangle.
+    migrate: (raw) => ({ ...raw }),
+  },
+  {
+    from: 6,
+    to: 7,
+    description: 'Add textTransform to text elements',
+    // Additive with a default: text without the property renders exactly as before. The bump
+    // keeps an older build from silently ignoring a casing the author chose.
+    migrate: (raw) => ({ ...raw }),
+  },
+  {
+    from: 7,
+    to: 8,
+    description: 'Add listStyle to text elements',
+    // Additive with a default: paragraphs without a list style render exactly as before. The bump
+    // keeps an older build from dropping bullets the author turned on.
+    migrate: (raw) => ({ ...raw }),
+  },
+  {
+    from: 8,
+    to: 9,
+    description: 'Add bundled photo asset source',
+    // Additive: local and url assets are untouched. The bump keeps an older build from treating a
+    // bundled photo as a local asset whose bytes are missing (it would show a broken image).
+    migrate: (raw) => ({ ...raw }),
+  },
+  {
+    from: 9,
+    to: 10,
+    description: 'Add frame element',
+    // Purely additive: an older build cannot draw a frame, so it must refuse the document rather
+    // than showing a hole where a masked photo should be.
+    migrate: (raw) => ({ ...raw }),
+  },
 ];
 
 export interface MigrateOptions {

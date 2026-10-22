@@ -24,7 +24,7 @@ type User = ReturnType<typeof userEvent.setup>;
 const properties = () => screen.getByRole('complementary', { name: 'Properties' });
 
 async function insert(user: User, what: 'Rectangle' | 'Ellipse' | 'Add a heading') {
-  const tab = what === 'Add a heading' ? 'Text' : 'Shapes';
+  const tab = what === 'Add a heading' ? 'Text' : 'Elements';
   await user.click(screen.getByRole('tab', { name: tab }));
   await user.click(screen.getByRole('button', { name: what }));
 }

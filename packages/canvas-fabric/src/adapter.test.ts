@@ -2,13 +2,16 @@ import {
   createEllipseElement,
   createRectElement,
   createTextElement,
+  linearFill,
+  radialFill,
   type DesignElement,
   type Page,
 } from '@opencanvas/document';
-import { ActiveSelection, Rect, Textbox } from 'fabric';
+import { ActiveSelection, Gradient, Rect, Textbox } from 'fabric';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import { FabricCanvasAdapter, type CanvasAdapterCallbacks } from './adapter';
+import { DocumentTextbox } from './textbox';
 
 function makePage(elements: DesignElement[]): Page {
   return { id: 'page_1', background: { type: 'solid', color: '#fafafa' }, elements };
@@ -18,7 +21,9 @@ const size = { width: 1080, height: 1080 };
 
 describe('FabricCanvasAdapter', () => {
   let canvasEl: HTMLCanvasElement;
-  let callbacks: { [K in keyof CanvasAdapterCallbacks]: Mock<CanvasAdapterCallbacks[K]> };
+  let callbacks: {
+    [K in keyof CanvasAdapterCallbacks]: Mock<NonNullable<CanvasAdapterCallbacks[K]>>;
+  };
   let adapter: FabricCanvasAdapter;
 
   beforeEach(() => {
@@ -30,6 +35,9 @@ describe('FabricCanvasAdapter', () => {
       onTextMeasured: vi.fn<CanvasAdapterCallbacks['onTextMeasured']>(),
       onSelectionChanged: vi.fn<CanvasAdapterCallbacks['onSelectionChanged']>(),
       onZoomChanged: vi.fn<CanvasAdapterCallbacks['onZoomChanged']>(),
+      onViewportChanged: vi.fn<NonNullable<CanvasAdapterCallbacks['onViewportChanged']>>(),
+      onInteractionChanged: vi.fn<NonNullable<CanvasAdapterCallbacks['onInteractionChanged']>>(),
+      onTextEditingChanged: vi.fn<NonNullable<CanvasAdapterCallbacks['onTextEditingChanged']>>(),
       onAssetError: vi.fn<CanvasAdapterCallbacks['onAssetError']>(),
     };
     adapter = new FabricCanvasAdapter(canvasEl, callbacks);
@@ -114,6 +122,36 @@ describe('FabricCanvasAdapter', () => {
     expect(callbacks.onSelectionChanged).not.toHaveBeenCalled();
   });
 
+  it('reports the selection box in client space so floating UI can follow the object', () => {
+    expect(adapter.getSelectionClientRect()).toBeNull();
+
+    const rect = createRectElement({ id: 'r1', x: 100, y: 50, width: 200, height: 100 });
+    adapter.render({ page: makePage([rect]), size, selectedIds: ['r1'], assets: {} });
+
+    const active = adapter.getFabricCanvas().getActiveObject();
+    if (!active) throw new Error('expected an active object');
+    const bounds = active.getBoundingRect();
+    const client = adapter.getSelectionClientRect();
+    expect(client).not.toBeNull();
+    expect(client?.width).toBeCloseTo(bounds.width);
+    expect(client?.height).toBeCloseTo(bounds.height);
+    expect(client?.left).toBeCloseTo(bounds.left);
+    expect(client?.top).toBeCloseTo(bounds.top);
+  });
+
+  it('signals viewport, pointer and text-editing changes to the host', () => {
+    adapter.setZoom(2);
+    expect(callbacks.onViewportChanged).toHaveBeenCalled();
+
+    adapter.getFabricCanvas().fire('mouse:down');
+    expect(callbacks.onInteractionChanged).toHaveBeenLastCalledWith(true);
+    adapter.getFabricCanvas().fire('mouse:up');
+    expect(callbacks.onInteractionChanged).toHaveBeenLastCalledWith(false);
+
+    adapter.getFabricCanvas().fire('text:editing:entered');
+    expect(callbacks.onTextEditingChanged).toHaveBeenLastCalledWith(true);
+  });
+
   it('reports user selection changes', () => {
     const a = createRectElement({ id: 'a' });
     adapter.render({ page: makePage([a]), size, selectedIds: [], assets: {} });
@@ -185,6 +223,41 @@ describe('FabricCanvasAdapter', () => {
     expect(measured).toBeGreaterThan(1);
   });
 
+  it('renders the document casing and updates it without a text commit', () => {
+    const text = createTextElement({ id: 't', text: 'Spring Sale', textTransform: 'uppercase' });
+    adapter.render({ page: makePage([text]), size, selectedIds: [], assets: {} });
+    const object = elementObjects()[0];
+    if (!(object instanceof DocumentTextbox)) throw new Error('expected document textbox');
+    expect(object.textLines).toEqual(['SPRING SALE']);
+    expect(object.text).toBe('Spring Sale');
+
+    adapter.render({
+      page: makePage([{ ...text, textTransform: 'lowercase' }]),
+      size,
+      selectedIds: [],
+      assets: {},
+    });
+    expect(object.textLines).toEqual(['spring sale']);
+    expect(callbacks.onTextCommitted).not.toHaveBeenCalled();
+  });
+
+  it('draws list markers and updates the style without a text commit', () => {
+    const text = createTextElement({ id: 't', text: 'one\ntwo', listStyle: 'bullet' });
+    adapter.render({ page: makePage([text]), size, selectedIds: [], assets: {} });
+    const object = elementObjects()[0];
+    if (!(object instanceof DocumentTextbox)) throw new Error('expected document textbox');
+    expect(object.textLines).toEqual(['• one', '• two']);
+
+    adapter.render({
+      page: makePage([{ ...text, listStyle: 'number' }]),
+      size,
+      selectedIds: [],
+      assets: {},
+    });
+    expect(object.textLines).toEqual(['1. one', '2. two']);
+    expect(callbacks.onTextCommitted).not.toHaveBeenCalled();
+  });
+
   it('commits edited text when editing ends', () => {
     const text = createTextElement({ id: 't', text: 'Hello' });
     adapter.render({ page: makePage([text]), size, selectedIds: [], assets: {} });
@@ -221,6 +294,66 @@ describe('FabricCanvasAdapter', () => {
     // jsdom reports a 0x0 box at the origin for the canvas element.
     expect(adapter.clientToPage(100, 50)).toEqual({ x: 0, y: 0 });
     expect(adapter.clientToPage(300, 250)).toEqual({ x: 100, y: 100 });
+  });
+
+  it('paints gradient fills with a Fabric gradient in percentage units', () => {
+    const rect = createRectElement({
+      id: 'grad_rect',
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 150,
+      fill: linearFill(90, ['#0f172a', '#38bdf8']),
+    });
+    adapter.render({ page: makePage([rect]), size, selectedIds: [], assets: {} });
+
+    const object = elementObjects()[0];
+    expect(object?.fill).toBeInstanceOf(Gradient);
+    const gradient = object?.fill as Gradient<'linear'>;
+    expect(gradient.type).toBe('linear');
+    // Fractions, not pixels: resizing the shape must not move the gradient's endpoints.
+    expect(gradient.gradientUnits).toBe('percentage');
+    expect(gradient.coords.x1).toBeCloseTo(0);
+    expect(gradient.coords.x2).toBeCloseTo(1);
+    expect(gradient.colorStops.map((stop) => stop.color)).toEqual(['#0f172a', '#38bdf8']);
+  });
+
+  it('reuses a gradient while the fill is unchanged and replaces it when it changes', () => {
+    const render = (fill: ReturnType<typeof linearFill>) => {
+      const rect = createRectElement({ id: 'grad_rect', width: 200, height: 100, fill });
+      adapter.render({ page: makePage([rect]), size, selectedIds: [], assets: {} });
+      return elementObjects()[0];
+    };
+
+    const first = render(linearFill(90, ['#000000', '#ffffff']));
+    const samePaint = render(linearFill(90, ['#000000', '#ffffff']));
+    // Same element and same paint: the existing object (and its gradient) is kept.
+    expect(samePaint).toBe(first);
+
+    const different = render(linearFill(180, ['#000000', '#ffffff']));
+    expect(different).toBe(first);
+    const gradient = different?.fill as Gradient<'linear'>;
+    expect(gradient.coords.y1).toBeCloseTo(0);
+    expect(gradient.coords.y2).toBeCloseTo(1);
+  });
+
+  it('paints a radial gradient background behind the elements', () => {
+    const page: Page = {
+      id: 'page_1',
+      background: radialFill(['#ffffff', '#c7d2fe']),
+      elements: [createRectElement({ id: 'r1' })],
+    };
+    adapter.render({ page, size, selectedIds: [], assets: {} });
+
+    const background = adapter.getFabricCanvas().getObjects()[0];
+    expect(background?.fill).toBeInstanceOf(Gradient);
+    expect((background?.fill as Gradient<'radial'>).type).toBe('radial');
+  });
+
+  it('keeps the page white rather than transparent when the background is none', () => {
+    const page: Page = { id: 'page_1', background: { type: 'none' }, elements: [] };
+    adapter.render({ page, size, selectedIds: [], assets: {} });
+    expect(adapter.getFabricCanvas().getObjects()[0]?.fill).toBe('#ffffff');
   });
 
   it('fits the page into the viewport with padding', () => {

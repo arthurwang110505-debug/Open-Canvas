@@ -1,11 +1,18 @@
 import type { DesignDocument, ImageAsset, Result } from '@opencanvas/document';
 import { err, ok } from '@opencanvas/document';
-import { renderDocumentToPdf, renderPageToSvg, type SvgPageOptions } from '@opencanvas/export';
+import {
+  collectFontUsages,
+  renderDocumentToPdf,
+  renderPageToSvg,
+  type SvgPageOptions,
+} from '@opencanvas/export';
 import { blobToDataUrl, dataUrlToBlob } from '@opencanvas/storage';
 import { useCallback, useRef, useState } from 'react';
 
 import { useAssetServices } from '../assets/useAssetServices';
 import { useEditorStore, useNotificationStore } from '../hooks';
+import { bundledPhotoUrl } from '../../assets/photos/catalog';
+import { ensureFontsLoaded } from '../../fonts/embed';
 import { useExportServices } from './useExportServices';
 import { exportFileName, type ExportExtension } from '../../fileNames';
 
@@ -43,6 +50,15 @@ export function useDesignExport(): DesignExportApi {
   const resolveImageHref = useCallback(
     async (asset: ImageAsset): Promise<string> => {
       if (asset.source.type === 'url') return asset.source.url;
+      if (asset.source.type === 'bundled') {
+        // An export must be self-contained, so the bundled file is inlined rather than linked by
+        // a path that only resolves inside the app.
+        const url = bundledPhotoUrl(asset.source.photoId);
+        if (!url) throw new Error('the photo it uses is not part of this version of OpenCanvas');
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('its bundled photo could not be read');
+        return blobToDataUrl(await response.blob());
+      }
       const blob = await blobStore.get(asset.id);
       if (!blob) {
         // The SVG renderer prefixes this with the asset name, so keep it a clause.
@@ -57,10 +73,25 @@ export function useDesignExport(): DesignExportApi {
     async (kind: ExportKind): Promise<Result<ExportedFile, string>> => {
       const state = editor.getState();
       const document: DesignDocument = state.document;
+      // PNG/SVG export the active page, PDF exports every page, so collect the fonts each one
+      // actually needs before rendering (hidden elements are not rendered, so they are skipped).
+      const pages =
+        kind === 'pdf'
+          ? document.pages
+          : document.pages.filter((page) => page.id === state.activePageId);
+      const usages = collectFontUsages(
+        pages.flatMap((page) => page.elements.filter((element) => element.visible)),
+      );
+      // Wait for the faces first: measuring wrapped lines before they load would bake the
+      // fallback metrics into the file. Refusing to continue on a failed read keeps an export
+      // from silently landing in the wrong typeface.
+      await ensureFontsLoaded(usages);
+      const fontFaces = await services.resolveFontFaces(usages);
       const svgOptions: SvgPageOptions = {
         pageId: state.activePageId,
         resolveImageHref,
         ...(services.measureText ? { measureText: services.measureText } : {}),
+        ...(fontFaces.length > 0 ? { fontFaces } : {}),
       };
       const filename = exportFileName(document.name, kind);
 

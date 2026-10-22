@@ -1,8 +1,12 @@
 import {
   createEllipseElement,
+  createFrameElement,
+  createIconElement,
   createPathElement,
   createRectElement,
   createTextElement,
+  generateId,
+  type DesignDocument,
   type DesignElement,
   type Fill,
 } from '@opencanvas/document';
@@ -10,6 +14,7 @@ import {
   alignElements,
   alignmentTarget,
   distributeElements,
+  fitElementsToSize,
   selectActivePage,
   selectSelectedElements,
   type AlignMode,
@@ -19,19 +24,35 @@ import {
   type ElementPatch,
   type ReorderTarget,
 } from '@opencanvas/editor-core';
+import { panFramePhoto } from '@opencanvas/canvas-fabric';
 import { useMemo } from 'react';
 
 import { useCanvasController, useEditorStore } from './hooks';
+import { FONT_PAIRINGS, TEXT_PRESETS, type TextPreset } from './textPresets';
 
-export type ShapeKind = 'rect' | 'rounded-rect' | 'ellipse' | 'line' | 'triangle' | 'star' | 'hexagon' | 'sparkle';
-export type TextPreset = 'heading' | 'subheading' | 'body';
+export type { TextPreset } from './textPresets';
+
+/** The frame shapes offered in the Elements panel. */
+export type FrameKind = 'frame-rect' | 'frame-rounded' | 'frame-ellipse' | 'frame-circle';
+
+export type ShapeKind =
+  'rect' | 'rounded-rect' | 'ellipse' | 'line' | 'triangle' | 'star' | 'hexagon' | 'sparkle';
 
 export interface EditorActions {
-  addShape: (kind: ShapeKind) => void;
-  addText: (preset: TextPreset) => void;
+  /** Adds a shape in the middle of the page, or centred on `at` (page coordinates). */
+  addShape: (kind: ShapeKind, at?: { x: number; y: number }) => void;
+  addText: (preset: TextPreset, at?: { x: number; y: number }) => void;
+  /** Inserts an empty frame (a mask waiting for a photo). */
+  addFrame: (kind: FrameKind, at?: { x: number; y: number }) => void;
+  /** Inserts the heading and body of a font pairing as one undo step. */
+  addTextPairing: (pairingId: string) => void;
+  /** Places a bundled icon; the id comes from `@opencanvas/icons`. */
+  addIcon: (iconId: string, at?: { x: number; y: number }) => void;
   deleteSelection: () => void;
   duplicateSelection: () => void;
   nudgeSelection: (dx: number, dy: number) => void;
+  /** Moves the photo inside the frame being adjusted; no-op outside adjust-photo mode. */
+  nudgePhoto: (dx: number, dy: number) => void;
   selectAll: () => void;
   clearSelection: () => void;
   /** Patches every selected element; `mergeKey` coalesces rapid edits into one undo step. */
@@ -49,22 +70,32 @@ export interface EditorActions {
   renameDocument: (name: string) => void;
   resizeDocument: (width: number, height: number) => void;
   setPageBackground: (fill: Fill, mergeKey?: string) => void;
+  /** Replaces the current page with a template, fitted to this canvas (one undo step). */
+  applyTemplate: (template: DesignDocument) => void;
+  /** Inserts a template as a new page after the current one (one undo step). */
+  addTemplatePage: (template: DesignDocument) => void;
   undo: () => void;
   redo: () => void;
 }
 
-const TEXT_PRESETS: Record<
-  TextPreset,
-  { text: string; fontSize: number; fontWeight: 400 | 600 | 700 | 800; widthRatio: number }
-> = {
-  heading: { text: 'Add a heading', fontSize: 96, fontWeight: 800, widthRatio: 0.8 },
-  subheading: { text: 'Add a subheading', fontSize: 56, fontWeight: 600, widthRatio: 0.7 },
-  body: { text: 'Add a little bit of body text', fontSize: 32, fontWeight: 400, widthRatio: 0.6 },
-};
-
-/** Centers a `width`x`height` box on the page. */
-function centered(page: { width: number; height: number }, width: number, height: number) {
-  return { x: Math.round((page.width - width) / 2), y: Math.round((page.height - height) / 2) };
+/**
+ * Top-left for a `width`x`height` box: centred on the page by default, or centred on `at` when a
+ * drop point is given. Coordinates are clamped to the canvas so a drop on the edge still lands.
+ */
+function placeAt(
+  page: { width: number; height: number },
+  width: number,
+  height: number,
+  at?: { x: number; y: number },
+) {
+  if (!at) {
+    return { x: Math.round((page.width - width) / 2), y: Math.round((page.height - height) / 2) };
+  }
+  const clamp = (value: number, max: number) => Math.round(Math.min(Math.max(value, 0), max));
+  return {
+    x: clamp(at.x - width / 2, page.width - width),
+    y: clamp(at.y - height / 2, page.height - height),
+  };
 }
 
 export function useEditorActions(): EditorActions {
@@ -82,14 +113,15 @@ export function useEditorActions(): EditorActions {
     };
 
     return {
-      addShape: (kind) => {
+      addShape: (kind, at) => {
         const { size } = store.getState().document;
         const side = Math.round(Math.min(size.width, size.height) * 0.3);
-        const position = centered(size, side, side);
+        const position = placeAt(size, side, side, at);
+        const linePos = placeAt(size, side, 6, at);
         if (kind === 'ellipse') {
           addElement(createEllipseElement({ ...position, width: side, height: side }));
         } else if (kind === 'line') {
-          const pos = centered(size, side, 6);
+          const pos = linePos;
           const y = pos.y + 3;
           addElement(
             createPathElement(
@@ -109,7 +141,11 @@ export function useEditorActions(): EditorActions {
                 { x: x + side, y: y + side },
                 { x, y: y + side },
               ],
-              { fill: { type: 'solid', color: '#f59e0b' }, stroke: { color: '#f59e0b', width: 0 }, closed: true },
+              {
+                fill: { type: 'solid', color: '#f59e0b' },
+                stroke: { color: '#f59e0b', width: 0 },
+                closed: true,
+              },
             ),
           );
         } else if (kind === 'star') {
@@ -120,7 +156,7 @@ export function useEditorActions(): EditorActions {
           const inner = side / 5;
           const pts: { x: number; y: number }[] = [];
           for (let i = 0; i < 10; i++) {
-            const angle = -90 + (i * 36);
+            const angle = -90 + i * 36;
             const r = i % 2 === 0 ? outer : inner;
             const rad = (angle * Math.PI) / 180;
             pts.push({ x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) });
@@ -144,7 +180,11 @@ export function useEditorActions(): EditorActions {
                 { x: x + side * 0.25, y: y + side },
                 { x, y: y + side * 0.5 },
               ],
-              { fill: { type: 'solid', color: '#06b6d4' }, stroke: { color: '#06b6d4', width: 0 }, closed: true },
+              {
+                fill: { type: 'solid', color: '#06b6d4' },
+                stroke: { color: '#06b6d4', width: 0 },
+                closed: true,
+              },
             ),
           );
         } else if (kind === 'sparkle') {
@@ -180,7 +220,20 @@ export function useEditorActions(): EditorActions {
         }
       },
 
-      addText: (preset) => {
+      addIcon: (iconId, at) => {
+        const { size } = store.getState().document;
+        const side = Math.round(Math.min(size.width, size.height) * 0.2);
+        addElement(
+          createIconElement({
+            ...placeAt(size, side, side, at),
+            width: side,
+            height: side,
+            iconId,
+          }),
+        );
+      },
+
+      addText: (preset, at) => {
         const { size } = store.getState().document;
         const spec = TEXT_PRESETS[preset];
         const scale = Math.min(size.width, size.height) / 1080;
@@ -188,16 +241,75 @@ export function useEditorActions(): EditorActions {
         const width = Math.round(size.width * spec.widthRatio);
         const height = Math.round(fontSize * 1.2);
         const element = createTextElement({
-          ...centered(size, width, height),
+          ...placeAt(size, width, height, at),
           width,
           height,
           text: spec.text,
           fontSize,
           fontWeight: spec.fontWeight,
+          fontStyle: spec.fontStyle,
+          letterSpacing: Math.round(spec.letterSpacing * scale),
+          textTransform: spec.textTransform,
           textAlign: 'center',
         });
         addElement(element);
         canvas.beginTextEditing(element.id);
+      },
+
+      addFrame: (kind, at) => {
+        const { size } = store.getState().document;
+        const side = Math.round(Math.min(size.width, size.height) * 0.4);
+        const width = kind === 'frame-circle' ? side : Math.round(side * 1.25);
+        const height = side;
+        addElement(
+          createFrameElement({
+            ...placeAt(size, width, height, at),
+            width,
+            height,
+            shape: kind === 'frame-ellipse' || kind === 'frame-circle' ? 'ellipse' : 'rect',
+            cornerRadius: kind === 'frame-rounded' ? Math.round(side * 0.12) : 0,
+          }),
+        );
+      },
+
+      addTextPairing: (pairingId) => {
+        const pairing = FONT_PAIRINGS.find((candidate) => candidate.id === pairingId);
+        if (!pairing) return;
+        const { size } = store.getState().document;
+        const scale = Math.min(size.width, size.height) / 1080;
+        const headingSize = Math.max(12, Math.round(TEXT_PRESETS.heading.fontSize * scale));
+        const bodySize = Math.max(10, Math.round(TEXT_PRESETS.body.fontSize * scale));
+        const headingWidth = Math.round(size.width * TEXT_PRESETS.heading.widthRatio);
+        const bodyWidth = Math.round(size.width * TEXT_PRESETS.body.widthRatio);
+        const headingHeight = Math.round(headingSize * 1.2);
+        const bodyHeight = Math.round(bodySize * 1.4);
+        const gap = Math.round(32 * scale);
+        const top = Math.round((size.height - (headingHeight + gap + bodyHeight)) / 2);
+        const body = createTextElement({
+          x: Math.round((size.width - bodyWidth) / 2),
+          y: top + headingHeight + gap,
+          width: bodyWidth,
+          height: bodyHeight,
+          text: TEXT_PRESETS.body.text,
+          fontSize: bodySize,
+          fontFamily: pairing.bodyFamily,
+          textAlign: 'center',
+        });
+        const heading = createTextElement({
+          x: Math.round((size.width - headingWidth) / 2),
+          y: top,
+          width: headingWidth,
+          height: headingHeight,
+          text: TEXT_PRESETS.heading.text,
+          fontSize: headingSize,
+          fontWeight: pairing.headingWeight,
+          fontFamily: pairing.headingFamily,
+          textAlign: 'center',
+        });
+        // One undo step for the pair; the heading is added last so it ends up selected.
+        const mergeKey = `text-pairing:${heading.id}`;
+        dispatch({ type: 'element.add', pageId: pageId(), element: body }, { mergeKey });
+        dispatch({ type: 'element.add', pageId: pageId(), element: heading }, { mergeKey });
       },
 
       deleteSelection: () => {
@@ -226,6 +338,22 @@ export function useEditorActions(): EditorActions {
         if (updates.length > 0) {
           dispatch({ type: 'element.updateMany', pageId: page.id, updates }, { mergeKey: 'nudge' });
         }
+      },
+
+      nudgePhoto: (dx, dy) => {
+        const state = store.getState();
+        if (!state.photoPanId) return;
+        const page = selectActivePage(state);
+        const element = page.elements.find((candidate) => candidate.id === state.photoPanId);
+        if (element?.type !== 'frame' || element.locked || !element.assetId) return;
+        const asset = state.document.assets[element.assetId];
+        if (!asset) return;
+        const crop = panFramePhoto(element, asset, { x: dx, y: dy });
+        if (!crop) return;
+        dispatch(
+          { type: 'element.update', pageId: page.id, elementId: element.id, patch: { crop } },
+          { mergeKey: 'photo-pan' },
+        );
       },
 
       selectAll: () => {
@@ -320,6 +448,46 @@ export function useEditorActions(): EditorActions {
           { type: 'page.setBackground', pageId: pageId(), background: fill },
           mergeKey ? { mergeKey } : undefined,
         );
+      },
+
+      applyTemplate: (template) => {
+        const state = store.getState();
+        const source = template.pages[0];
+        if (!source) return;
+        // Template images must be registered before elements reference them.
+        for (const asset of Object.values(template.assets)) {
+          if (!(asset.id in state.document.assets)) {
+            dispatch({ type: 'asset.register', asset }, { recordHistory: false });
+          }
+        }
+        dispatch({
+          type: 'page.replaceContent',
+          pageId: state.activePageId,
+          background: source.background,
+          elements: fitElementsToSize(source.elements, template.size, state.document.size),
+        });
+        store.getState().setSelection([]);
+      },
+
+      addTemplatePage: (template) => {
+        const state = store.getState();
+        const source = template.pages[0];
+        if (!source) return;
+        for (const asset of Object.values(template.assets)) {
+          if (!(asset.id in state.document.assets)) {
+            dispatch({ type: 'asset.register', asset }, { recordHistory: false });
+          }
+        }
+        const pageId = generateId('page');
+        dispatch({
+          type: 'page.add',
+          afterPageId: state.activePageId,
+          pageId,
+          background: source.background,
+          elements: fitElementsToSize(source.elements, template.size, state.document.size),
+        });
+        store.getState().setActivePage(pageId);
+        store.getState().setSelection([]);
       },
 
       undo: () => store.getState().undo(),
