@@ -2,6 +2,8 @@ import {
   CANVAS_PRESETS,
   LIMITS,
   type DesignElement,
+  type FrameElement,
+  type FrameShape,
   type IconElement,
   type ImageElement,
   type ImageFit,
@@ -51,7 +53,9 @@ import {
 import { useId, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 
+import { BUNDLED_PHOTOS } from '../assets/photos/catalog';
 import { useEditorActions } from './actions';
+import { useImageImport } from './assets/useImageImport';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
 import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
 import { useEditor } from './hooks';
@@ -533,6 +537,129 @@ function TextProperties({ element }: { element: TextElement }) {
         value={element.color}
         onCommit={(color) => updateSelection({ color }, `color:${element.id}`)}
       />
+    </FieldGroup>
+  );
+}
+
+const FRAME_SHAPES: { value: FrameShape; label: string }[] = [
+  { value: 'rect', label: 'Rectangle' },
+  { value: 'ellipse', label: 'Ellipse' },
+];
+
+/**
+ * A frame is a mask with a photo in it. The panel keeps the two ideas apart: the mask (shape, fill)
+ * always applies, the photo section only appears once there is something to photograph.
+ */
+function FrameProperties({ element }: { element: FrameElement }) {
+  const { updateSelection } = useEditorActions();
+  const { insertPhoto } = useImageImport();
+  const shapeId = useId();
+  const fitId = useId();
+  const [picking, setPicking] = useState(false);
+  const hasPhoto = element.assetId !== undefined;
+
+  return (
+    <FieldGroup title="Shape & photo">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={shapeId}>Shape</Label>
+        <Select
+          id={shapeId}
+          value={element.shape}
+          onChange={(event) =>
+            updateSelection({ shape: event.target.value as FrameShape }, `shape:${element.id}`)
+          }
+        >
+          {FRAME_SHAPES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      {element.shape === 'rect' && (
+        <NumberField
+          label="Corner radius"
+          value={element.cornerRadius}
+          min={0}
+          max={LIMITS.maxElementDimension}
+          unit="px"
+          onCommit={(cornerRadius) =>
+            updateSelection({ cornerRadius }, `cornerRadius:${element.id}`)
+          }
+        />
+      )}
+      <ColorField
+        label="Fill"
+        value={element.fill.type === 'solid' ? element.fill.color : '#e5e7eb'}
+        onCommit={(color) =>
+          updateSelection({ fill: { type: 'solid', color } }, `fill:${element.id}`)
+        }
+      />
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium">Photo</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" onClick={() => setPicking((open) => !open)}>
+              {hasPhoto ? 'Replace photo' : 'Choose photo'}
+            </Button>
+            {hasPhoto && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  updateSelection({ assetId: undefined, crop: undefined }, `photo:${element.id}`)
+                }
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+        </div>
+        {picking && (
+          <div className="grid grid-cols-3 gap-1.5" role="listbox" aria-label="Choose a photo">
+            {BUNDLED_PHOTOS.map((photo) => (
+              <button
+                key={photo.id}
+                type="button"
+                role="option"
+                aria-selected={false}
+                aria-label={`Fill with ${photo.title}`}
+                onClick={() => {
+                  insertPhoto(photo.id, { frameId: element.id });
+                  setPicking(false);
+                }}
+                className="aspect-[4/3] overflow-hidden rounded-lg border border-border hover:border-primary/50"
+              >
+                <img
+                  src={photo.url}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="size-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        )}
+        {hasPhoto && (
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={fitId}>Photo fit</Label>
+            <Select
+              id={fitId}
+              value={element.fit}
+              onChange={(event) =>
+                updateSelection({ fit: event.target.value as ImageFit }, `fit:${element.id}`)
+              }
+            >
+              {IMAGE_FITS.map((fit) => (
+                <option key={fit.value} value={fit.value}>
+                  {fit.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+      </div>
     </FieldGroup>
   );
 }
@@ -1050,6 +1177,7 @@ function ElementProperties({ element }: { element: DesignElement }) {
       )}
       {element.type === 'text' && <TextProperties element={element} />}
       {element.type === 'icon' && <IconProperties element={element} />}
+      {element.type === 'frame' && <FrameProperties element={element} />}
       {element.type === 'image' && <ImageProperties element={element} />}
       <AlignControls elements={[element]} />
       <ArrangeControls elements={[element]} />

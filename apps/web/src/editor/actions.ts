@@ -1,5 +1,6 @@
 import {
   createEllipseElement,
+  createFrameElement,
   createIconElement,
   createPathElement,
   createRectElement,
@@ -30,6 +31,9 @@ import { FONT_PAIRINGS, TEXT_PRESETS, type TextPreset } from './textPresets';
 
 export type { TextPreset } from './textPresets';
 
+/** The frame shapes offered in the Elements panel. */
+export type FrameKind = 'frame-rect' | 'frame-rounded' | 'frame-ellipse' | 'frame-circle';
+
 export type ShapeKind =
   'rect' | 'rounded-rect' | 'ellipse' | 'line' | 'triangle' | 'star' | 'hexagon' | 'sparkle';
 
@@ -37,6 +41,8 @@ export interface EditorActions {
   /** Adds a shape in the middle of the page, or centred on `at` (page coordinates). */
   addShape: (kind: ShapeKind, at?: { x: number; y: number }) => void;
   addText: (preset: TextPreset, at?: { x: number; y: number }) => void;
+  /** Inserts an empty frame (a mask waiting for a photo). */
+  addFrame: (kind: FrameKind, at?: { x: number; y: number }) => void;
   /** Inserts the heading and body of a font pairing as one undo step. */
   addTextPairing: (pairingId: string) => void;
   /** Places a bundled icon; the id comes from `@opencanvas/icons`. */
@@ -245,6 +251,22 @@ export function useEditorActions(): EditorActions {
         });
         addElement(element);
         canvas.beginTextEditing(element.id);
+      },
+
+      addFrame: (kind, at) => {
+        const { size } = store.getState().document;
+        const side = Math.round(Math.min(size.width, size.height) * 0.4);
+        const width = kind === 'frame-circle' ? side : Math.round(side * 1.25);
+        const height = side;
+        addElement(
+          createFrameElement({
+            ...placeAt(size, width, height, at),
+            width,
+            height,
+            shape: kind === 'frame-ellipse' || kind === 'frame-circle' ? 'ellipse' : 'rect',
+            cornerRadius: kind === 'frame-rounded' ? Math.round(side * 0.12) : 0,
+          }),
+        );
       },
 
       addTextPairing: (pairingId) => {

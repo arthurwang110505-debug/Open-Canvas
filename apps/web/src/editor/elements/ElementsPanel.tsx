@@ -8,7 +8,7 @@ import { BUNDLED_PHOTO_LICENCE, searchBundledPhotos } from '../../assets/photos/
 import { useEditorActions } from '../actions';
 import { useImageImport } from '../assets/useImageImport';
 import { elementDragProps } from '../elements/drag';
-import { matchShape, SHAPE_ITEMS } from '../elements/shapeItems';
+import { FRAME_ITEMS, matchFrame, matchShape, SHAPE_ITEMS } from '../elements/shapeItems';
 
 /** How many icons one screen of results shows before asking the user to narrow it down. */
 const ICON_PAGE = 96;
@@ -16,11 +16,12 @@ const ICON_PAGE = 96;
 /** Photos shown in the unfiltered "All" view; the Photos chip shows the whole match set. */
 const PHOTO_PREVIEW = 8;
 
-type Category = 'all' | 'shapes' | 'icons' | 'photos';
+type Category = 'all' | 'shapes' | 'frames' | 'icons' | 'photos';
 
 const CATEGORIES: { id: Category; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'shapes', label: 'Shapes' },
+  { id: 'frames', label: 'Frames' },
   { id: 'icons', label: 'Icons' },
   { id: 'photos', label: 'Photos' },
 ];
@@ -30,7 +31,7 @@ const CATEGORIES: { id: Category; label: string }[] = [
  * here exists — there are no placeholder tiles for libraries that have not shipped yet.
  */
 export function ElementsPanel() {
-  const { addShape, addIcon } = useEditorActions();
+  const { addShape, addFrame, addIcon } = useEditorActions();
   const { insertPhoto } = useImageImport();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<Category>('all');
@@ -39,7 +40,7 @@ export function ElementsPanel() {
 
   const photos = useMemo(
     () =>
-      category === 'shapes' || category === 'icons'
+      category === 'shapes' || category === 'icons' || category === 'frames'
         ? []
         : searchBundledPhotos(deferredQuery).slice(
             0,
@@ -50,11 +51,20 @@ export function ElementsPanel() {
 
   const shapes = useMemo(
     () =>
-      category === 'icons' ? [] : SHAPE_ITEMS.filter((item) => matchShape(item, deferredQuery)),
+      category === 'icons' || category === 'frames'
+        ? []
+        : SHAPE_ITEMS.filter((item) => matchShape(item, deferredQuery)),
+    [category, deferredQuery],
+  );
+  const frames = useMemo(
+    () =>
+      category === 'icons' || category === 'shapes'
+        ? []
+        : FRAME_ITEMS.filter((item) => matchFrame(item, deferredQuery)),
     [category, deferredQuery],
   );
   const icons = useMemo(() => {
-    if (category === 'shapes') return [];
+    if (category === 'shapes' || category === 'frames') return [];
     const term = deferredQuery.trim();
     // Before anyone types, lead with the icons a page actually uses; an alphabetical dump of 372
     // is not a library, it is a directory.
@@ -68,7 +78,8 @@ export function ElementsPanel() {
   }, [category, deferredQuery]);
   const visibleIcons = icons.slice(0, ICON_PAGE);
 
-  const nothingMatches = shapes.length === 0 && icons.length === 0 && photos.length === 0;
+  const nothingMatches =
+    shapes.length === 0 && frames.length === 0 && icons.length === 0 && photos.length === 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -120,6 +131,30 @@ export function ElementsPanel() {
                 className="h-16 flex-col gap-1 rounded-xl p-1 text-[10px] font-normal hover:border-primary/30 hover:bg-primary/[0.04]"
                 onClick={() => addShape(item.kind)}
                 {...elementDragProps({ kind: 'shape', shape: item.kind })}
+              >
+                {item.icon}
+                <span className="w-full truncate text-center">{item.label}</span>
+              </Button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {frames.length > 0 && (
+        <section aria-label="Frames" className="flex flex-col gap-2">
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <LayoutGrid className="size-3" /> Frames
+          </h3>
+          <div className="grid grid-cols-4 gap-2">
+            {frames.map((item) => (
+              <Button
+                key={item.kind}
+                variant="outline"
+                aria-label={item.label}
+                title={`${item.label} — drop a photo on it to fill`}
+                className="h-16 flex-col gap-1 rounded-xl p-1 text-[10px] font-normal hover:border-primary/30 hover:bg-primary/[0.04]"
+                onClick={() => addFrame(item.kind)}
+                {...elementDragProps({ kind: 'frame', frame: item.kind })}
               >
                 {item.icon}
                 <span className="w-full truncate text-center">{item.label}</span>

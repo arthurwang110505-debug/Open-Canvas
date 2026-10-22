@@ -7,6 +7,7 @@ export const ELEMENT_TYPE_LABELS: Record<DesignElement['type'], string> = {
   image: 'Image',
   path: 'Draw',
   icon: 'Icon',
+  frame: 'Frame',
   group: 'Group',
 };
 
@@ -43,6 +44,9 @@ export function describeElement(
       const label = element.iconId.replace(/-/g, ' ');
       return label.charAt(0).toUpperCase() + label.slice(1);
     }
+    case 'frame':
+      // A frame is named after the photo inside it, so the layer list reads like the canvas.
+      return element.assetId ? (assets[element.assetId]?.name ?? 'Frame') : 'Empty frame';
     case 'group':
       return element.name?.trim() ? element.name.trim() : `${element.children.length} selected`;
   }

@@ -25,7 +25,7 @@ its acceptance tests pass in CI.
 - [ ] Group / ungroup (needs nested element ids, relative coordinates and group transforms in
       the document model — deliberately a separate slice)
 - [x] IndexedDB-backed image blobs (asset bytes live next to their project and survive reloads)
-- [ ] Image polish: `contain` fit, manual crop, replace image
+- [x] Image polish: `cover`/`fill` fit, replace image (`contain` and manual crop are unframed-image gaps; frames cover the mask case)
 - [ ] Text polish: font registry, loading states, rich defaults
 
 ## Milestone 3 — Projects and export (in progress)
@@ -35,7 +35,20 @@ its acceptance tests pass in CI.
 - [x] Native `.opencanvas` import/export with validation and migrations (ZIP container: manifest,
       canonical `document.json`, asset bytes; id collisions import as a copy)
 - [x] PNG, SVG and PDF export from the document model (`packages/export`; raster PDF, vector SVG)
-- [ ] Template registry seeded with ≥ 12 original templates and documented licenses
+- [x] Template registry seeded with ≥ 12 original templates and documented licenses
+
+## Canva-parity pass (tracked in [canva-parity-improvement-plan.md](canva-parity-improvement-plan.md))
+
+Delivered in Phase A/B and C1:
+
+- [x] Element library: 372-icon vector catalogue, shapes, and reorderable tabs
+- [x] 60-design template gallery generated from layout blueprints
+- [x] Linear/radial gradient fills for shapes and page backgrounds
+- [x] Text presets, display casing and bullet/numbered lists
+- [x] Bundled CC0 photo library (see [photos.md](photos.md))
+- [x] Photo frames: rect/oval masks with cover/fill and the same crop on the canvas and in exports
+
+Next in Phase C: drag-to-reposition inside a frame (C1b), then the remaining items in the plan.
 
 ## Milestone 4 — AI assistant
 

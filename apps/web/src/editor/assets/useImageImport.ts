@@ -19,6 +19,8 @@ const INSERT_RATIO = 0.6;
 export interface InsertOptions {
   /** Page point the image should be centered on; defaults to the page center. */
   at?: { x: number; y: number };
+  /** Frame to fill instead of adding a new image element (a photo dropped on a frame). */
+  frameId?: string;
 }
 
 export interface ImageImport {
@@ -59,11 +61,29 @@ export function useImageImport(): ImageImport {
       };
     };
 
+    /** Points an existing frame at an asset; the photo replaces whatever the frame held. */
+    const fillFrame = (frameId: string, asset: ImageAsset, mergeKey: string) => {
+      const { activePageId, dispatch, setSelection } = store.getState();
+      // Select the frame so the panel shows what the drop just changed.
+      setSelection([frameId]);
+      return dispatch(
+        {
+          type: 'element.update',
+          pageId: activePageId,
+          elementId: frameId,
+          // A new photo keeps the frame's shape and starts uncropped.
+          patch: { assetId: asset.id, crop: undefined },
+        },
+        { mergeKey },
+      );
+    };
+
     const addImageElement = (
       asset: ImageAsset,
       options: InsertOptions | undefined,
       mergeKey: string,
     ) => {
+      if (options?.frameId) return fillFrame(options.frameId, asset, mergeKey);
       const { activePageId, dispatch } = store.getState();
       const element = createImageElement({
         assetId: asset.id,
@@ -156,11 +176,12 @@ export function useImageImport(): ImageImport {
           return;
         }
         const { document } = store.getState();
+        const mergeKey = `insert-photo:${generateId()}`;
         const existing = Object.values(document.assets).find(
           (asset) => asset.source.type === 'bundled' && asset.source.photoId === photo.id,
         );
         if (existing) {
-          addImageElement(existing, options, `insert-photo:${generateId()}`);
+          addImageElement(existing, options, mergeKey);
           return;
         }
         const asset = createImageAsset({
@@ -171,7 +192,6 @@ export function useImageImport(): ImageImport {
           source: { type: 'bundled', photoId: photo.id },
         });
         // Register + add share a merge key so one Undo removes both, as with uploads.
-        const mergeKey = `insert-photo:${generateId()}`;
         const registered = store
           .getState()
           .dispatch({ type: 'asset.register', asset }, { mergeKey });

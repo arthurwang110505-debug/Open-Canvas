@@ -193,12 +193,49 @@ export function CanvasStage() {
       ? controller.clientToPage(event.clientX, event.clientY)
       : null;
 
+  /**
+   * The frame a drop lands on, if any: the top-most unlocked frame whose box contains the point.
+   * Dropping a photo there fills the frame instead of stacking a second element on top of it.
+   */
+  const frameAt = (point: { x: number; y: number } | null): string | null => {
+    if (!point) return null;
+    const state = store.getState();
+    const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+    if (!page) return null;
+    // The canvas is the page: a drop that lands slightly outside still belongs to the design.
+    const { width, height } = state.document.size;
+    const x = Math.min(Math.max(point.x, 0), width);
+    const y = Math.min(Math.max(point.y, 0), height);
+    for (let index = page.elements.length - 1; index >= 0; index -= 1) {
+      const element = page.elements[index];
+      if (
+        element?.type === 'frame' &&
+        element.visible &&
+        !element.locked &&
+        x >= element.x &&
+        x <= element.x + element.width &&
+        y >= element.y &&
+        y <= element.y + element.height
+      ) {
+        return element.id;
+      }
+    }
+    return null;
+  };
+
   /** The element's eventual page size in screen pixels, or `null` for an unknown drag. */
   const ghostSize = (event: DragEvent<HTMLDivElement>): number | null => {
     const payload = readElementDragPayload(event.dataTransfer);
     if (!payload) return null;
     const { size } = store.getState().document;
-    const fraction = payload.kind === 'icon' ? 0.2 : payload.kind === 'photo' ? 0.45 : 0.3;
+    const fraction =
+      payload.kind === 'icon'
+        ? 0.2
+        : payload.kind === 'photo'
+          ? 0.45
+          : payload.kind === 'frame'
+            ? 0.4
+            : 0.3;
     return Math.round(Math.min(size.width, size.height) * fraction * zoom);
   };
 
@@ -231,15 +268,24 @@ export function CanvasStage() {
       setGhost(null);
       const at = pagePoint(event) ?? undefined;
       if (payload.kind === 'icon') actions.addIcon(payload.iconId, at);
-      else if (payload.kind === 'photo') insertPhoto(payload.photoId, at ? { at } : undefined);
+      else if (payload.kind === 'photo') {
+        // A photo dropped on a frame fills it; anywhere else it becomes an image element.
+        const frameId = frameAt(pagePoint(event));
+        insertPhoto(payload.photoId, frameId ? { frameId } : at ? { at } : undefined);
+      } else if (payload.kind === 'frame') actions.addFrame(payload.frame, at);
       else actions.addShape(payload.shape, at);
       return;
     }
     if (!hasFiles(event)) return;
     event.preventDefault();
     setDropActive(false);
-    const at = pagePoint(event);
-    void importFiles(Array.from(event.dataTransfer.files), at ? { at } : undefined);
+    const point = pagePoint(event);
+    const at = point ?? undefined;
+    const frameId = frameAt(point);
+    void importFiles(
+      Array.from(event.dataTransfer.files),
+      frameId ? { frameId } : at ? { at } : undefined,
+    );
   };
 
   // Drawing handlers — page-coords via controller.clientToPage, preview via adapter

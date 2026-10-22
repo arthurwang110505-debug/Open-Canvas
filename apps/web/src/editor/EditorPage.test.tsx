@@ -315,6 +315,7 @@ const _exhaustive: Record<DesignElement['type'], true> = {
   image: true,
   icon: true,
   path: true,
+  frame: true,
   group: true,
 };
 void _exhaustive;

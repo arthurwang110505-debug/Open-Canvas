@@ -3,6 +3,7 @@ import { selectActivePage } from '@opencanvas/editor-core';
 import { Button, Input, Tooltip, cn } from '@opencanvas/ui';
 import {
   Circle,
+  Frame,
   Eye,
   EyeOff,
   GripVertical,
@@ -36,6 +37,7 @@ const TYPE_ICONS: Record<DesignElement['type'], ReactNode> = {
   image: <ImageIcon />,
   icon: <Shapes />,
   path: <PenTool />,
+  frame: <Frame />,
   group: <Users />,
 };
 

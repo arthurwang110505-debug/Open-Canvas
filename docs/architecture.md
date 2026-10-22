@@ -37,11 +37,11 @@ Node consumer (`apps/api`) needs it.
 
 ## 2. Document model (`packages/document`)
 
-- **Schema version** `9` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
+- **Schema version** `10` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
 - **Structure**: `DesignDocument { id, name, size, pages[], assets, metadata }` →
   `Page { id, background, elements[] }` → `DesignElement` (discriminated union on `type`:
-  `rect`, `ellipse`, `text`, `image`, `path`, `icon`, `group`). Z-order is array order (index 0
-  = back).
+  `rect`, `ellipse`, `text`, `image`, `path`, `icon`, `frame`, `group`). Z-order is array order
+  (index 0 = back).
 - **Fills** are a discriminated union: `solid`, `none`, `linear` (an angle plus 2–8 ordered
   stops) and `radial`. Page backgrounds use the same type. Gradient coordinates are expressed as
   fractions of the shape's box, which is both SVG's `objectBoundingBox` unit and Fabric's
@@ -59,6 +59,11 @@ byteSize?, source, createdAt }`. It carries **metadata only** — bytes live in 
 - **Geometry convention**: `x`/`y` is the top-left corner of the un-rotated element; `rotation`
   (degrees, clockwise) is applied around that corner. This equals SVG
   `translate(x y) rotate(r)` and is what exporters will implement.
+- **Frames** are a mask with an optional photo: `{ shape: 'rect' | 'ellipse', cornerRadius,
+assetId?, fit, crop?, fill }`. The mask is the element's own shape, so a frame can sit empty as
+  a placeholder and be filled later by a drop, and resizing it re-masks the photo instead of
+  stretching it. The document stores the same asset geometry an image element would (`cover`
+  crops, `fill` stretches, `crop` is a source window), which is why canvas and SVG agree.
 - **Icons** store `{ iconId, color, strokeWidth }` rather than shape data: the geometry lives in
   `@opencanvas/icons`, so an icon costs ~80 bytes in the document, recolours and scales without
   loss. `iconId` is validated as a slug, and an id from a newer build renders as nothing while

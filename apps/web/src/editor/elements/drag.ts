@@ -1,6 +1,6 @@
 import type { DragEvent } from 'react';
 
-import type { ShapeKind } from '../actions';
+import type { FrameKind, ShapeKind } from '../actions';
 
 /**
  * What the Elements panel drags onto the canvas. A custom MIME type keeps these drags apart from
@@ -10,8 +10,16 @@ export const ELEMENT_DRAG_MIME = 'application/x-opencanvas-element';
 
 export type ElementDragPayload =
   | { kind: 'shape'; shape: ShapeKind }
+  | { kind: 'frame'; frame: FrameKind }
   | { kind: 'icon'; iconId: string }
   | { kind: 'photo'; photoId: string };
+
+const FRAME_KINDS: ReadonlySet<string> = new Set<FrameKind>([
+  'frame-rect',
+  'frame-rounded',
+  'frame-ellipse',
+  'frame-circle',
+]);
 
 const SHAPE_KINDS: ReadonlySet<string> = new Set<ShapeKind>([
   'rect',
@@ -48,6 +56,11 @@ export function parseElementDragPayload(raw: string): ElementDragPayload | null 
   if (parsed['kind'] === 'shape' && typeof parsed['shape'] === 'string') {
     return SHAPE_KINDS.has(parsed['shape'])
       ? { kind: 'shape', shape: parsed['shape'] as ShapeKind }
+      : null;
+  }
+  if (parsed['kind'] === 'frame' && typeof parsed['frame'] === 'string') {
+    return FRAME_KINDS.has(parsed['frame'])
+      ? { kind: 'frame', frame: parsed['frame'] as FrameKind }
       : null;
   }
   if (parsed['kind'] === 'icon' && typeof parsed['iconId'] === 'string') {
