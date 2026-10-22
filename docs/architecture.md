@@ -37,7 +37,7 @@ Node consumer (`apps/api`) needs it.
 
 ## 2. Document model (`packages/document`)
 
-- **Schema version** `8` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
+- **Schema version** `9` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
 - **Structure**: `DesignDocument { id, name, size, pages[], assets, metadata }` →
   `Page { id, background, elements[] }` → `DesignElement` (discriminated union on `type`:
   `rect`, `ellipse`, `text`, `image`, `path`, `icon`, `group`). Z-order is array order (index 0
@@ -50,7 +50,9 @@ Node consumer (`apps/api`) needs it.
   document that renders two different ways is worse than one that refuses to load.
 - **Assets**: `assets` is a record of `ImageAsset { id, kind, name?, mimeType, width, height,
 byteSize?, source, createdAt }`. It carries **metadata only** — bytes live in an asset store
-  keyed by id (`source: { type: 'local' }`) or behind an http(s) URL (`source: { type: 'url' }`).
+  keyed by id (`source: { type: 'local' }`), behind an http(s) URL (`source: { type: 'url' }`), or
+  in the app's own photo library (`source: { type: 'bundled', photoId }`; see
+  [photos.md](photos.md)).
   `image` elements reference assets by `assetId` and choose a `fit` (`cover` crops to fill the
   box, `fill` stretches). A document-level check rejects images whose asset is not registered,
   so a document can never reference bytes it does not know about.

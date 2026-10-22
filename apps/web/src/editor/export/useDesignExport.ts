@@ -11,6 +11,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { useAssetServices } from '../assets/useAssetServices';
 import { useEditorStore, useNotificationStore } from '../hooks';
+import { bundledPhotoUrl } from '../../assets/photos/catalog';
 import { ensureFontsLoaded } from '../../fonts/embed';
 import { useExportServices } from './useExportServices';
 import { exportFileName, type ExportExtension } from '../../fileNames';
@@ -49,6 +50,15 @@ export function useDesignExport(): DesignExportApi {
   const resolveImageHref = useCallback(
     async (asset: ImageAsset): Promise<string> => {
       if (asset.source.type === 'url') return asset.source.url;
+      if (asset.source.type === 'bundled') {
+        // An export must be self-contained, so the bundled file is inlined rather than linked by
+        // a path that only resolves inside the app.
+        const url = bundledPhotoUrl(asset.source.photoId);
+        if (!url) throw new Error('the photo it uses is not part of this version of OpenCanvas');
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('its bundled photo could not be read');
+        return blobToDataUrl(await response.blob());
+      }
       const blob = await blobStore.get(asset.id);
       if (!blob) {
         // The SVG renderer prefixes this with the asset name, so keep it a clause.

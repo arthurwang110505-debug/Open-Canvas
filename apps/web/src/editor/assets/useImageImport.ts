@@ -1,5 +1,6 @@
 import {
   LIMITS,
+  createImageAsset,
   createImageElement,
   fitWithin,
   generateId,
@@ -8,6 +9,7 @@ import {
 import { importImageFile } from '@opencanvas/storage';
 import { useMemo, useState } from 'react';
 
+import { findBundledPhoto } from '../../assets/photos/catalog';
 import { useEditorStore, useNotificationStore } from '../hooks';
 import { useAssetServices } from './useAssetServices';
 
@@ -24,6 +26,11 @@ export interface ImageImport {
   importFiles: (files: Iterable<File>, options?: InsertOptions) => Promise<void>;
   /** Places an already registered asset on the active page. */
   insertAsset: (assetId: string, options?: InsertOptions) => void;
+  /**
+   * Places a photo from the bundled library. The document references the photo id instead of
+   * storing bytes, and a photo already used in this document is reused rather than duplicated.
+   */
+  insertPhoto: (photoId: string, options?: InsertOptions) => void;
   /**
    * Removes an unused asset record from the document. Its bytes stay in the session store
    * so Undo can bring the upload back. Nothing prunes unreferenced blobs yet; deleting the project
@@ -136,6 +143,41 @@ export function useImageImport(): ImageImport {
           return;
         }
         addImageElement(asset, options, `insert-asset:${generateId()}`);
+      },
+
+      insertPhoto: (photoId: string, options?: InsertOptions) => {
+        const photo = findBundledPhoto(photoId);
+        if (!photo) {
+          notifications.getState().show({
+            kind: 'error',
+            title: 'Photo unavailable',
+            message: 'This version of OpenCanvas does not include that photo.',
+          });
+          return;
+        }
+        const { document } = store.getState();
+        const existing = Object.values(document.assets).find(
+          (asset) => asset.source.type === 'bundled' && asset.source.photoId === photo.id,
+        );
+        if (existing) {
+          addImageElement(existing, options, `insert-photo:${generateId()}`);
+          return;
+        }
+        const asset = createImageAsset({
+          name: photo.title,
+          mimeType: 'image/webp',
+          width: photo.width,
+          height: photo.height,
+          source: { type: 'bundled', photoId: photo.id },
+        });
+        // Register + add share a merge key so one Undo removes both, as with uploads.
+        const mergeKey = `insert-photo:${generateId()}`;
+        const registered = store
+          .getState()
+          .dispatch({ type: 'asset.register', asset }, { mergeKey });
+        if (!registered.ok) return;
+        const added = addImageElement(asset, options, mergeKey);
+        if (!added.ok) store.getState().undo();
       },
 
       removeAsset: (assetId: string) => {

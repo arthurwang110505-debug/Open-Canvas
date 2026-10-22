@@ -6,6 +6,7 @@ import {
 } from '@opencanvas/storage';
 import { useEffect, useState, type ReactNode } from 'react';
 
+import { bundledPhotoUrl } from '../../assets/photos/catalog';
 import { AssetContext, type AssetServices } from './AssetContext';
 
 export interface AssetProviderProps {
@@ -20,7 +21,8 @@ function createServices(overrides: Partial<AssetServices>): AssetServices {
   return {
     blobStore,
     objectUrls,
-    resolveAssetUrl: overrides.resolveAssetUrl ?? createAssetResolver({ objectUrls }),
+    resolveAssetUrl:
+      overrides.resolveAssetUrl ?? createAssetResolver({ objectUrls, bundledPhotoUrl }),
     decode: overrides.decode ?? browserImageDecoder,
     ...(overrides.loadImage ? { loadImage: overrides.loadImage } : {}),
   };

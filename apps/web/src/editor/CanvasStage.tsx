@@ -30,7 +30,7 @@ export function CanvasStage() {
   const controller = useCanvasController();
   const notifications = useNotificationStore();
   const assetServices = useAssetServices();
-  const { importFiles } = useImageImport();
+  const { importFiles, insertPhoto } = useImageImport();
   const { enabled: drawEnabled, strokeColor, strokeWidth } = useDraw();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -198,7 +198,7 @@ export function CanvasStage() {
     const payload = readElementDragPayload(event.dataTransfer);
     if (!payload) return null;
     const { size } = store.getState().document;
-    const fraction = payload.kind === 'icon' ? 0.2 : 0.3;
+    const fraction = payload.kind === 'icon' ? 0.2 : payload.kind === 'photo' ? 0.45 : 0.3;
     return Math.round(Math.min(size.width, size.height) * fraction * zoom);
   };
 
@@ -231,6 +231,7 @@ export function CanvasStage() {
       setGhost(null);
       const at = pagePoint(event) ?? undefined;
       if (payload.kind === 'icon') actions.addIcon(payload.iconId, at);
+      else if (payload.kind === 'photo') insertPhoto(payload.photoId, at ? { at } : undefined);
       else actions.addShape(payload.shape, at);
       return;
     }

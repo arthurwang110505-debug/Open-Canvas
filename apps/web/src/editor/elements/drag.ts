@@ -9,7 +9,9 @@ import type { ShapeKind } from '../actions';
 export const ELEMENT_DRAG_MIME = 'application/x-opencanvas-element';
 
 export type ElementDragPayload =
-  { kind: 'shape'; shape: ShapeKind } | { kind: 'icon'; iconId: string };
+  | { kind: 'shape'; shape: ShapeKind }
+  | { kind: 'icon'; iconId: string }
+  | { kind: 'photo'; photoId: string };
 
 const SHAPE_KINDS: ReadonlySet<string> = new Set<ShapeKind>([
   'rect',
@@ -53,6 +55,12 @@ export function parseElementDragPayload(raw: string): ElementDragPayload | null 
     // Same shape the document schema enforces, so a drop can never create an invalid element.
     return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(iconId) && iconId.length <= 64
       ? { kind: 'icon', iconId }
+      : null;
+  }
+  if (parsed['kind'] === 'photo' && typeof parsed['photoId'] === 'string') {
+    const photoId = parsed['photoId'];
+    return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(photoId) && photoId.length <= 64
+      ? { kind: 'photo', photoId }
       : null;
   }
   return null;

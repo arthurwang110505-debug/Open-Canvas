@@ -1,22 +1,28 @@
 import { IconPreview } from '../panels/IconPicker';
 import { popularIcons, searchIcons } from '@opencanvas/icons';
 import { Button, Input, cn } from '@opencanvas/ui';
-import { LayoutGrid, Search } from 'lucide-react';
+import { Camera, LayoutGrid, Search } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
 
+import { BUNDLED_PHOTO_LICENCE, searchBundledPhotos } from '../../assets/photos/catalog';
 import { useEditorActions } from '../actions';
+import { useImageImport } from '../assets/useImageImport';
 import { elementDragProps } from '../elements/drag';
 import { matchShape, SHAPE_ITEMS } from '../elements/shapeItems';
 
 /** How many icons one screen of results shows before asking the user to narrow it down. */
 const ICON_PAGE = 96;
 
-type Category = 'all' | 'shapes' | 'icons';
+/** Photos shown in the unfiltered "All" view; the Photos chip shows the whole match set. */
+const PHOTO_PREVIEW = 8;
+
+type Category = 'all' | 'shapes' | 'icons' | 'photos';
 
 const CATEGORIES: { id: Category; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'shapes', label: 'Shapes' },
   { id: 'icons', label: 'Icons' },
+  { id: 'photos', label: 'Photos' },
 ];
 
 /**
@@ -25,9 +31,22 @@ const CATEGORIES: { id: Category; label: string }[] = [
  */
 export function ElementsPanel() {
   const { addShape, addIcon } = useEditorActions();
+  const { insertPhoto } = useImageImport();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<Category>('all');
+  const [licenceOpen, setLicenceOpen] = useState(false);
   const deferredQuery = useDeferredValue(query);
+
+  const photos = useMemo(
+    () =>
+      category === 'shapes' || category === 'icons'
+        ? []
+        : searchBundledPhotos(deferredQuery).slice(
+            0,
+            category === 'photos' ? Number.POSITIVE_INFINITY : PHOTO_PREVIEW,
+          ),
+    [category, deferredQuery],
+  );
 
   const shapes = useMemo(
     () =>
@@ -49,7 +68,7 @@ export function ElementsPanel() {
   }, [category, deferredQuery]);
   const visibleIcons = icons.slice(0, ICON_PAGE);
 
-  const nothingMatches = shapes.length === 0 && icons.length === 0;
+  const nothingMatches = shapes.length === 0 && icons.length === 0 && photos.length === 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -107,6 +126,64 @@ export function ElementsPanel() {
               </Button>
             ))}
           </div>
+        </section>
+      )}
+
+      {photos.length > 0 && (
+        <section aria-label="Photos" className="flex flex-col gap-2">
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <Camera className="size-3" /> Photos
+          </h3>
+          <div className="grid grid-cols-2 gap-2" role="listbox" aria-label="Photos">
+            {photos.map((photo) => (
+              <Button
+                key={photo.id}
+                variant="outline"
+                role="option"
+                aria-selected={false}
+                aria-label={`Insert photo ${photo.title}`}
+                title={photo.title}
+                className="h-16 overflow-hidden rounded-xl p-0 hover:border-primary/30"
+                onClick={() => insertPhoto(photo.id)}
+                {...elementDragProps({ kind: 'photo', photoId: photo.id })}
+              >
+                <img
+                  src={photo.url}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  width={photo.width}
+                  height={photo.height}
+                  className="size-full object-cover"
+                />
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-muted-foreground">
+            <span>{BUNDLED_PHOTO_LICENCE.name} · no attribution needed</span>
+            <button
+              type="button"
+              aria-expanded={licenceOpen}
+              onClick={() => setLicenceOpen((open) => !open)}
+              className="rounded underline decoration-dotted underline-offset-2 hover:text-foreground"
+            >
+              See licence
+            </button>
+          </div>
+          {licenceOpen ? (
+            <p role="note" className="rounded-lg bg-muted/60 p-2 text-[11px] leading-relaxed">
+              {BUNDLED_PHOTO_LICENCE.summary}{' '}
+              <a
+                href={BUNDLED_PHOTO_LICENCE.href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Read the {BUNDLED_PHOTO_LICENCE.name} licence
+              </a>
+              . Photos are stored in the app, so they keep working offline and are never uploaded.
+            </p>
+          ) : null}
         </section>
       )}
 

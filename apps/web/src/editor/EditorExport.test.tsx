@@ -232,6 +232,72 @@ describe('exporting a design', () => {
     expect(svg).toContain(`href="data:image/png;base64,${btoa('logo-bytes')}"`);
   });
 
+  it('inlines a bundled photo so the export does not depend on the app path', async () => {
+    const document = createBlankDocument({ id: 'doc_photo', name: 'Photo', now: fixedDate });
+    const asset = createImageAsset({
+      id: 'asset_photo',
+      name: 'Alpine lake',
+      mimeType: 'image/webp',
+      width: 1408,
+      height: 768,
+      source: { type: 'bundled', photoId: 'alpine-lake' },
+      now: fixedDate,
+    });
+    document.assets[asset.id] = asset;
+    document.pages[0]?.elements.push(
+      createImageElement({ id: 'i1', assetId: asset.id, width: 200, height: 109 }),
+    );
+    // The photo is served by the app, so the exporter has to fetch the file to inline it.
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        blob: () => Promise.resolve(new Blob(['photo-bytes'], { type: 'image/webp' })),
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const { user, downloads } = renderEditor(document);
+      await exportFormat(user, 'SVG');
+
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('alpine-lake'));
+      const svg = await downloads[0]?.blob.text();
+      expect(svg).toContain(`href="data:image/webp;base64,${btoa('photo-bytes')}"`);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reports a photo this build does not include', async () => {
+    const document = createBlankDocument({
+      id: 'doc_photo_missing',
+      name: 'Photo',
+      now: fixedDate,
+    });
+    const asset = createImageAsset({
+      id: 'asset_photo',
+      name: 'Removed photo',
+      mimeType: 'image/webp',
+      width: 1408,
+      height: 768,
+      source: { type: 'bundled', photoId: 'gone-photo' },
+      now: fixedDate,
+    });
+    document.assets[asset.id] = asset;
+    document.pages[0]?.elements.push(createImageElement({ id: 'i1', assetId: asset.id }));
+
+    const { user, downloads } = renderEditor(document);
+    await exportFormat(user, 'SVG');
+
+    expect(
+      await screen.findByText(
+        'The image "Removed photo" could not be embedded: the photo it uses is not part of this version of OpenCanvas',
+        { exact: false },
+      ),
+    ).toBeInTheDocument();
+    expect(downloads).toEqual([]);
+  });
+
   it('reports an image whose bytes are gone', async () => {
     const document = createBlankDocument({ id: 'doc_gone', name: 'Flyer', now: fixedDate });
     const asset = createImageAsset({
