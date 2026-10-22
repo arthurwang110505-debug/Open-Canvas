@@ -1,14 +1,15 @@
-import type {
-  DesignElement,
-  EllipseElement,
-  Fill,
-  IconElement,
-  ImageElement,
-  ImageFit,
-  PathElement,
-  PathPoint,
-  RectElement,
-  TextElement,
+import {
+  linearGradientCoords,
+  type DesignElement,
+  type EllipseElement,
+  type Fill,
+  type IconElement,
+  type ImageElement,
+  type ImageFit,
+  type PathElement,
+  type PathPoint,
+  type RectElement,
+  type TextElement,
 } from '@opencanvas/document';
 import { getIcon, ICON_VIEWBOX, iconShapeToPathData, type IconShape } from '@opencanvas/icons';
 
@@ -121,13 +122,48 @@ export function geometryFromTransform(
  */
 export const FABRIC_FONT_SIZE_MULT = 1.13;
 
-export function fillToFabric(fill: Fill): string {
+/**
+ * A fill as plain data, so this module never imports Fabric and stays unit-testable. The adapter
+ * turns a gradient spec into a real `Gradient`; its coordinates are fractions of the shape's
+ * bounding box, matching SVG's `objectBoundingBox` units exactly.
+ */
+export type FabricFill =
+  | string
+  | {
+      type: 'linear';
+      coords: { x1: number; y1: number; x2: number; y2: number };
+      colorStops: { offset: number; color: string }[];
+    }
+  | {
+      type: 'radial';
+      coords: { x1: number; y1: number; r1: number; x2: number; y2: number; r2: number };
+      colorStops: { offset: number; color: string }[];
+    };
+
+export function fillToFabric(fill: Fill): FabricFill {
   switch (fill.type) {
     case 'solid':
       return fill.color;
     case 'none':
       return '';
+    case 'linear':
+      return {
+        type: 'linear',
+        coords: linearGradientCoords(fill.angle),
+        colorStops: fill.stops.map((stop) => ({ offset: stop.offset, color: stop.color })),
+      };
+    case 'radial':
+      return {
+        type: 'radial',
+        coords: { x1: 0.5, y1: 0.5, r1: 0, x2: 0.5, y2: 0.5, r2: 0.5 },
+        colorStops: fill.stops.map((stop) => ({ offset: stop.offset, color: stop.color })),
+      };
   }
+}
+
+/** Identifies a fill's appearance, so the adapter can skip re-creating an identical gradient. */
+export function fillSignature(fill: FabricFill): string {
+  return typeof fill === 'string' ? `solid:${fill}` : JSON.stringify(fill);
 }
 
 export interface CommonFabricProps {
@@ -149,7 +185,7 @@ export interface CommonFabricProps {
 export interface RectFabricProps extends CommonFabricProps {
   width: number;
   height: number;
-  fill: string;
+  fill: FabricFill;
   stroke: string;
   strokeWidth: number;
   strokeUniform: true;
@@ -160,7 +196,7 @@ export interface RectFabricProps extends CommonFabricProps {
 export interface EllipseFabricProps extends CommonFabricProps {
   rx: number;
   ry: number;
-  fill: string;
+  fill: FabricFill;
   stroke: string;
   strokeWidth: number;
   strokeUniform: true;
@@ -209,7 +245,7 @@ export interface PathFabricProps extends CommonFabricProps {
   strokeUniform: true;
   strokeLineCap: 'round';
   strokeLineJoin: 'round';
-  fill: string;
+  fill: FabricFill;
 }
 
 /**

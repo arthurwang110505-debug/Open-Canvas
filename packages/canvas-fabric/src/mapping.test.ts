@@ -1,10 +1,18 @@
-import { createEllipseElement, createRectElement, createTextElement } from '@opencanvas/document';
+import {
+  createEllipseElement,
+  createRectElement,
+  createTextElement,
+  linearFill,
+  radialFill,
+} from '@opencanvas/document';
 import { describe, expect, it } from 'vitest';
 
 import {
   FABRIC_FONT_SIZE_MULT,
   centerToTopLeft,
   elementToFabricProps,
+  fillSignature,
+  fillToFabric,
   geometryFromTransform,
   normalizeAngle,
   patchFromTransform,
@@ -179,5 +187,52 @@ describe('patchFromTransform', () => {
     );
     expect(patch.fontSize).toBe(40);
     expect(patch.width).toBe(400);
+  });
+});
+
+describe('gradient fills', () => {
+  it('converts a linear fill into fraction coordinates the SVG exporter also uses', () => {
+    const fill = fillToFabric(linearFill(90, ['#0f172a', '#38bdf8']));
+    // 90° runs left to right; percentages are object-bounding-box fractions, matching SVG.
+    if (typeof fill === 'string') throw new Error('expected a gradient spec');
+    expect(fill).toMatchObject({
+      type: 'linear',
+      colorStops: [
+        { offset: 0, color: '#0f172a' },
+        { offset: 1, color: '#38bdf8' },
+      ],
+    });
+    expect(fill.coords.x1).toBeCloseTo(0);
+    expect(fill.coords.x2).toBeCloseTo(1);
+    expect(fill.coords.y1).toBeCloseTo(0.5);
+    expect(fill.coords.y2).toBeCloseTo(0.5);
+  });
+
+  it('converts a radial fill into a centred circle', () => {
+    expect(fillToFabric(radialFill(['#ffffff', '#000000']))).toMatchObject({
+      type: 'radial',
+      coords: { x1: 0.5, y1: 0.5, r1: 0, x2: 0.5, y2: 0.5, r2: 0.5 },
+    });
+  });
+
+  it('passes solid and empty fills through unchanged', () => {
+    expect(fillToFabric({ type: 'solid', color: '#ff0000' })).toBe('#ff0000');
+    expect(fillToFabric({ type: 'none' })).toBe('');
+  });
+
+  it('gives identical paints the same signature and different ones a different signature', () => {
+    const a = fillToFabric(linearFill(90, ['#000000', '#ffffff']));
+    const b = fillToFabric(linearFill(90, ['#000000', '#ffffff']));
+    const c = fillToFabric(linearFill(91, ['#000000', '#ffffff']));
+    expect(fillSignature(a)).toBe(fillSignature(b));
+    expect(fillSignature(a)).not.toBe(fillSignature(c));
+  });
+
+  it('carries the gradient into the mapped element properties', () => {
+    const mapped = elementToFabricProps(
+      createRectElement({ id: 'r1', fill: linearFill(180, ['#fef3c7', '#b45309']) }),
+    );
+    if (mapped.kind !== 'rect') throw new Error('expected a rect');
+    expect(mapped.props.fill).toMatchObject({ type: 'linear' });
   });
 });

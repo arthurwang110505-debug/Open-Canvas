@@ -1,11 +1,13 @@
 import {
   err,
   findPage,
+  linearGradientCoords,
   ok,
   type DesignDocument,
   type DesignElement,
   type EllipseElement,
   type Fill,
+  type GradientFill,
   type IconElement,
   type ImageAsset,
   type ImageElement,
@@ -24,6 +26,17 @@ import { describeCause, type ExportError } from './types';
 
 /** Turns an asset into an embeddable reference (a `data:` URL keeps the file portable). */
 export type ImageHrefResolver = (asset: ImageAsset) => Promise<string> | string;
+
+/**
+ * Gradients are declared once per distinct paint and referenced by id. Ids are counters, never
+ * document data, so a crafted document cannot smuggle markup into an attribute.
+ */
+interface RenderContext {
+  hrefs: ReadonlyMap<string, string>;
+  measure?: TextMeasurer;
+  gradientIds: Map<string, string>;
+  gradients: string[];
+}
 
 export interface SvgPageOptions {
   /** Defaults to the first page. */
@@ -75,8 +88,46 @@ function clampScale(scale: number): number {
   return Math.min(Math.max(scale, 0.05), 16);
 }
 
-function fillAttributes(fill: Fill): string {
-  return fill.type === 'solid' ? ` fill="${escapeXml(fill.color)}"` : ' fill="none"';
+/**
+ * A gradient as an SVG `<linearGradient>`/`<radialGradient>` in `objectBoundingBox` units. The
+ * canvas adapter uses Fabric's `percentage` units, which are the same fractions, so a gradient
+ * sits identically on the canvas and in an exported file.
+ */
+function gradientMarkup(id: string, fill: GradientFill): string {
+  const stops = fill.stops
+    .map(
+      (stop) =>
+        `      <stop offset="${formatNumber(stop.offset)}" stop-color="${escapeXml(stop.color)}"/>`,
+    )
+    .join('\n');
+  if (fill.type === 'linear') {
+    const { x1, y1, x2, y2 } = linearGradientCoords(fill.angle);
+    return [
+      `    <linearGradient id="${id}" x1="${formatNumber(x1)}" y1="${formatNumber(
+        y1,
+      )}" x2="${formatNumber(x2)}" y2="${formatNumber(y2)}">`,
+      stops,
+      `    </linearGradient>`,
+    ].join('\n');
+  }
+  return [
+    `    <radialGradient id="${id}" cx="0.5" cy="0.5" r="0.5">`,
+    stops,
+    `    </radialGradient>`,
+  ].join('\n');
+}
+
+function fillAttributes(fill: Fill, context: RenderContext): string {
+  if (fill.type === 'none') return ' fill="none"';
+  if (fill.type === 'solid') return ` fill="${escapeXml(fill.color)}"`;
+  const signature = JSON.stringify(fill);
+  let id = context.gradientIds.get(signature);
+  if (!id) {
+    id = `grad-${context.gradientIds.size + 1}`;
+    context.gradientIds.set(signature, id);
+    context.gradients.push(gradientMarkup(id, fill));
+  }
+  return ` fill="url(#${id})"`;
 }
 
 function strokeAttributes(stroke: Stroke | undefined): string {
@@ -89,20 +140,20 @@ function cornerRadius(element: RectElement): number {
   return Math.min(element.cornerRadius, element.width / 2, element.height / 2);
 }
 
-function renderRect(element: RectElement): string {
+function renderRect(element: RectElement, context: RenderContext): string {
   const radius = cornerRadius(element);
   const rounded = radius > 0 ? ` rx="${formatNumber(radius)}"` : '';
   return `    <rect width="${formatNumber(element.width)}" height="${formatNumber(
     element.height,
-  )}"${rounded}${fillAttributes(element.fill)}${strokeAttributes(element.stroke)}/>`;
+  )}"${rounded}${fillAttributes(element.fill, context)}${strokeAttributes(element.stroke)}/>`;
 }
 
-function renderEllipse(element: EllipseElement): string {
+function renderEllipse(element: EllipseElement, context: RenderContext): string {
   const rx = element.width / 2;
   const ry = element.height / 2;
   return `    <ellipse cx="${formatNumber(rx)}" cy="${formatNumber(ry)}" rx="${formatNumber(
     rx,
-  )}" ry="${formatNumber(ry)}"${fillAttributes(element.fill)}${strokeAttributes(element.stroke)}/>`;
+  )}" ry="${formatNumber(ry)}"${fillAttributes(element.fill, context)}${strokeAttributes(element.stroke)}/>`;
 }
 
 function textAnchor(alignment: TextElement['textAlign']): 'start' | 'middle' | 'end' {
@@ -195,7 +246,7 @@ function renderImage(element: ImageElement, hrefs: ReadonlyMap<string, string>):
   return `    <image href="${escapeXml(href)}" width="${formatNumber(element.width)}" height="${formatNumber(element.height)}" preserveAspectRatio="${aspect}"${transform}${filter}/>`;
 }
 
-function renderPath(element: PathElement): string {
+function renderPath(element: PathElement, context: RenderContext): string {
   if (element.points.length === 0) return '';
   const [first, ...rest] = element.points;
   if (!first) return '';
@@ -206,7 +257,7 @@ function renderPath(element: PathElement): string {
     element.stroke.width > 0
       ? ` stroke="${escapeXml(element.stroke.color)}" stroke-width="${formatNumber(element.stroke.width)}" stroke-linecap="round" stroke-linejoin="round"`
       : '';
-  const fill = fillAttributes(element.fill);
+  const fill = fillAttributes(element.fill, context);
   return `    <path d="${d}"${fill}${stroke}/>`;
 }
 
@@ -222,34 +273,30 @@ function collectImages(elements: readonly DesignElement[]): ImageElement[] {
   return out;
 }
 
-function renderElement(
-  element: DesignElement,
-  hrefs: ReadonlyMap<string, string>,
-  measure?: TextMeasurer,
-): string {
+function renderElement(element: DesignElement, context: RenderContext): string {
   const rotation = element.rotation !== 0 ? ` rotate(${formatNumber(element.rotation)})` : '';
   const opacity = element.opacity < 1 ? ` opacity="${formatNumber(element.opacity)}"` : '';
   if (element.type === 'group') {
-    const inner = element.children.map((child) => renderElement(child, hrefs, measure)).join('\n');
+    const inner = element.children.map((child) => renderElement(child, context)).join('\n');
     // Group itself is a container; its children are already positioned relative to group's origin
     return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(element.y)})${rotation}"${opacity}>\n${inner}\n  </g>`;
   }
   let shape: string;
   switch (element.type) {
     case 'rect':
-      shape = renderRect(element);
+      shape = renderRect(element, context);
       break;
     case 'ellipse':
-      shape = renderEllipse(element);
+      shape = renderEllipse(element, context);
       break;
     case 'text':
-      shape = renderText(element, measure);
+      shape = renderText(element, context.measure);
       break;
     case 'image':
-      shape = renderImage(element, hrefs);
+      shape = renderImage(element, context.hrefs);
       break;
     case 'path':
-      shape = renderPath(element);
+      shape = renderPath(element, context);
       break;
     case 'icon':
       shape = iconSvgMarkup(element);
@@ -319,6 +366,38 @@ export async function renderPageToSvg(
 
   const scale = clampScale(options.scale ?? 1);
   const { width, height } = document.size;
+  const context: RenderContext = {
+    hrefs,
+    ...(options.measureText ? { measure: options.measureText } : {}),
+    gradientIds: new Map(),
+    gradients: [],
+  };
+
+  // The body is rendered first: it is what discovers which gradients (and therefore which
+  // `<defs>` entries) the page needs.
+  const body: string[] = [];
+  if (options.background !== false && page.background.type !== 'none') {
+    body.push(
+      `  <rect width="${formatNumber(width)}" height="${formatNumber(
+        height,
+      )}"${fillAttributes(page.background, context)}/>`,
+    );
+  }
+  for (const element of elements) {
+    body.push(renderElement(element, context));
+  }
+
+  const defs: string[] = [];
+  const fontCss = buildFontFaceCss(options.fontFaces ?? []);
+  if (fontCss.length > 0) {
+    defs.push(
+      `    <style type="text/css">`,
+      ...fontCss.split('\n').map((rule) => `      ${escapeXml(rule)}`),
+      `    </style>`,
+    );
+  }
+  defs.push(...context.gradients);
+
   const lines: string[] = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(
       width * scale,
@@ -327,26 +406,7 @@ export async function renderPageToSvg(
     )}">`,
     `  <title>${escapeXml(document.name)}</title>`,
   ];
-  const fontCss = buildFontFaceCss(options.fontFaces ?? []);
-  if (fontCss.length > 0) {
-    lines.push(
-      `  <defs>`,
-      `    <style type="text/css">`,
-      ...fontCss.split('\n').map((rule) => `      ${escapeXml(rule)}`),
-      `    </style>`,
-      `  </defs>`,
-    );
-  }
-  if (options.background !== false && page.background.type === 'solid') {
-    lines.push(
-      `  <rect width="${formatNumber(width)}" height="${formatNumber(height)}" fill="${escapeXml(
-        page.background.color,
-      )}"/>`,
-    );
-  }
-  for (const element of elements) {
-    lines.push(renderElement(element, hrefs, options.measureText));
-  }
-  lines.push('</svg>');
+  if (defs.length > 0) lines.push('  <defs>', ...defs, '  </defs>');
+  lines.push(...body, '</svg>');
   return ok(lines.join('\n'));
 }

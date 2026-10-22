@@ -2,10 +2,12 @@ import {
   createEllipseElement,
   createRectElement,
   createTextElement,
+  linearFill,
+  radialFill,
   type DesignElement,
   type Page,
 } from '@opencanvas/document';
-import { ActiveSelection, Rect, Textbox } from 'fabric';
+import { ActiveSelection, Gradient, Rect, Textbox } from 'fabric';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import { FabricCanvasAdapter, type CanvasAdapterCallbacks } from './adapter';
@@ -256,6 +258,66 @@ describe('FabricCanvasAdapter', () => {
     // jsdom reports a 0x0 box at the origin for the canvas element.
     expect(adapter.clientToPage(100, 50)).toEqual({ x: 0, y: 0 });
     expect(adapter.clientToPage(300, 250)).toEqual({ x: 100, y: 100 });
+  });
+
+  it('paints gradient fills with a Fabric gradient in percentage units', () => {
+    const rect = createRectElement({
+      id: 'grad_rect',
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 150,
+      fill: linearFill(90, ['#0f172a', '#38bdf8']),
+    });
+    adapter.render({ page: makePage([rect]), size, selectedIds: [], assets: {} });
+
+    const object = elementObjects()[0];
+    expect(object?.fill).toBeInstanceOf(Gradient);
+    const gradient = object?.fill as Gradient<'linear'>;
+    expect(gradient.type).toBe('linear');
+    // Fractions, not pixels: resizing the shape must not move the gradient's endpoints.
+    expect(gradient.gradientUnits).toBe('percentage');
+    expect(gradient.coords.x1).toBeCloseTo(0);
+    expect(gradient.coords.x2).toBeCloseTo(1);
+    expect(gradient.colorStops.map((stop) => stop.color)).toEqual(['#0f172a', '#38bdf8']);
+  });
+
+  it('reuses a gradient while the fill is unchanged and replaces it when it changes', () => {
+    const render = (fill: ReturnType<typeof linearFill>) => {
+      const rect = createRectElement({ id: 'grad_rect', width: 200, height: 100, fill });
+      adapter.render({ page: makePage([rect]), size, selectedIds: [], assets: {} });
+      return elementObjects()[0];
+    };
+
+    const first = render(linearFill(90, ['#000000', '#ffffff']));
+    const samePaint = render(linearFill(90, ['#000000', '#ffffff']));
+    // Same element and same paint: the existing object (and its gradient) is kept.
+    expect(samePaint).toBe(first);
+
+    const different = render(linearFill(180, ['#000000', '#ffffff']));
+    expect(different).toBe(first);
+    const gradient = different?.fill as Gradient<'linear'>;
+    expect(gradient.coords.y1).toBeCloseTo(0);
+    expect(gradient.coords.y2).toBeCloseTo(1);
+  });
+
+  it('paints a radial gradient background behind the elements', () => {
+    const page: Page = {
+      id: 'page_1',
+      background: radialFill(['#ffffff', '#c7d2fe']),
+      elements: [createRectElement({ id: 'r1' })],
+    };
+    adapter.render({ page, size, selectedIds: [], assets: {} });
+
+    const background = adapter.getFabricCanvas().getObjects()[0];
+    expect(background?.fill).toBeInstanceOf(Gradient);
+    expect((background?.fill as Gradient<'radial'>).type).toBe('radial');
+  });
+
+  it('keeps the page white rather than transparent when the background is none', () => {
+    const page: Page = { id: 'page_1', background: { type: 'none' }, elements: [] };
+    adapter.render({ page, size, selectedIds: [], assets: {} });
+    expect(adapter.getFabricCanvas().getObjects()[0]?.fill).toBe('#ffffff');
   });
 
   it('fits the page into the viewport with padding', () => {

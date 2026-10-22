@@ -13,6 +13,7 @@ import {
   Canvas,
   Ellipse,
   FabricImage,
+  Gradient,
   type FabricObject,
   type ImageSource,
   Group,
@@ -32,6 +33,7 @@ import { ICON_VIEWBOX } from '@opencanvas/icons';
 
 import {
   elementToFabricProps,
+  fillSignature,
   fillToFabric,
   iconPaths,
   iconToFabricProps,
@@ -39,6 +41,7 @@ import {
   roundTo,
   topLeftToCenter,
   type BoxGeometry,
+  type FabricFill,
   type PathFabricProps,
 } from './mapping';
 import { PLACEHOLDER_SIZE, createPlaceholderBitmap } from './placeholder';
@@ -113,6 +116,12 @@ export interface CanvasAdapterOptions {
   /** Alignment guides and snapping while moving or scaling objects. Defaults to `true`. */
   snapping?: boolean;
 }
+
+/** Fabric's gradient classes are generic over their own type; either kind paints a shape. */
+type AnyGradient = Gradient<'linear'> | Gradient<'radial'>;
+
+/** Cache key for the page rectangle's paint; element ids cannot collide with it (no `$`). */
+const PAGE_BACKGROUND_ID = '$page-background';
 
 const DEFAULT_ACCENT = '#7a5cf9';
 const MIN_ZOOM = 0.05;
@@ -214,6 +223,10 @@ export class FabricCanvasAdapter {
   private readonly iconSignatures = new WeakMap<FabricObject, string>();
   private readonly idsByObject = new WeakMap<FabricObject, string>();
   private readonly pageBackground: Rect;
+  /** Cached gradients, keyed by element id (page background uses a reserved id). */
+  private readonly gradients = new Map<string, { signature: string; gradient: AnyGradient }>();
+  /** The paint currently applied to the page rectangle, so it is only rebuilt when it changes. */
+  private pageBackgroundSignature = '';
   private readonly clip: Rect;
   private readonly accent: string;
   private readonly resolveAssetUrl: AssetUrlResolver | null;
@@ -538,17 +551,60 @@ export class FabricCanvasAdapter {
   // Reconciliation
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Fills
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fabric gradients are objects, not values, so they are cached per element and rebuilt only
+   * when the fill's appearance changes. Their coordinates are fractions of the object's bounding
+   * box, which is exactly SVG's `objectBoundingBox` unit — the canvas and an exported file can
+   * therefore be compared pixel for pixel.
+   */
+  private fillFor(id: string, fill: FabricFill): string | AnyGradient {
+    if (typeof fill === 'string') {
+      this.gradients.delete(id);
+      return fill;
+    }
+    const signature = fillSignature(fill);
+    const cached = this.gradients.get(id);
+    if (cached?.signature === signature) return cached.gradient;
+    const gradient: AnyGradient =
+      fill.type === 'linear'
+        ? new Gradient<'linear'>({
+            type: 'linear',
+            gradientUnits: 'percentage',
+            coords: fill.coords,
+            colorStops: fill.colorStops,
+          })
+        : new Gradient<'radial'>({
+            type: 'radial',
+            gradientUnits: 'percentage',
+            coords: fill.coords,
+            colorStops: fill.colorStops,
+          });
+    this.gradients.set(id, { signature, gradient });
+    return gradient;
+  }
+
+  /** The paint a mapped `fill` calls for, gradient or plain colour. */
+  private paint(id: string, fill: FabricFill): string | AnyGradient {
+    return this.fillFor(id, fill);
+  }
+
   private syncPage(scene: CanvasScene): void {
     const { width, height } = scene.size;
     this.pageSize = { width, height };
     // Center-origin objects: left/top is the page center.
-    this.pageBackground.set({
-      left: width / 2,
-      top: height / 2,
-      width,
-      height,
-      fill: fillToFabric(scene.page.background) || '#ffffff',
-    });
+    const background = fillToFabric(scene.page.background);
+    // The page rectangle is painted even for `none` (white paper, not a transparent hole).
+    const paint = background === '' ? '#ffffff' : this.paint(PAGE_BACKGROUND_ID, background);
+    const signature = fillSignature(background);
+    const props: Record<string, unknown> = { left: width / 2, top: height / 2, width, height };
+    // Re-assigning an identical gradient every frame forces Fabric to repaint the whole page.
+    if (signature !== this.pageBackgroundSignature) props['fill'] = paint;
+    this.pageBackground.set(props);
+    this.pageBackgroundSignature = signature;
     this.pageBackground.setCoords();
     this.clip.set({ left: width / 2, top: height / 2, width, height });
     this.clip.setCoords();
@@ -583,6 +639,7 @@ export class FabricCanvasAdapter {
         this.canvas.remove(object);
         this.objects.delete(id);
         this.forgetImage(id);
+        this.gradients.delete(id);
       }
     }
     this.elements = nextElements;
@@ -626,16 +683,16 @@ export class FabricCanvasAdapter {
     const mapped = elementToFabricProps(element, this.fabricContext);
     switch (mapped.kind) {
       case 'rect':
-        return new Rect(mapped.props);
+        return new Rect({ ...mapped.props, fill: this.paint(element.id, mapped.props.fill) });
       case 'ellipse':
-        return new Ellipse(mapped.props);
+        return new Ellipse({ ...mapped.props, fill: this.paint(element.id, mapped.props.fill) });
       case 'text':
         return new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
       case 'image':
         return new FabricImage(this.loadingBitmap, mapped.props);
       case 'path': {
-        const { path, ...rest } = mapped.props;
-        return new Path(path, rest);
+        const { path, fill, ...rest } = mapped.props;
+        return new Path(path, { ...rest, fill: this.paint(element.id, fill) });
       }
       case 'icon':
         throw new Error('Icon elements are built before property mapping.');
@@ -732,10 +789,13 @@ export class FabricCanvasAdapter {
       let fabricObj: FabricObject;
       switch (mapped.kind) {
         case 'rect':
-          fabricObj = new Rect(mapped.props);
+          fabricObj = new Rect({ ...mapped.props, fill: this.paint(child.id, mapped.props.fill) });
           break;
         case 'ellipse':
-          fabricObj = new Ellipse(mapped.props);
+          fabricObj = new Ellipse({
+            ...mapped.props,
+            fill: this.paint(child.id, mapped.props.fill),
+          });
           break;
         case 'text':
           fabricObj = new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
@@ -744,8 +804,8 @@ export class FabricCanvasAdapter {
           fabricObj = new FabricImage(this.loadingBitmap, mapped.props);
           break;
         case 'path': {
-          const { path, ...rest } = mapped.props;
-          fabricObj = new Path(path, rest);
+          const { path, fill, ...rest } = mapped.props;
+          fabricObj = new Path(path, { ...rest, fill: this.paint(child.id, fill) });
           break;
         }
         case 'icon':
@@ -831,8 +891,12 @@ export class FabricCanvasAdapter {
     if (element.type === 'path' && object instanceof Path) {
       const mapped = elementToFabricProps(element, this.fabricContext);
       // Path's `path` is the SVG data — set separately
-      const { path, ...rest } = (mapped as { kind: 'path'; props: PathFabricProps }).props;
-      const props: Record<string, unknown> = { ...rest, path };
+      const { path, fill, ...rest } = (mapped as { kind: 'path'; props: PathFabricProps }).props;
+      const props: Record<string, unknown> = {
+        ...rest,
+        path,
+        fill: this.paint(element.id, fill),
+      };
       // Fabric Path stores path as array internally, but constructor uses string; updating path
       // requires setting `path` property and re-calculating dimensions.
       if ((object as unknown as { path: unknown }).path !== path) {
@@ -877,6 +941,11 @@ export class FabricCanvasAdapter {
     if (element.type === 'group') return;
     const mapped = elementToFabricProps(element, this.fabricContext);
     const props: Record<string, unknown> = { ...mapped.props };
+    // Rectangles and ellipses may be gradient-filled; the mapped fill is data, the canvas needs
+    // an object. (Text and images have plain colour fills.)
+    if ((element.type === 'rect' || element.type === 'ellipse') && 'fill' in props) {
+      props['fill'] = this.paint(element.id, props['fill'] as FabricFill);
+    }
     // Never overwrite text the user is currently typing; it is committed on exit.
     if (object instanceof Textbox && object.isEditing) {
       delete props['text'];
