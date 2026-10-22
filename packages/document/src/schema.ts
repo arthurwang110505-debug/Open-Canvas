@@ -129,6 +129,16 @@ export const EllipseElementSchema = ElementBaseSchema.extend({
 export const FontWeightSchema = z.number().int().min(100).max(900).multipleOf(100);
 export const TextAlignSchema = z.enum(['left', 'center', 'right', 'justify']);
 export const FontStyleSchema = z.enum(['normal', 'italic']);
+/**
+ * Display casing. The document keeps the text the author typed; renderers apply the transform,
+ * so switching from uppercase back to none never loses their words (or their lowercase).
+ */
+export const TextTransformSchema = z.enum(['none', 'uppercase', 'lowercase', 'capitalize']);
+/**
+ * List decoration. Renderers draw the marker in front of each rendered line, so the stored text
+ * stays clean and switching lists off leaves plain paragraphs behind.
+ */
+export const ListStyleSchema = z.enum(['none', 'bullet', 'number']);
 
 export const TextElementSchema = ElementBaseSchema.extend({
   type: z.literal('text'),
@@ -143,6 +153,9 @@ export const TextElementSchema = ElementBaseSchema.extend({
   /** Additional spacing between characters in pixels. */
   letterSpacing: z.number().min(-100).max(1000).default(0),
   underline: z.boolean().default(false),
+  /** Applied at render time; the stored `text` stays exactly as typed. */
+  textTransform: TextTransformSchema.default('none'),
+  listStyle: ListStyleSchema.default('none'),
   color: HexColorSchema,
 });
 
@@ -221,6 +234,8 @@ export type Stroke = z.infer<typeof StrokeSchema>;
 export type FontWeight = z.infer<typeof FontWeightSchema>;
 export type TextAlign = z.infer<typeof TextAlignSchema>;
 export type FontStyle = z.infer<typeof FontStyleSchema>;
+export type TextTransform = z.infer<typeof TextTransformSchema>;
+export type ListStyle = z.infer<typeof ListStyleSchema>;
 
 export type RectElement = z.infer<typeof RectElementSchema>;
 export type EllipseElement = z.infer<typeof EllipseElementSchema>;

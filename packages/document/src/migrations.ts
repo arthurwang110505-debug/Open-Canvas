@@ -61,6 +61,22 @@ export const MIGRATIONS: readonly Migration[] = [
     // with a gradient instead of painting a blank rectangle.
     migrate: (raw) => ({ ...raw }),
   },
+  {
+    from: 6,
+    to: 7,
+    description: 'Add textTransform to text elements',
+    // Additive with a default: text without the property renders exactly as before. The bump
+    // keeps an older build from silently ignoring a casing the author chose.
+    migrate: (raw) => ({ ...raw }),
+  },
+  {
+    from: 7,
+    to: 8,
+    description: 'Add listStyle to text elements',
+    // Additive with a default: paragraphs without a list style render exactly as before. The bump
+    // keeps an older build from dropping bullets the author turned on.
+    migrate: (raw) => ({ ...raw }),
+  },
 ];
 
 export interface MigrateOptions {

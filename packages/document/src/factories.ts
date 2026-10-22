@@ -116,6 +116,8 @@ export function createTextElement(overrides: Partial<Omit<TextElement, 'type'>> 
     lineHeight: overrides.lineHeight ?? 1.2,
     letterSpacing: overrides.letterSpacing ?? 0,
     underline: overrides.underline ?? false,
+    textTransform: overrides.textTransform ?? 'none',
+    listStyle: overrides.listStyle ?? 'none',
     color: overrides.color ?? '#111827',
   };
 }
