@@ -9,6 +9,7 @@ import { useEditorActions } from './actions';
 import { useAssetServices } from './assets/useAssetServices';
 import { useImageImport } from './assets/useImageImport';
 import { hasElementDrag, readElementDragPayload } from './elements/drag';
+import { CropOverlay } from './canvas/CropOverlay';
 import { ZoomControl } from './ZoomControl';
 import { useCanvasController, useEditor, useEditorStore, useNotificationStore } from './hooks';
 import { useDraw } from './draw/DrawContext';
@@ -88,6 +89,7 @@ export function CanvasStage() {
         },
         onSelectionChanged: (ids) => store.getState().setSelection(ids),
         onPhotoPanChanged: (elementId) => store.getState().setPhotoPan(elementId),
+        onCropRequested: (elementId) => store.getState().beginCrop(elementId),
         onPhotoPanned: (elementId, crop) => {
           const { activePageId, dispatch } = store.getState();
           dispatch({ type: 'element.update', pageId: activePageId, elementId, patch: { crop } });
@@ -134,12 +136,22 @@ export function CanvasStage() {
     controller.attach(adapter);
 
     adapter.setPhotoPanTarget(store.getState().photoPanId);
+    const openCropId = store.getState().cropId;
+    if (openCropId) adapter.beginCropEdit(openCropId);
 
     const unsubscribe = store.subscribe((state, previous) => {
       if (sceneChanged(state, previous)) renderScene();
       // Adjust-photo mode lives in the store (the properties panel toggles it too), so the
       // canvas follows it rather than owning it.
       if (state.photoPanId !== previous.photoPanId) adapter.setPhotoPanTarget(state.photoPanId);
+      // Crop mode shows the photo uncropped on the canvas; the DOM overlay draws the box.
+      if (state.cropId !== previous.cropId) {
+        if (state.cropId) adapter.beginCropEdit(state.cropId);
+        else adapter.endCropEdit();
+      }
+      if (state.cropId !== null && state.cropDraft !== previous.cropDraft && state.cropDraft) {
+        adapter.previewCrop(state.cropDraft);
+      }
     });
 
     const observer = new ResizeObserver(() => {
@@ -406,6 +418,7 @@ export function CanvasStage() {
       onPointerCancel={handlePointerUp}
     >
       <canvas ref={canvasRef} aria-label="Design canvas" />
+      <CropOverlay />
       <ZoomControl />
       {isEmpty && !drawEnabled && !dropActive ? (
         <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center px-6">

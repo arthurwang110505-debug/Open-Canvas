@@ -67,6 +67,12 @@ assetId?, fit, crop?, fill }`. The mask is the element's own shape, so a frame c
   Adjust-photo mode (double-click a filled frame) is editor state (`photoPanId`), not document
   state: the adapter locks the frame, pans the photo live by moving its crop window, and reports
   the final normalized `crop` once, on pointer up.
+- **Crop mode** (`cropId` + `cropDraft` in the store) works on the same `crop` field. While it is
+  open the adapter draws the _whole_ bitmap at the crop scale instead of the visible window
+  (`beginCropEdit`), a DOM overlay dims everything outside the box, and the eight handles call
+  `resizeCrop`, which keeps the picture at a constant scale so a drag reveals photo instead of
+  stretching it. The draft changes on every pointer move and the document only changes once, on
+  apply — one command, one undo step.
 - **Icons** store `{ iconId, color, strokeWidth }` rather than shape data: the geometry lives in
   `@opencanvas/icons`, so an icon costs ~80 bytes in the document, recolours and scales without
   loss. `iconId` is validated as a slug, and an id from a newer build renders as nothing while

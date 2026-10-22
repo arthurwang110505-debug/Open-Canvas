@@ -39,6 +39,20 @@ export function useKeyboardShortcuts(): void {
 
       if (isTypingTarget(event.target) || canvas.isEditingText()) return;
 
+      // Crop mode is modal: it owns Enter and Escape, and nothing else reaches the document.
+      if (store.getState().cropId) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          store.getState().applyCrop();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          store.getState().cancelCrop();
+        } else if (!modifier) {
+          event.preventDefault();
+        }
+        return;
+      }
+
       if (modifier && key === 'z') {
         event.preventDefault();
         if (event.shiftKey) actions.redo();

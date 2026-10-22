@@ -740,6 +740,7 @@ function IconProperties({ element }: { element: IconElement }) {
 function ImageProperties({ element }: { element: ImageElement }) {
   const { updateSelection } = useEditorActions();
   const { insertPhoto, importFiles } = useImageImport();
+  const store = useEditorStore();
   const asset = useEditor((state) => state.document.assets[element.assetId]);
   const fitId = useId();
   const [replacing, setReplacing] = useState(false);
@@ -891,6 +892,14 @@ function ImageProperties({ element }: { element: ImageElement }) {
         ) : null}
       </FieldGroup>
       <FieldGroup title="Crop">
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          onClick={() => store.getState().beginCrop(element.id)}
+        >
+          Crop on canvas
+        </Button>
         {hasCrop && crop ? (
           <>
             <div className="grid grid-cols-2 gap-2">

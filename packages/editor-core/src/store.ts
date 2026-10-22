@@ -1,4 +1,9 @@
-import { collectElementIds, type DesignDocument, type Result } from '@opencanvas/document';
+import {
+  collectElementIds,
+  type DesignDocument,
+  type ImageCrop,
+  type Result,
+} from '@opencanvas/document';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import type { CommandError, EditorCommand } from './commands';
@@ -18,6 +23,12 @@ export interface DispatchOptions {
   recordHistory?: boolean;
 }
 
+/** A box being cropped on the canvas: where the drag has put the element and what it shows. */
+export interface CropDraft {
+  box: { x: number; y: number; width: number; height: number };
+  crop?: ImageCrop | undefined;
+}
+
 export interface EditorState {
   document: DesignDocument;
   activePageId: string;
@@ -34,6 +45,12 @@ export interface EditorState {
    * not document state: it changes no data and never reaches the undo history.
    */
   photoPanId: string | null;
+  /**
+   * The image being cropped on the canvas, if any. Like `photoPanId` this is UI state: the draft
+   * changes on every pointer move, and the document only changes when the crop is applied.
+   */
+  cropId: string | null;
+  cropDraft: CropDraft | null;
 }
 
 /** Actions are plain closures (no `this`), so they can be destructured freely. */
@@ -50,6 +67,14 @@ export interface EditorActions {
   clearSelection: () => void;
   /** Enters (`id`) or leaves (`null`) adjust-photo mode for a frame. */
   setPhotoPan: (elementId: string | null) => void;
+  /** Starts cropping an image on the canvas; no-op for anything but an image on the active page. */
+  beginCrop: (elementId: string) => void;
+  /** Records the box a crop drag has reached; no history, no document change. */
+  updateCropDraft: (draft: CropDraft) => void;
+  /** Writes the draft to the document as one undoable change and leaves crop mode. */
+  applyCrop: () => void;
+  /** Leaves crop mode without changing the document. */
+  cancelCrop: () => void;
   setActivePage: (pageId: string) => void;
   setZoom: (zoom: number) => void;
   /**
@@ -141,6 +166,8 @@ export function createEditorStore(
     zoom: clampZoom(options.initialZoom ?? 1),
     lastError: null,
     photoPanId: null,
+    cropId: null,
+    cropDraft: null,
 
     dispatch: (command, dispatchOptions = {}) => {
       const state = get();
@@ -245,6 +272,8 @@ export function createEditorStore(
         future,
         selectedIds,
         photoPanId: prunePhotoPan(nextDocument, activePageId, state.photoPanId),
+        cropId: prunePhotoPan(nextDocument, activePageId, state.cropId),
+        cropDraft: prunePhotoPan(nextDocument, activePageId, state.cropId) ? state.cropDraft : null,
         dirty: nextDocument !== savedDocument,
         lastError: null,
       });
@@ -273,6 +302,8 @@ export function createEditorStore(
           state.selectedIds,
         ),
         photoPanId: prunePhotoPan(previous, activePageId, state.photoPanId),
+        cropId: prunePhotoPan(previous, activePageId, state.cropId),
+        cropDraft: prunePhotoPan(previous, activePageId, state.cropId) ? state.cropDraft : null,
         dirty: previous !== savedDocument,
       });
       return true;
@@ -300,6 +331,8 @@ export function createEditorStore(
           state.selectedIds,
         ),
         photoPanId: prunePhotoPan(next, activePageId, state.photoPanId),
+        cropId: prunePhotoPan(next, activePageId, state.cropId),
+        cropDraft: prunePhotoPan(next, activePageId, state.cropId) ? state.cropDraft : null,
         dirty: next !== savedDocument,
       });
       return true;
@@ -325,14 +358,70 @@ export function createEditorStore(
 
     clearSelection: () => {
       const state = get();
-      if (state.selectedIds.length === 0 && state.photoPanId === null) return;
-      set({ selectedIds: [], photoPanId: null });
+      if (state.selectedIds.length === 0 && state.photoPanId === null && state.cropId === null) {
+        return;
+      }
+      set({ selectedIds: [], photoPanId: null, cropId: null, cropDraft: null });
     },
 
     setPhotoPan: (elementId) => {
       const state = get();
       if (state.photoPanId === elementId) return;
-      set({ photoPanId: elementId });
+      // Only one canvas mode at a time: adjusting a photo and cropping exclude each other.
+      set({ photoPanId: elementId, ...(elementId ? { cropId: null, cropDraft: null } : {}) });
+    },
+
+    beginCrop: (elementId) => {
+      const state = get();
+      const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+      const element = page?.elements.find((candidate) => candidate.id === elementId);
+      if (!page || element?.type !== 'image') return;
+      state.setSelection([elementId]);
+      set({
+        cropId: elementId,
+        cropDraft: {
+          box: { x: element.x, y: element.y, width: element.width, height: element.height },
+          ...(element.crop !== undefined ? { crop: element.crop } : {}),
+        },
+        photoPanId: null,
+      });
+    },
+
+    updateCropDraft: (draft) => {
+      if (get().cropId === null) return;
+      set({ cropDraft: draft });
+    },
+
+    applyCrop: () => {
+      const state = get();
+      const elementId = state.cropId;
+      const draft = state.cropDraft;
+      const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+      const element = page?.elements.find((candidate) => candidate.id === elementId);
+      set({ cropId: null, cropDraft: null });
+      if (!page || !elementId || !draft || element?.type !== 'image') return;
+      const sameBox =
+        draft.box.x === element.x &&
+        draft.box.y === element.y &&
+        draft.box.width === element.width &&
+        draft.box.height === element.height;
+      const sameCrop =
+        draft.crop?.x === element.crop?.x &&
+        draft.crop?.y === element.crop?.y &&
+        draft.crop?.width === element.crop?.width &&
+        draft.crop?.height === element.crop?.height;
+      if (sameBox && sameCrop) return;
+      get().dispatch({
+        type: 'element.update',
+        pageId: page.id,
+        elementId,
+        patch: { ...draft.box, crop: draft.crop },
+      });
+    },
+
+    cancelCrop: () => {
+      if (get().cropId === null) return;
+      set({ cropId: null, cropDraft: null });
     },
 
     setActivePage: (pageId) => {
@@ -342,7 +431,13 @@ export function createEditorStore(
         throw new Error(`Cannot activate unknown page "${pageId}".`);
       }
       if (pageId !== state.activePageId) {
-        set({ activePageId: pageId, selectedIds: [], photoPanId: null });
+        set({
+          activePageId: pageId,
+          selectedIds: [],
+          photoPanId: null,
+          cropId: null,
+          cropDraft: null,
+        });
       }
     },
 
@@ -365,6 +460,8 @@ export function createEditorStore(
         activePageId: firstPageId(document),
         selectedIds: [],
         photoPanId: null,
+        cropId: null,
+        cropDraft: null,
         past: [],
         future: [],
         dirty: false,

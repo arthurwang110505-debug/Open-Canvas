@@ -49,8 +49,9 @@ Delivered in Phase A/B and C1:
 - [x] Photo frames: rect/oval masks with cover/fill and the same crop on the canvas and in exports
 - [x] Adjust-photo mode: drag (or arrow-nudge) the photo inside a frame, one undo step per gesture
 - [x] Replace an image from the panel (bundled photo or upload) and by dropping a photo on it
+- [x] On-canvas crop: eight handles, aspect presets, Enter/Escape/click-away, one undo step
 
-Next in Phase C: on-canvas image crop (C2) and the remaining items in the plan.
+Next in Phase C: quick gestures (C4), the local brand kit (C7) and the remaining items in the plan.
 
 ## Milestone 4 — AI assistant
 
