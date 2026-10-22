@@ -134,7 +134,9 @@ export async function packProject(
   const files: Record<string, Uint8Array> = {};
   let assetCount = 0;
   for (const asset of Object.values(document.assets)) {
-    if (asset.source.type === 'url') continue; // remote assets are referenced by URL
+    // Only local assets carry bytes in the file; url and bundled assets are references the app or
+    // the browser resolves when the design is opened again.
+    if (asset.source.type !== 'local') continue;
     const blob = await readAsset(asset.id);
     if (!blob) {
       return err(
@@ -319,7 +321,7 @@ export async function unpackProject(
 
   const blobs = new Map<string, Blob>();
   for (const asset of Object.values(document.assets)) {
-    if (asset.source.type === 'url') continue;
+    if (asset.source.type !== 'local') continue;
     const bytes = files[assetEntryName(asset.id, asset.mimeType)];
     if (!bytes) {
       return err(

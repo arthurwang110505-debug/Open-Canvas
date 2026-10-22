@@ -263,5 +263,34 @@ describe('createAssetResolver', () => {
     expect(
       await resolve({ ...base, id: 'u2', source: { type: 'url', url: 'javascript:alert(1)' } }),
     ).toBeNull();
+    // Bundled photos come from the app catalogue; an unknown id is reported missing.
+    expect(
+      await resolve({ ...base, id: 'b1', source: { type: 'bundled', photoId: 'alpine-lake' } }),
+    ).toBeNull();
+  });
+
+  it('resolves bundled photos through the catalogue callback', async () => {
+    const store = new MemoryAssetBlobStore();
+    const cache = new ObjectUrlCache(store, {
+      createObjectURL: () => 'blob:test/local',
+      revokeObjectURL: () => undefined,
+    });
+    const resolve = createAssetResolver({
+      objectUrls: cache,
+      bundledPhotoUrl: (photoId) => (photoId === 'alpine-lake' ? '/photos/alpine-lake.webp' : null),
+    });
+    const base = {
+      kind: 'image' as const,
+      mimeType: 'image/webp' as const,
+      width: 1,
+      height: 1,
+      createdAt: fixedDate.toISOString(),
+    };
+    expect(
+      await resolve({ ...base, id: 'b1', source: { type: 'bundled', photoId: 'alpine-lake' } }),
+    ).toBe('/photos/alpine-lake.webp');
+    expect(
+      await resolve({ ...base, id: 'b2', source: { type: 'bundled', photoId: 'gone' } }),
+    ).toBeNull();
   });
 });

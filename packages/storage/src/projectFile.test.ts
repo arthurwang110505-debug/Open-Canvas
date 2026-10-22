@@ -167,6 +167,33 @@ describe('packing a project file', () => {
     expect(restored.value.document.assets['asset_url']?.source.type).toBe('url');
   });
 
+  it('references bundled photos instead of packing their bytes', async () => {
+    const document = documentWithAssets();
+    document.assets['asset_photo'] = createImageAsset({
+      id: 'asset_photo',
+      name: 'alpine-lake.webp',
+      mimeType: 'image/webp',
+      width: 1408,
+      height: 768,
+      source: { type: 'bundled', photoId: 'alpine-lake' },
+      now,
+    });
+
+    const packed = await packProject({
+      document,
+      readAsset: assetReader({ asset_png: PNG_BYTES, asset_jpeg: JPEG_BYTES }),
+      now,
+    });
+    if (!packed.ok) throw new Error('expected packing to succeed');
+    const restored = await unpackProject(packed.value);
+    if (!restored.ok) throw new Error('expected unpacking to succeed');
+    expect(restored.value.blobs.has('asset_photo')).toBe(false);
+    expect(restored.value.document.assets['asset_photo']?.source).toEqual({
+      type: 'bundled',
+      photoId: 'alpine-lake',
+    });
+  });
+
   it('refuses to pack when an asset has no bytes left', async () => {
     const packed = await packProject({
       document: documentWithAssets(),
