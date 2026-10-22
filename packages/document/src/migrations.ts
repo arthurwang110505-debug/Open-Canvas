@@ -77,6 +77,14 @@ export const MIGRATIONS: readonly Migration[] = [
     // keeps an older build from dropping bullets the author turned on.
     migrate: (raw) => ({ ...raw }),
   },
+  {
+    from: 8,
+    to: 9,
+    description: 'Add bundled photo asset source',
+    // Additive: local and url assets are untouched. The bump keeps an older build from treating a
+    // bundled photo as a local asset whose bytes are missing (it would show a broken image).
+    migrate: (raw) => ({ ...raw }),
+  },
 ];
 
 export interface MigrateOptions {

@@ -306,9 +306,24 @@ export const UrlAssetSourceSchema = z.object({
   url: z.string().min(1).max(LIMITS.maxUrlLength),
 });
 
+/**
+ * Bytes ship with the app under a stable id (the bundled photo library). Documents reference the
+ * id, so a project file stays small, the photo works offline, and a build that lacks the photo
+ * renders it as missing instead of dropping the element.
+ */
+export const BundledAssetSourceSchema = z.object({
+  type: z.literal('bundled'),
+  photoId: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Photo ids look like "alpine-lake"'),
+});
+
 export const AssetSourceSchema = z.discriminatedUnion('type', [
   LocalAssetSourceSchema,
   UrlAssetSourceSchema,
+  BundledAssetSourceSchema,
 ]);
 
 export const ImageAssetSchema = z.object({

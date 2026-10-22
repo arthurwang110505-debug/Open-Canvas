@@ -57,6 +57,20 @@ describe('ImageAssetSchema', () => {
     expect(bad.success).toBe(false);
   });
 
+  it('accepts a bundled photo source and rejects ids that are not slugs', () => {
+    const bundled = createImageAsset({
+      mimeType: 'image/webp',
+      width: 1408,
+      height: 768,
+      source: { type: 'bundled', photoId: 'alpine-lake' },
+    });
+    expect(ImageAssetSchema.safeParse(bundled).success).toBe(true);
+    for (const photoId of ['Alpine Lake', '', '../etc/passwd', 'a'.repeat(65)]) {
+      const bad = { ...bundled, source: { type: 'bundled', photoId } };
+      expect(ImageAssetSchema.safeParse(bad).success).toBe(false);
+    }
+  });
+
   it.each(['image/svg+xml', 'image/bmp', 'text/html', ''])('rejects mime type %j', (mimeType) => {
     const result = ImageAssetSchema.safeParse({
       ...createImageAsset({ mimeType: 'image/png', width: 1, height: 1 }),

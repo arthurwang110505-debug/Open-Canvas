@@ -92,7 +92,7 @@ describe('migrateDocument', () => {
   });
 
   it('rejects versions newer than the target', () => {
-    const result = migrateDocument({ schemaVersion: 9 });
+    const result = migrateDocument({ schemaVersion: CURRENT_SCHEMA_VERSION + 1 });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('unsupported-version');
   });
@@ -115,19 +115,19 @@ describe('registry integrity', () => {
     expect(expected).toBe(CURRENT_SCHEMA_VERSION);
   });
 
-  it('upgrades the v4 fixture to exactly the committed v8 fixture', () => {
+  it('upgrades the v4 fixture to exactly the committed v9 fixture', () => {
     const read = (name: string): Record<string, unknown> =>
       JSON.parse(
         readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)), 'utf8'),
       ) as Record<string, unknown>;
     const before = read('schema-v4.json');
-    // The pair is the contract: a v4 document opened today must produce this exact v8 document.
+    // The pair is the contract: a v4 document opened today must produce this exact v9 document.
     // Regenerate the newest fixture only when a migration deliberately changes existing content.
     const result = migrateDocument(before);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.document).toEqual(read('schema-v8.json'));
-    expect(result.value.appliedMigrations.map((step) => step.from)).toEqual([4, 5, 6, 7]);
+    expect(result.value.document).toEqual(read('schema-v9.json'));
+    expect(result.value.appliedMigrations.map((step) => step.from)).toEqual([4, 5, 6, 7, 8]);
 
     // And the migrated document passes the same validation a stored one does.
     const parsed = parseDocument(result.value.document);
@@ -143,8 +143,8 @@ describe('registry integrity', () => {
     const result = migrateDocument(before);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.document).toEqual(read('schema-v8.json'));
-    expect(result.value.appliedMigrations.map((step) => step.from)).toEqual([6, 7]);
+    expect(result.value.document).toEqual(read('schema-v9.json'));
+    expect(result.value.appliedMigrations.map((step) => step.from)).toEqual([6, 7, 8]);
 
     // The migrated document still validates, and its text gained the new defaults.
     const parsed = parseDocument(result.value.document);
@@ -164,8 +164,21 @@ describe('registry integrity', () => {
     const result = migrateDocument(before);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.document).toEqual(read('schema-v8.json'));
-    expect(result.value.appliedMigrations.map((step) => step.from)).toEqual([7]);
+    expect(result.value.document).toEqual(read('schema-v9.json'));
+    expect(result.value.appliedMigrations.map((step) => step.from)).toEqual([7, 8]);
+  });
+
+  it('upgrades the v8 fixture one step, changing only the version', () => {
+    const read = (name: string): Record<string, unknown> =>
+      JSON.parse(
+        readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)), 'utf8'),
+      ) as Record<string, unknown>;
+    const before = read('schema-v8.json');
+    const result = migrateDocument(before);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.document).toEqual(read('schema-v9.json'));
+    expect(result.value.appliedMigrations.map((step) => step.from)).toEqual([8]);
   });
 
   it('is used by parseDocument so migrated files are validated', () => {
