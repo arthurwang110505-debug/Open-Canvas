@@ -34,6 +34,8 @@ import { AligningGuidelines } from 'fabric/extensions';
 
 import { ICON_VIEWBOX } from '@opencanvas/icons';
 
+import { cropScale, visibleSourceRect, type CropLayout } from './crop';
+
 import {
   canPanFramePhoto,
   cropWindowToCrop,
@@ -78,6 +80,8 @@ export interface CanvasAdapterCallbacks {
   onPhotoPanChanged?: (elementId: string | null) => void;
   /** Fired once at the end of a drag that moved the photo inside its frame. */
   onPhotoPanned?: (elementId: string, crop: NonNullable<FrameElement['crop']>) => void;
+  /** A double click asked to crop an image on the canvas. */
+  onCropRequested?: (elementId: string) => void;
   /** Panning, zooming or fitting changed what part of the page is under the viewport. */
   onViewportChanged?: () => void;
   /** A pointer interaction (press, drag, release) started or ended. */
@@ -269,6 +273,8 @@ export class FabricCanvasAdapter {
   private previewPath: Path | null = null;
   /** The frame whose photo is being adjusted; dragging inside it pans instead of moving. */
   private photoPanId: string | null = null;
+  /** The image being cropped, and the live box the overlay has dragged it to. */
+  private cropEdit: { elementId: string; layout: CropLayout | null } | null = null;
   private photoPan: {
     elementId: string;
     start: Point;
@@ -460,6 +466,13 @@ export class FabricCanvasAdapter {
     const local = new Point(clientX - bounds.left, clientY - bounds.top);
     const page = local.transform(util.invertTransform(this.canvas.viewportTransform));
     return { x: roundTo(page.x), y: roundTo(page.y) };
+  }
+
+  /** Converts a page point back into CSS pixels relative to the browser viewport. */
+  pageToClient(x: number, y: number): { x: number; y: number } {
+    const bounds = this.canvas.getElement().getBoundingClientRect();
+    const point = new Point(x, y).transform(this.canvas.viewportTransform);
+    return { x: bounds.left + point.x, y: bounds.top + point.y };
   }
 
   /** Toggles alignment guides and snapping to other objects and the page edges/center. */
@@ -814,6 +827,111 @@ export class FabricCanvasAdapter {
   }
 
   // ---------------------------------------------------------------------------
+  // Cropping an image on the canvas
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Shows a photo uncropped while its crop is edited. Normally an image's Fabric object is
+   * exactly the visible window; here it becomes the whole bitmap drawn at the crop scale, so the
+   * part a handle would reveal is already on screen (the DOM overlay dims what is outside the
+   * box). The document is not touched until the crop commits.
+   */
+  beginCropEdit(elementId: string): boolean {
+    if (this.disposed) return false;
+    this.endCropEdit();
+    const object = this.objects.get(elementId);
+    const element = this.elements.get(elementId);
+    if (!(object instanceof FabricImage) || element?.type !== 'image') return false;
+    if (!this.images.get(elementId)?.natural) return false;
+    this.cropEdit = { elementId, layout: null };
+    // The overlay owns the pointer while cropping, so the canvas must not fight it for it.
+    object.set({ selectable: false, evented: false, hasControls: false, hasBorders: false });
+    this.renderCropView();
+    this.canvas.requestRenderAll();
+    return true;
+  }
+
+  /** Live geometry from the overlay's drag; nothing is committed until the crop is applied. */
+  previewCrop(layout: CropLayout): void {
+    if (!this.cropEdit) return;
+    this.cropEdit.layout = layout;
+    this.renderCropView();
+    this.canvas.requestRenderAll();
+  }
+
+  /** Leaves crop mode and renders the element as the document describes it again. */
+  endCropEdit(): void {
+    const session = this.cropEdit;
+    if (!session) return;
+    this.cropEdit = null;
+    const object = this.objects.get(session.elementId);
+    const element = this.elements.get(session.elementId);
+    if (object && element) {
+      this.applying = true;
+      try {
+        object.set({ selectable: !element.locked, evented: !element.locked });
+        this.applyElement(object, element);
+        object.setCoords();
+      } finally {
+        this.applying = false;
+      }
+    }
+    this.canvas.requestRenderAll();
+  }
+
+  private renderCropView(): void {
+    const session = this.cropEdit;
+    if (!session) return;
+    const object = this.objects.get(session.elementId);
+    const element = this.elements.get(session.elementId);
+    const natural = this.images.get(session.elementId)?.natural;
+    if (!(object instanceof FabricImage) || element?.type !== 'image' || !natural) return;
+
+    const layout = session.layout;
+    const box = layout?.box ?? {
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+    };
+    const crop = layout ? layout.crop : element.crop;
+    const shown = { ...element, ...box, crop };
+    const scale = cropScale(shown, natural);
+    const visible = visibleSourceRect(shown, natural);
+
+    // The bitmap turns around its own centre, while the box turns around the element's centre.
+    // Offsetting by the rotated vector between the two centres keeps the visible window exactly
+    // on the box, whatever the element's angle.
+    const radians = (element.rotation * Math.PI) / 180;
+    const dx = (visible.x + visible.width / 2 - natural.width / 2) * scale;
+    const dy = (visible.y + visible.height / 2 - natural.height / 2) * scale;
+    const offsetX = dx * Math.cos(radians) - dy * Math.sin(radians);
+    const offsetY = dx * Math.sin(radians) + dy * Math.cos(radians);
+    const boxCentre = {
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    };
+
+    object.set({
+      left: boxCentre.x - offsetX,
+      top: boxCentre.y - offsetY,
+      width: natural.width,
+      height: natural.height,
+      cropX: 0,
+      cropY: 0,
+      scaleX: scale,
+      scaleY: scale,
+      angle: element.rotation,
+      opacity: element.opacity,
+      visible: element.visible,
+      flipX: element.flipH ?? false,
+      flipY: element.flipV ?? false,
+      strokeWidth: 0,
+    });
+    object.setCoords();
+  }
+
+  // ---------------------------------------------------------------------------
   // Adjusting the photo inside a frame
   // ---------------------------------------------------------------------------
 
@@ -917,15 +1035,23 @@ export class FabricCanvasAdapter {
     this.callbacks.onPhotoPanned?.(pan.elementId, cropWindowToCrop(window, pan.natural));
   }
 
-  /** Double click on a frame with a pannable photo asks the app to enter the mode. */
-  private requestPhotoPan(event: PointerEventInfo): void {
+  /**
+   * A double click on a filled frame opens adjust-photo mode; on an image it opens crop mode.
+   * Anything else is left alone, so a double click on text keeps entering text editing.
+   */
+  private requestDoubleClickAction(event: PointerEventInfo): void {
     const target = event.target;
     if (!target) return;
     const elementId = this.idsByObject.get(target);
     if (!elementId) return;
     const element = this.elements.get(elementId);
+    if (!element || element.locked) return;
+    if (element.type === 'image') {
+      this.callbacks.onCropRequested?.(elementId);
+      return;
+    }
+    if (element.type !== 'frame') return;
     const natural = this.images.get(elementId)?.natural;
-    if (element?.type !== 'frame' || element.locked) return;
     if (!natural || !canPanFramePhoto(element, natural)) return;
     this.callbacks.onPhotoPanChanged?.(elementId);
   }
@@ -1100,6 +1226,11 @@ export class FabricCanvasAdapter {
   };
 
   private applyElement(object: ElementObject, element: DesignElement): void {
+    // A crop edit shows the photo uncropped; a page render must not undo that view.
+    if (this.cropEdit?.elementId === element.id) {
+      this.renderCropView();
+      return;
+    }
     if (element.type === 'frame') {
       this.applyFrame(object, element);
       return;
@@ -1448,7 +1579,7 @@ export class FabricCanvasAdapter {
       this.finishPhotoPan();
     });
     this.canvas.on('mouse:dblclick', (event) => {
-      this.requestPhotoPan(event);
+      this.requestDoubleClickAction(event);
     });
 
     this.canvas.on('mouse:wheel', (event) => {

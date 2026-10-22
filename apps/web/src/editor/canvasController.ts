@@ -1,4 +1,4 @@
-import type { FabricCanvasAdapter, ViewportRect } from '@opencanvas/canvas-fabric';
+import type { CropLayout, FabricCanvasAdapter, ViewportRect } from '@opencanvas/canvas-fabric';
 import { nextZoomIn, nextZoomOut, type EditorStore } from '@opencanvas/editor-core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -32,6 +32,13 @@ export interface CanvasController {
   setSnapping: (enabled: boolean) => void;
   /** Page coordinates under a viewport point, or `null` while the canvas is not mounted. */
   clientToPage: (clientX: number, clientY: number) => { x: number; y: number } | null;
+  /** Viewport coordinates of a page point, or `null` while the canvas is not mounted. */
+  pageToClient: (x: number, y: number) => { x: number; y: number } | null;
+  /** Shows a photo uncropped for on-canvas cropping; see `CropOverlay`. */
+  beginCropEdit: (elementId: string) => boolean;
+  /** Live crop geometry while the overlay is dragged; nothing is committed. */
+  previewCrop: (layout: CropLayout) => void;
+  endCropEdit: () => void;
   /** Client-space rectangle of the current selection, or `null` when nothing is selected. */
   getSelectionClientRect: () => ViewportRect | null;
   /** Called by the adapter when the viewport changes; refreshes floating UI. */
@@ -87,6 +94,10 @@ export function createCanvasController(store: EditorStore): CanvasController {
       adapter?.setSnapping(enabled);
     },
     clientToPage: (clientX, clientY) => adapter?.clientToPage(clientX, clientY) ?? null,
+    pageToClient: (x, y) => adapter?.pageToClient(x, y) ?? null,
+    beginCropEdit: (elementId) => adapter?.beginCropEdit(elementId) ?? false,
+    previewCrop: (layout) => adapter?.previewCrop(layout),
+    endCropEdit: () => adapter?.endCropEdit(),
     getSelectionClientRect: () => adapter?.getSelectionClientRect() ?? null,
     bumpViewport: () => state.setState({ viewportRevision: state.getState().viewportRevision + 1 }),
     setInteracting: (interacting) => {
