@@ -1,14 +1,11 @@
 import { renderPageToSvg } from '@opencanvas/export';
-import { blobToDataUrl } from '@opencanvas/storage';
 import { Button, Tooltip } from '@opencanvas/ui';
 import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { resolveAssetHref } from './assets/assetHref';
 import { useAssetServices } from './assets/useAssetServices';
 import { useEditor } from './hooks';
-
-const TRANSPARENT_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 
 /**
  * Bottom filmstrip showing all pages as SVG thumbnails — Canva-style Page navigator.
@@ -171,15 +168,8 @@ function PageThumbnail({
 
   useEffect(() => {
     let cancelled = false;
-    const resolveImageHref = async (asset: { id: string }) => {
-      try {
-        const blob = await assetServices.blobStore.get(asset.id);
-        if (blob) return await blobToDataUrl(blob);
-      } catch {
-        // fall through to transparent
-      }
-      return TRANSPARENT_PNG;
-    };
+    const resolveImageHref = (asset: Parameters<typeof resolveAssetHref>[0]) =>
+      resolveAssetHref(asset, assetServices.blobStore);
 
     void (async () => {
       const result = await renderPageToSvg(document, {

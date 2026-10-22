@@ -1,12 +1,9 @@
 import { renderPageToSvg } from '@opencanvas/export';
-import { blobToDataUrl } from '@opencanvas/storage';
 import { useEffect, useState } from 'react';
 
+import { resolveAssetHref } from '../editor/assets/assetHref';
 import { useProjects } from './useProjects';
 import type { ProjectSummary } from '@opencanvas/storage';
-
-const TRANSPARENT_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=';
 
 // Simple in-memory cache so navigating back to dashboard doesn't re-render all thumbnails
 const svgCache = new Map<string, string>();
@@ -48,15 +45,8 @@ export function ProjectThumbnail({ project }: ProjectThumbnailProps) {
       if (!firstPage) return;
 
       const blobStore = store.assetBlobStore(project.id);
-      const resolveImageHref = async (asset: { id: string }) => {
-        try {
-          const blob = await blobStore.get(asset.id);
-          if (blob) return await blobToDataUrl(blob);
-        } catch {
-          // ignore
-        }
-        return TRANSPARENT_PNG;
-      };
+      const resolveImageHref = (asset: Parameters<typeof resolveAssetHref>[0]) =>
+        resolveAssetHref(asset, blobStore);
 
       // Render at full size — CSS scales the SVG to the card; this keeps vectors crisp
       let result = await renderPageToSvg(doc, {
