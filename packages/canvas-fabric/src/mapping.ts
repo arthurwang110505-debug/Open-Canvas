@@ -1,8 +1,11 @@
 import {
+  clampedCornerRadius,
   linearGradientCoords,
   type DesignElement,
   type EllipseElement,
   type Fill,
+  type FrameElement,
+  type FrameShape,
   type IconElement,
   type ImageElement,
   type ImageFit,
@@ -264,13 +267,31 @@ export interface IconFabricProps extends Omit<CommonFabricProps, 'scaleX' | 'sca
   scaleY: number;
 }
 
+/**
+ * A frame is a mask plus an optional photo. The mask is the element's own shape, and the photo is
+ * laid out with the same crop/scale maths as an image element, so a frame resized on the canvas
+ * re-masks the photo instead of stretching it.
+ */
+export interface FrameFabricProps extends CommonFabricProps {
+  width: number;
+  height: number;
+  shape: FrameShape;
+  /** Effective corner radius, already clamped to half the shorter edge. */
+  cornerRadius: number;
+  /** Painted inside the mask: the whole element while the frame is empty. */
+  fill: FabricFill;
+  /** Photo layout, present only when the frame holds an image. */
+  image?: ImageFitProps;
+}
+
 export type ElementFabricProps =
   | { kind: 'rect'; props: RectFabricProps }
   | { kind: 'ellipse'; props: EllipseFabricProps }
   | { kind: 'text'; props: TextFabricProps }
   | { kind: 'image'; props: ImageFabricProps }
   | { kind: 'path'; props: PathFabricProps }
-  | { kind: 'icon'; props: IconFabricProps };
+  | { kind: 'icon'; props: IconFabricProps }
+  | { kind: 'frame'; props: FrameFabricProps };
 
 function commonProps(element: DesignElement): CommonFabricProps {
   const center = topLeftToCenter(element);
@@ -480,9 +501,34 @@ export function imageToFabricProps(
   };
 }
 
+/** Corner radius a frame draws with; the same clamp the rectangle renderer applies. */
+export function frameRadius(element: {
+  cornerRadius: number;
+  width: number;
+  height: number;
+}): number {
+  return clampedCornerRadius(element.cornerRadius, element.width, element.height);
+}
+
+export function frameToFabricProps(
+  element: FrameElement,
+  natural: { width: number; height: number } = { width: element.width, height: element.height },
+  fit: ImageFit = element.fit,
+): FrameFabricProps {
+  return {
+    ...commonProps(element),
+    width: element.width,
+    height: element.height,
+    shape: element.shape,
+    cornerRadius: frameRadius(element),
+    fill: fillToFabric(element.fill),
+    ...(element.assetId ? { image: computeImageFit(element, natural, fit, element.crop) } : {}),
+  };
+}
+
 export interface ElementToFabricContext {
-  /** Bitmap size used for image elements (placeholder or decoded image). */
-  imageSource: (element: ImageElement) => {
+  /** Bitmap size used for image and frame elements (placeholder or decoded image). */
+  imageSource: (element: ImageElement | FrameElement) => {
     natural: { width: number; height: number };
     fit: ImageFit;
   };
@@ -507,6 +553,15 @@ export function elementToFabricProps(
       return { kind: 'path', props: pathToFabricProps(element) };
     case 'icon':
       return { kind: 'icon', props: iconToFabricProps(element) };
+    case 'frame': {
+      const source = context?.imageSource(element);
+      return {
+        kind: 'frame',
+        props: source
+          ? frameToFabricProps(element, source.natural, source.fit)
+          : frameToFabricProps(element),
+      };
+    }
     case 'group':
       throw new Error(
         'Group elements are handled by FabricCanvasAdapter directly, not via elementToFabricProps.',

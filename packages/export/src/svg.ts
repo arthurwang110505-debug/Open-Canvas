@@ -1,4 +1,5 @@
 import {
+  clampedCornerRadius,
   err,
   findPage,
   linearGradientCoords,
@@ -7,6 +8,7 @@ import {
   type DesignElement,
   type EllipseElement,
   type Fill,
+  type FrameElement,
   type GradientFill,
   type IconElement,
   type ImageAsset,
@@ -33,9 +35,13 @@ export type ImageHrefResolver = (asset: ImageAsset) => Promise<string> | string;
  */
 interface RenderContext {
   hrefs: ReadonlyMap<string, string>;
+  /** Natural sizes of the assets on the page, so frames can map a crop window into the photo. */
+  assets: Readonly<Record<string, ImageAsset>>;
   measure?: TextMeasurer;
   gradientIds: Map<string, string>;
   gradients: string[];
+  /** One `<clipPath>` per frame, referenced by the frame's own group. */
+  clipPaths: string[];
 }
 
 export interface SvgPageOptions {
@@ -246,6 +252,53 @@ function renderImage(element: ImageElement, hrefs: ReadonlyMap<string, string>):
   return `    <image href="${escapeXml(href)}" width="${formatNumber(element.width)}" height="${formatNumber(element.height)}" preserveAspectRatio="${aspect}"${transform}${filter}/>`;
 }
 
+/**
+ * A frame is its shape used as a mask. The photo is drawn inside a nested `<svg>` whose viewBox is
+ * the crop window, so `slice`/`none` reproduce the canvas's cover/fill maths with the same source
+ * region — including a user crop, which applies in source pixels before any scaling.
+ */
+function renderFrame(element: FrameElement, context: RenderContext): string {
+  const width = formatNumber(element.width);
+  const height = formatNumber(element.height);
+  const radius = clampedCornerRadius(element.cornerRadius, element.width, element.height);
+  const id = `frame-${context.clipPaths.length + 1}`;
+  const mask =
+    element.shape === 'ellipse'
+      ? `<ellipse cx="${formatNumber(element.width / 2)}" cy="${formatNumber(
+          element.height / 2,
+        )}" rx="${formatNumber(element.width / 2)}" ry="${formatNumber(element.height / 2)}"/>`
+      : `<rect width="${width}" height="${height}"${
+          radius > 0 ? ` rx="${formatNumber(radius)}" ry="${formatNumber(radius)}"` : ''
+        }/>`;
+  context.clipPaths.push(`    <clipPath id="${id}">${mask}</clipPath>`);
+
+  const lines = [
+    `    <g clip-path="url(#${id})">`,
+    `      <rect width="${width}" height="${height}"${fillAttributes(element.fill, context)}/>`,
+  ];
+  if (element.assetId !== undefined) {
+    const asset = context.assets[element.assetId];
+    const href = context.hrefs.get(element.assetId) ?? '';
+    if (asset && href.length > 0) {
+      const crop = element.crop ?? { x: 0, y: 0, width: 1, height: 1 };
+      const window = [
+        formatNumber(crop.x * asset.width),
+        formatNumber(crop.y * asset.height),
+        formatNumber(crop.width * asset.width),
+        formatNumber(crop.height * asset.height),
+      ].join(' ');
+      const aspect = element.fit === 'fill' ? 'none' : 'xMidYMid slice';
+      lines.push(
+        `      <svg width="${width}" height="${height}" viewBox="${window}" preserveAspectRatio="${aspect}">`,
+        `        <image href="${escapeXml(href)}" width="${asset.width}" height="${asset.height}"/>`,
+        `      </svg>`,
+      );
+    }
+  }
+  lines.push('    </g>');
+  return lines.join('\n');
+}
+
 function renderPath(element: PathElement, context: RenderContext): string {
   if (element.points.length === 0) return '';
   const [first, ...rest] = element.points;
@@ -261,12 +314,17 @@ function renderPath(element: PathElement, context: RenderContext): string {
   return `    <path d="${d}"${fill}${stroke}/>`;
 }
 
-function collectImages(elements: readonly DesignElement[]): ImageElement[] {
-  const out: ImageElement[] = [];
+/** Image elements and filled frames both need their asset's bytes embedded. */
+type ImageSourceElement = ImageElement | (FrameElement & { assetId: string });
+
+function collectImages(elements: readonly DesignElement[]): ImageSourceElement[] {
+  const out: ImageSourceElement[] = [];
   const walk = (list: readonly DesignElement[]) => {
     for (const el of list) {
       if (el.type === 'image') out.push(el);
-      else if (el.type === 'group') walk(el.children);
+      else if (el.type === 'frame' && el.assetId !== undefined) {
+        out.push(el as FrameElement & { assetId: string });
+      } else if (el.type === 'group') walk(el.children);
     }
   };
   walk(elements);
@@ -300,6 +358,9 @@ function renderElement(element: DesignElement, context: RenderContext): string {
       break;
     case 'icon':
       shape = iconSvgMarkup(element);
+      break;
+    case 'frame':
+      shape = renderFrame(element, context);
       break;
   }
   return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(
@@ -369,8 +430,10 @@ export async function renderPageToSvg(
   const context: RenderContext = {
     hrefs,
     ...(options.measureText ? { measure: options.measureText } : {}),
+    assets: document.assets,
     gradientIds: new Map(),
     gradients: [],
+    clipPaths: [],
   };
 
   // The body is rendered first: it is what discovers which gradients (and therefore which
@@ -396,7 +459,7 @@ export async function renderPageToSvg(
       `    </style>`,
     );
   }
-  defs.push(...context.gradients);
+  defs.push(...context.gradients, ...context.clipPaths);
 
   const lines: string[] = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(

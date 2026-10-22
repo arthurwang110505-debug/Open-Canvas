@@ -4,6 +4,7 @@ import { CURRENT_SCHEMA_VERSION, LIMITS } from './constants';
 import {
   createBlankDocument,
   createEllipseElement,
+  createFrameElement,
   createIconElement,
   createRectElement,
   createTextElement,
@@ -148,6 +149,21 @@ describe('ElementSchema', () => {
       visible: true,
       cornerRadius: 0,
     });
+  });
+
+  it('accepts an empty frame and applies its defaults', () => {
+    const frame = createFrameElement({ id: 'f1' });
+    const parsed = ElementSchema.parse({ ...frame, shape: undefined });
+    expect(parsed).toMatchObject({
+      type: 'frame',
+      shape: 'rect',
+      cornerRadius: 0,
+      fit: 'cover',
+      fill: { type: 'solid', color: '#e5e7eb' },
+    });
+    // A frame with no photo is a placeholder, not an invalid element.
+    expect(parsed).not.toHaveProperty('assetId');
+    expect(ElementSchema.safeParse({ ...frame, shape: 'star' }).success).toBe(false);
   });
 
   it('rejects unknown element types', () => {

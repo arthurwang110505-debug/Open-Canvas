@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 10,
+  "id": "doc_fixture_v4",
+  "name": "Schema v4 fixture",
+  "size": {
+    "width": 1080,
+    "height": 1080
+  },
+  "pages": [
+    {
+      "id": "page_1",
+      "name": "Page 1",
+      "background": {
+        "type": "solid",
+        "color": "#ffffff"
+      },
+      "elements": [
+        {
+          "id": "el_rect",
+          "type": "rect",
+          "x": 100,
+          "y": 100,
+          "width": 240,
+          "height": 120,
+          "rotation": 0,
+          "opacity": 1,
+          "locked": false,
+          "visible": true,
+          "fill": {
+            "type": "solid",
+            "color": "#7c3aed"
+          },
+          "cornerRadius": 12
+        },
+        {
+          "id": "el_text",
+          "type": "text",
+          "x": 100,
+          "y": 260,
+          "width": 400,
+          "height": 60,
+          "rotation": 0,
+          "opacity": 1,
+          "locked": false,
+          "visible": true,
+          "text": "Migrated",
+          "fontFamily": "Playfair Display",
+          "fontSize": 48,
+          "fontWeight": 700,
+          "fontStyle": "normal",
+          "textAlign": "left",
+          "lineHeight": 1.2,
+          "letterSpacing": 0,
+          "underline": false,
+          "color": "#111827"
+        }
+      ]
+    }
+  ],
+  "assets": {},
+  "metadata": {
+    "createdAt": "2026-01-02T03:04:05.000Z",
+    "updatedAt": "2026-01-02T03:04:05.000Z"
+  }
+}

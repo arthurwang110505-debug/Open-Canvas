@@ -1,6 +1,7 @@
 import {
   createBlankDocument,
   createEllipseElement,
+  createFrameElement,
   createImageAsset,
   createImageElement,
   createRectElement,
@@ -236,6 +237,94 @@ describe('renderPageToSvg', () => {
     expect(svg).toContain('&lt;b&gt;&amp;&quot;bold&quot;&lt;/b&gt;');
     expect(svg).not.toContain('<script>');
     expect(svg).not.toContain('\u0000');
+  });
+
+  it('masks an empty frame with its own shape', async () => {
+    const document = makeDocument();
+    firstPage(document).elements.push(
+      createFrameElement({
+        id: 'f1',
+        x: 10,
+        y: 20,
+        width: 300,
+        height: 200,
+        cornerRadius: 24,
+        fill: { type: 'solid', color: '#cbd5e1' },
+      }),
+    );
+    const svg = await render(document);
+    expect(svg).toContain(
+      '<clipPath id="frame-1"><rect width="300" height="200" rx="24" ry="24"/></clipPath>',
+    );
+    expect(svg).toContain('<g clip-path="url(#frame-1)">');
+    expect(svg).toContain('<rect width="300" height="200" fill="#cbd5e1"/>');
+    expect(svg).toContain('<g transform="translate(10 20)">');
+  });
+
+  it('draws an elliptical frame mask', async () => {
+    const document = makeDocument();
+    firstPage(document).elements.push(
+      createFrameElement({ id: 'f1', width: 300, height: 200, shape: 'ellipse' }),
+    );
+    const svg = await render(document);
+    expect(svg).toContain('<ellipse cx="150" cy="100" rx="150" ry="100"/>');
+  });
+
+  it('fills a frame with a cover-cropped photo inside the mask', async () => {
+    const document = makeDocument();
+    document.assets['asset_wide'] = createImageAsset({
+      id: 'asset_wide',
+      name: 'wide.png',
+      mimeType: 'image/png',
+      width: 400,
+      height: 200,
+    });
+    firstPage(document).elements.push(
+      createFrameElement({ id: 'f1', width: 200, height: 200, assetId: 'asset_wide' }),
+    );
+
+    const svg = await render(document, {
+      resolveImageHref: () => 'data:image/png;base64,AAAA',
+    });
+    // The nested viewBox maps the whole photo into the box and `slice` covers it, which is what
+    // the canvas does with the same box and bitmap.
+    expect(svg).toContain(
+      '<svg width="200" height="200" viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice">',
+    );
+    expect(svg).toContain('<image href="data:image/png;base64,AAAA" width="400" height="200"/>');
+  });
+
+  it('applies a frame crop in source pixels and stretches on fill', async () => {
+    const document = makeDocument();
+    document.assets['asset_wide'] = createImageAsset({
+      id: 'asset_wide',
+      mimeType: 'image/png',
+      width: 400,
+      height: 200,
+    });
+    firstPage(document).elements.push(
+      createFrameElement({
+        id: 'f1',
+        width: 200,
+        height: 200,
+        assetId: 'asset_wide',
+        fit: 'fill',
+        crop: { x: 0.25, y: 0, width: 0.5, height: 1 },
+      }),
+    );
+    const svg = await render(document, { resolveImageHref: () => 'data:image/png;base64,AAAA' });
+    expect(svg).toContain('viewBox="100 0 200 200" preserveAspectRatio="none"');
+  });
+
+  it('reports a frame that references a missing asset', async () => {
+    const document = makeDocument();
+    firstPage(document).elements.push(
+      createFrameElement({ id: 'f1', width: 100, height: 100, assetId: 'gone' }),
+    );
+    const failed = await renderPageToSvg(document, { resolveImageHref: () => 'data:,' });
+    expect(failed.ok).toBe(false);
+    if (failed.ok) return;
+    expect(failed.error.code).toBe('asset-missing');
   });
 
   it('renders images through the injected href resolver', async () => {

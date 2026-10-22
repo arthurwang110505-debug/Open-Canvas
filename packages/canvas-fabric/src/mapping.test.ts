@@ -1,5 +1,6 @@
 import {
   createEllipseElement,
+  createFrameElement,
   createRectElement,
   createTextElement,
   linearFill,
@@ -13,6 +14,7 @@ import {
   elementToFabricProps,
   fillSignature,
   fillToFabric,
+  frameToFabricProps,
   geometryFromTransform,
   normalizeAngle,
   patchFromTransform,
@@ -243,5 +245,48 @@ describe('gradient fills', () => {
     );
     if (mapped.kind !== 'rect') throw new Error('expected a rect');
     expect(mapped.props.fill).toMatchObject({ type: 'linear' });
+  });
+});
+
+describe('frames', () => {
+  it('maps an empty frame to its shape, clamped radius and fill', () => {
+    const frame = createFrameElement({
+      width: 200,
+      height: 100,
+      cornerRadius: 999,
+      fill: { type: 'solid', color: '#e5e7eb' },
+    });
+    const props = frameToFabricProps(frame);
+    expect(props).toMatchObject({
+      width: 200,
+      height: 100,
+      shape: 'rect',
+      cornerRadius: 50,
+      fill: '#e5e7eb',
+      left: frame.x + 100,
+      top: frame.y + 50,
+    });
+    expect(props.image).toBeUndefined();
+  });
+
+  it('lays a photo out with the same cover maths as an image element', () => {
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1' });
+    const props = frameToFabricProps(frame, { width: 400, height: 200 }, 'cover');
+    expect(props.image).toMatchObject({
+      width: 200,
+      height: 200,
+      cropX: 100,
+      cropY: 0,
+      scaleX: 1,
+      scaleY: 1,
+    });
+  });
+
+  it('lets the fit mode stretch the photo and keeps the frame box', () => {
+    const frame = createFrameElement({ width: 200, height: 200, assetId: 'asset_1', fit: 'fill' });
+    const props = frameToFabricProps(frame, { width: 400, height: 200 }, 'fill');
+    expect(props.image).toMatchObject({ width: 400, height: 200, scaleX: 0.5, scaleY: 1 });
+    expect(props.width).toBe(200);
+    expect(props.height).toBe(200);
   });
 });

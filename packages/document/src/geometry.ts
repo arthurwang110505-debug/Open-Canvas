@@ -99,3 +99,11 @@ export function unionBounds(list: readonly Bounds[]): Bounds {
 export function pageBounds(size: { width: number; height: number }): Bounds {
   return boundsFromEdges(0, 0, size.width, size.height);
 }
+
+/**
+ * The corner radius a rounded shape actually draws with. Both renderers clamp the stored value to
+ * half the shorter edge, so a radius larger than the box never produces inverted corners.
+ */
+export function clampedCornerRadius(cornerRadius: number, width: number, height: number): number {
+  return Math.min(Math.max(0, cornerRadius), width / 2, height / 2);
+}

@@ -208,6 +208,28 @@ export const IconElementSchema = ElementBaseSchema.extend({
   strokeWidth: z.number().min(0.25).max(6).default(2),
 });
 
+/**
+ * A mask with a photo inside it. The element owns the box and the shape; the photo is an asset
+ * reference, so a frame can be empty (a placeholder the user can drop a photo into) or filled
+ * without changing its geometry. Because the mask is the element's own shape, resizing a frame
+ * re-masks the photo instead of stretching it.
+ */
+export const FrameShapeSchema = z.enum(['rect', 'ellipse']);
+
+export const FrameElementSchema = ElementBaseSchema.extend({
+  type: z.literal('frame'),
+  shape: FrameShapeSchema.default('rect'),
+  /** Clamped to half the shorter edge when drawn, exactly like a rectangle's radius. */
+  cornerRadius: z.number().min(0).max(LIMITS.maxElementDimension).default(0),
+  /** Asset shown inside the mask; absent means an empty placeholder. */
+  assetId: IdSchema.optional(),
+  /** `cover` fills the mask and crops the overflow (default); `fill` stretches the photo. */
+  fit: ImageFitSchema.default('cover'),
+  crop: ImageCropSchema.optional(),
+  /** Drawn inside the mask behind the photo — the whole element while it is empty. */
+  fill: FillSchema.default({ type: 'solid', color: '#e5e7eb' }),
+});
+
 export const PathPointSchema = z.object({
   x: CoordinateSchema,
   y: CoordinateSchema,
@@ -247,6 +269,8 @@ export type ImageCrop = z.infer<typeof ImageCropSchema>;
 export type PathPoint = z.infer<typeof PathPointSchema>;
 export type PathElement = z.infer<typeof PathElementSchema>;
 export type IconElement = z.infer<typeof IconElementSchema>;
+export type FrameShape = z.infer<typeof FrameShapeSchema>;
+export type FrameElement = z.infer<typeof FrameElementSchema>;
 
 export interface GroupElement {
   id: string;
@@ -269,6 +293,7 @@ export type DesignElement =
   | ImageElement
   | PathElement
   | IconElement
+  | FrameElement
   | GroupElement;
 export type ElementType = DesignElement['type'];
 
@@ -289,6 +314,7 @@ export const ElementSchema: z.ZodType<DesignElement> = z.lazy(() =>
     ImageElementSchema,
     PathElementSchema,
     IconElementSchema,
+    FrameElementSchema,
     GroupElementSchema,
   ]),
 );
@@ -425,15 +451,18 @@ export const DocumentSchema = z
           });
         }
         elementIds.add(element.id);
-        if (
-          element.type === 'image' &&
-          element.assetId !== undefined &&
-          !(element.assetId in doc.assets)
-        ) {
+        // Frames hold a photo the same way images do, so the same check applies to both.
+        const referenced =
+          element.type === 'image'
+            ? element.assetId
+            : element.type === 'frame'
+              ? element.assetId
+              : undefined;
+        if (referenced !== undefined && !(referenced in doc.assets)) {
           ctx.addIssue({
             code: 'custom',
             path: [...elementPath, 'assetId'] as (string | number)[],
-            message: `Image references unknown asset "${element.assetId}"`,
+            message: `Image references unknown asset "${referenced}"`,
           });
         }
       });

@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { LIMITS } from './constants';
-import { createBlankDocument, createImageAsset, createImageElement } from './factories';
+import {
+  createBlankDocument,
+  createFrameElement,
+  createImageAsset,
+  createImageElement,
+} from './factories';
 import { collectReferencedAssetIds, findAsset, fitWithin } from './queries';
 import { DocumentSchema, ImageAssetSchema, ImageElementSchema } from './schema';
-import { parseDocument, serializeDocument } from './serialization';
+import { cloneDocument, parseDocument, serializeDocument } from './serialization';
 
 const fixedDate = new Date('2026-01-02T03:04:05.000Z');
 
@@ -165,6 +170,21 @@ describe('asset queries', () => {
     expect(findAsset(doc, 'asset_1')?.name).toBe('photo.png');
     expect(findAsset(doc, 'missing')).toBeUndefined();
     expect([...collectReferencedAssetIds(doc)]).toEqual(['asset_1']);
+  });
+
+  it('counts the photo a frame holds as referenced', () => {
+    const doc = documentWithImage();
+    doc.pages[0]?.elements.push(
+      createFrameElement({ id: 'frame_1', assetId: 'asset_1' }),
+      createFrameElement({ id: 'frame_empty' }),
+    );
+    expect([...collectReferencedAssetIds(doc)]).toEqual(['asset_1']);
+
+    // A frame that names an asset the document does not have is rejected like an image would be.
+    const broken = cloneDocument(doc);
+    broken.pages[0]?.elements.push(createFrameElement({ id: 'frame_2', assetId: 'asset_gone' }));
+    const parsed = DocumentSchema.safeParse(broken);
+    expect(parsed.success).toBe(false);
   });
 
   it('fits sizes within bounds without upscaling', () => {

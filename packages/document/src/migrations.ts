@@ -85,6 +85,14 @@ export const MIGRATIONS: readonly Migration[] = [
     // bundled photo as a local asset whose bytes are missing (it would show a broken image).
     migrate: (raw) => ({ ...raw }),
   },
+  {
+    from: 9,
+    to: 10,
+    description: 'Add frame element',
+    // Purely additive: an older build cannot draw a frame, so it must refuse the document rather
+    // than showing a hole where a masked photo should be.
+    migrate: (raw) => ({ ...raw }),
+  },
 ];
 
 export interface MigrateOptions {

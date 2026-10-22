@@ -57,6 +57,7 @@ export function fitElementsToSize(
         };
       case 'image':
       case 'icon':
+      case 'frame':
         // An icon's stroke width is measured on its own 24-unit grid, so it scales with the box.
         return { ...element, ...geometry };
       case 'path':

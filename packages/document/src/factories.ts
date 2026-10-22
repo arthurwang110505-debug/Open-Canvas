@@ -6,6 +6,7 @@ import type {
   DesignElement,
   EllipseElement,
   Fill,
+  FrameElement,
   GroupElement,
   IconElement,
   ImageAsset,
@@ -119,6 +120,22 @@ export function createTextElement(overrides: Partial<Omit<TextElement, 'type'>> 
     textTransform: overrides.textTransform ?? 'none',
     listStyle: overrides.listStyle ?? 'none',
     color: overrides.color ?? '#111827',
+  };
+}
+
+export function createFrameElement(
+  overrides: Partial<Omit<FrameElement, 'type'>> = {},
+): FrameElement {
+  return {
+    ...baseDefaults({ width: 480, height: 480, ...overrides }),
+    type: 'frame',
+    ...(overrides.name !== undefined ? { name: overrides.name } : {}),
+    shape: overrides.shape ?? 'rect',
+    cornerRadius: overrides.cornerRadius ?? 0,
+    ...(overrides.assetId !== undefined ? { assetId: overrides.assetId } : {}),
+    fit: overrides.fit ?? 'cover',
+    ...(overrides.crop !== undefined ? { crop: overrides.crop } : {}),
+    fill: overrides.fill ?? { type: 'solid', color: '#e5e7eb' },
   };
 }
 

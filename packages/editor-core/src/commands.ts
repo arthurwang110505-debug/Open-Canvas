@@ -1,5 +1,6 @@
 import type {
   Asset,
+  FrameElement,
   DesignElement,
   EllipseElement,
   Fill,
@@ -22,7 +23,8 @@ export type ElementPatch = Partial<
     EditableProps<TextElement> &
     EditableProps<ImageElement> &
     EditableProps<PathElement> &
-    EditableProps<IconElement>
+    EditableProps<IconElement> &
+    EditableProps<FrameElement>
 >;
 
 export type ReorderTarget = 'front' | 'back' | 'forward' | 'backward' | { index: number };

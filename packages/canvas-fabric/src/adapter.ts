@@ -4,6 +4,7 @@ import type {
   DesignElement,
   DocumentSize,
   IconElement,
+  FrameElement,
   ImageElement,
   ImageFit,
   ListStyle,
@@ -37,6 +38,7 @@ import {
   elementToFabricProps,
   fillSignature,
   fillToFabric,
+  frameRadius,
   iconPaths,
   iconToFabricProps,
   patchFromTransform,
@@ -44,6 +46,7 @@ import {
   topLeftToCenter,
   type BoxGeometry,
   type FabricFill,
+  type FrameFabricProps,
   type PathFabricProps,
 } from './mapping';
 import { PLACEHOLDER_SIZE, createPlaceholderBitmap } from './placeholder';
@@ -224,6 +227,8 @@ export class FabricCanvasAdapter {
    * its child paths, so a changed icon needs a new object rather than a property update.
    */
   private readonly iconSignatures = new WeakMap<FabricObject, string>();
+  /** What a frame's object was built for; a change means the object must be rebuilt. */
+  private readonly frameSignatures = new WeakMap<FabricObject, string>();
   private readonly idsByObject = new WeakMap<FabricObject, string>();
   private readonly pageBackground: Rect;
   /** Cached gradients, keyed by element id (page background uses a reserved id). */
@@ -654,9 +659,12 @@ export class FabricCanvasAdapter {
    */
   private objectMatchesElement(object: ElementObject, element: DesignElement): boolean {
     if (!objectMatchesType(object, element.type)) return false;
-    const signature = this.iconSignatures.get(object);
-    if (element.type === 'icon') return signature === iconSignature(element);
-    return signature === undefined;
+    const icon = this.iconSignatures.get(object);
+    if (element.type === 'icon') return icon === iconSignature(element);
+    const frame = this.frameSignatures.get(object);
+    // A frame switches between a shape and an image object when a photo is added or removed.
+    if (element.type === 'frame') return frame === frameSignature(element);
+    return icon === undefined && frame === undefined;
   }
 
   private replaceObject(
@@ -683,6 +691,12 @@ export class FabricCanvasAdapter {
     if (element.type === 'icon') {
       return this.createIconObject(element);
     }
+    // Frames are a mask plus an optional photo, so they are built before the generic mapping too.
+    if (element.type === 'frame') {
+      const object = this.buildFrameObject(element);
+      this.frameSignatures.set(object, frameSignature(element));
+      return object;
+    }
     const mapped = elementToFabricProps(element, this.fabricContext);
     switch (mapped.kind) {
       case 'rect':
@@ -702,7 +716,73 @@ export class FabricCanvasAdapter {
       }
       case 'icon':
         throw new Error('Icon elements are built before property mapping.');
+      case 'frame':
+        // Handled above: a frame owns a mask that the generic property mapping cannot express.
+        throw new Error('Frame elements are built before property mapping.');
     }
+  }
+
+  /**
+   * A filled frame is an image whose visible area is masked by the frame's shape; an empty frame
+   * is the same shape painted with its fill. The mask is expressed in the object's own units and
+   * scaled with it, which keeps the crop correct through resizes.
+   */
+  private buildFrameObject(element: FrameElement): ElementObject {
+    const mapped = elementToFabricProps(element, this.fabricContext);
+    if (mapped.kind !== 'frame') throw new Error('expected frame props');
+    return this.buildFrame(mapped.props, element);
+  }
+
+  private buildFrame(props: FrameFabricProps, element: FrameElement): ElementObject {
+    const { shape, cornerRadius, fill, image, width, height, ...common } = props;
+    if (image) {
+      const object = new FabricImage(this.loadingBitmap, {
+        ...common,
+        ...image,
+      });
+      object.clipPath = frameClip(element, image.scaleX, image.scaleY);
+      return object;
+    }
+    const paint = fill === '' ? 'transparent' : this.paint(element.id, fill);
+    if (shape === 'ellipse') {
+      return new Ellipse({ ...common, rx: width / 2, ry: height / 2, fill: paint });
+    }
+    return new Rect({
+      ...common,
+      width,
+      height,
+      rx: cornerRadius,
+      ry: cornerRadius,
+      fill: paint,
+    });
+  }
+
+  /** Applies a frame's mask, photo layout and fill to an existing object. */
+  private applyFrame(object: ElementObject, element: FrameElement): void {
+    const mapped = elementToFabricProps(element, this.fabricContext);
+    if (mapped.kind !== 'frame') return;
+    const { shape: _shape, cornerRadius: _r, fill, image, width, height, ...common } = mapped.props;
+    if (object instanceof FabricImage && image) {
+      this.ensureImageLoading(object, element);
+      // Images paint their own pixels; the fill is only visible through the mask before load.
+      applyProps(object, { ...common, ...image });
+      object.set({ clipPath: frameClip(element, image.scaleX, image.scaleY) });
+      object.setCoords();
+      return;
+    }
+    const props: Record<string, unknown> = { ...common };
+    if (object instanceof Rect) {
+      props['width'] = width;
+      props['height'] = height;
+      props['rx'] = mapped.props.cornerRadius;
+      props['ry'] = mapped.props.cornerRadius;
+      props['fill'] = this.paint(element.id, fill);
+    } else if (object instanceof Ellipse) {
+      props['rx'] = width / 2;
+      props['ry'] = height / 2;
+      props['fill'] = this.paint(element.id, fill);
+    }
+    applyProps(object, props);
   }
 
   /**
@@ -821,6 +901,11 @@ export class FabricCanvasAdapter {
           if (child.type !== 'icon') throw new Error('Icon props require an icon element.');
           fabricObj = this.createIconObject(child);
           break;
+        case 'frame':
+          if (child.type !== 'frame') throw new Error('Frame props require a frame element.');
+          // Inside a group only the mask is drawn; grouped photos load lazily like grouped images.
+          fabricObj = this.buildFrame(mapped.props, child);
+          break;
       }
       const childAbsCenter = topLeftToCenter({
         x: group.x + child.x,
@@ -859,7 +944,7 @@ export class FabricCanvasAdapter {
 
   private readonly fabricContext = {
     imageSource: (
-      element: ImageElement,
+      element: ImageElement | FrameElement,
     ): { natural: { width: number; height: number }; fit: ImageFit } => {
       const entry = this.images.get(element.id);
       if (entry?.status === 'ready' && entry.natural && entry.assetId === element.assetId) {
@@ -870,6 +955,10 @@ export class FabricCanvasAdapter {
   };
 
   private applyElement(object: ElementObject, element: DesignElement): void {
+    if (element.type === 'frame') {
+      this.applyFrame(object, element);
+      return;
+    }
     if (element.type === 'group' && object instanceof Group) {
       const center = topLeftToCenter(element);
       const props: Record<string, unknown> = {
@@ -1043,23 +1132,27 @@ export class FabricCanvasAdapter {
    * A failed load is not retried until the element points at a different asset, so a
    * broken file does not trigger a request on every render.
    */
-  private ensureImageLoading(object: FabricImage, element: ImageElement): void {
+  private ensureImageLoading(
+    object: FabricImage,
+    element: { id: string; assetId?: string | undefined },
+  ): void {
     const current = this.images.get(element.id);
     if (current?.assetId === element.assetId) return;
     current?.abort?.abort();
 
-    const asset = this.assets[element.assetId];
+    const asset = element.assetId === undefined ? undefined : this.assets[element.assetId];
     if (!asset) {
       this.images.set(element.id, {
-        assetId: element.assetId,
+        assetId: element.assetId ?? '',
         status: 'error',
         natural: null,
         abort: null,
       });
       object.setElement(this.errorBitmap);
-      this.callbacks.onAssetError(element.id, element.assetId, {
+      const assetId = element.assetId ?? '';
+      this.callbacks.onAssetError(element.id, assetId, {
         code: 'asset-missing',
-        message: `The image asset "${element.assetId}" is not part of this document.`,
+        message: `The image asset "${assetId}" is not part of this document.`,
       });
       return;
     }
@@ -1137,7 +1230,8 @@ export class FabricCanvasAdapter {
     entry.abort = null;
     const object = this.objects.get(elementId);
     const element = this.elements.get(elementId);
-    if (!(object instanceof FabricImage) || element?.type !== 'image') return;
+    const loadsImage = element?.type === 'image' || element?.type === 'frame';
+    if (!(object instanceof FabricImage) || !loadsImage) return;
     this.applying = true;
     try {
       object.setElement(source);
@@ -1235,7 +1329,52 @@ function objectMatchesType(object: ElementObject, type: DesignElement['type']): 
       return object instanceof Group;
     case 'group':
       return object instanceof Group;
+    case 'frame':
+      // Whatever a frame currently is: a placeholder shape or an image under a mask.
+      return object instanceof Rect || object instanceof Ellipse || object instanceof FabricImage;
   }
+}
+
+/**
+ * The mask for a frame's photo, in the object's own units. Fabric draws a non-absolute clip path
+ * centred on the object, so the mask is centred on `(0, 0)`; expressing it in object units means
+ * it scales with the photo when the frame is resized on the canvas.
+ */
+function frameClip(element: FrameElement, scaleX: number, scaleY: number): Rect | Ellipse {
+  const sx = Math.abs(scaleX) || 1;
+  const sy = Math.abs(scaleY) || 1;
+  const width = element.width / sx;
+  const height = element.height / sy;
+  const common = {
+    left: 0,
+    top: 0,
+    originX: 'center' as const,
+    originY: 'center' as const,
+    absolutePositioned: false,
+  };
+  if (element.shape === 'ellipse') {
+    return new Ellipse({ ...common, rx: width / 2, ry: height / 2 });
+  }
+  const radius = frameRadius(element);
+  return new Rect({ ...common, width, height, rx: radius / sx, ry: radius / sy });
+}
+
+/** Applies a plain property bag, reporting whether anything actually changed. */
+function applyProps(object: FabricObject, props: Record<string, unknown>): boolean {
+  let changed = false;
+  for (const [key, value] of Object.entries(props)) {
+    if (object.get(key) !== value) {
+      object.set(key, value);
+      changed = true;
+    }
+  }
+  if (changed) object.setCoords();
+  return changed;
+}
+
+/** What a frame's Fabric object was built for: its shape and whether it holds a photo. */
+function frameSignature(element: FrameElement): string {
+  return `${element.shape}\u0000${element.assetId ?? ''}`;
 }
 
 /** Everything baked into an icon's child paths, so a change to any of it means a rebuild. */
