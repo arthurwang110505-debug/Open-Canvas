@@ -237,6 +237,40 @@ describe('createEditorStore', () => {
     expect(state.selectedIds).toEqual([]);
   });
 
+  it('keeps adjust-photo mode only while its frame is being edited', () => {
+    const { store, pageId } = makeStore();
+    const { dispatch, setPhotoPan, setSelection } = store.getState();
+    dispatch({ type: 'element.add', pageId, element: createRectElement({ id: 'f' }) });
+    dispatch({ type: 'element.add', pageId, element: createRectElement({ id: 'other' }) });
+
+    setSelection(['f']);
+    setPhotoPan('f');
+    expect(store.getState().photoPanId).toBe('f');
+    // Re-selecting the same frame keeps the mode: it is a UI state, not a selection side effect.
+    setSelection(['f']);
+    expect(store.getState().photoPanId).toBe('f');
+
+    // Selecting something else ends it, as does clearing the selection.
+    setSelection(['other']);
+    expect(store.getState().photoPanId).toBeNull();
+    setSelection(['f']);
+    setPhotoPan('f');
+    store.getState().clearSelection();
+    expect(store.getState().photoPanId).toBeNull();
+  });
+
+  it('leaves adjust-photo mode when its frame goes away', () => {
+    const { store, pageId } = makeStore();
+    const { dispatch } = store.getState();
+    dispatch({ type: 'element.add', pageId, element: createRectElement({ id: 'f' }) });
+    store.getState().setSelection(['f']);
+    store.getState().setPhotoPan('f');
+
+    // Deleting the frame (undoably) drops the target with it.
+    dispatch({ type: 'element.delete', pageId, elementIds: ['f'] });
+    expect(store.getState().photoPanId).toBeNull();
+  });
+
   it('clamps zoom', () => {
     const { store } = makeStore();
     store.getState().setZoom(100);

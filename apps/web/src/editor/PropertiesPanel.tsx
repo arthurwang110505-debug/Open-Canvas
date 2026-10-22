@@ -11,6 +11,7 @@ import {
   type TextElement,
   type TextTransform,
 } from '@opencanvas/document';
+import { canPanFramePhoto } from '@opencanvas/canvas-fabric';
 import { getIcon } from '@opencanvas/icons';
 import {
   movableElements,
@@ -58,7 +59,7 @@ import { useEditorActions } from './actions';
 import { useImageImport } from './assets/useImageImport';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
 import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
-import { useEditor } from './hooks';
+import { useEditor, useEditorStore } from './hooks';
 import { ColorField, FieldGroup, NumberField } from './panels/fields';
 import { GradientPicker } from './panels/GradientPicker';
 import { IconPicker, IconPreview } from './panels/IconPicker';
@@ -553,10 +554,18 @@ const FRAME_SHAPES: { value: FrameShape; label: string }[] = [
 function FrameProperties({ element }: { element: FrameElement }) {
   const { updateSelection } = useEditorActions();
   const { insertPhoto } = useImageImport();
+  const store = useEditorStore();
+  const photoPanId = useEditor((state) => state.photoPanId);
   const shapeId = useId();
   const fitId = useId();
   const [picking, setPicking] = useState(false);
   const hasPhoto = element.assetId !== undefined;
+  const asset = useEditor((state) =>
+    element.assetId ? state.document.assets[element.assetId] : undefined,
+  );
+  // Offering the mode for a photo that already fills the mask would be a button that does nothing.
+  const pannable = asset !== undefined && canPanFramePhoto(element, asset);
+  const adjusting = photoPanId === element.id;
 
   return (
     <FieldGroup title="Shape & photo">
@@ -657,6 +666,22 @@ function FrameProperties({ element }: { element: FrameElement }) {
                 </option>
               ))}
             </Select>
+          </div>
+        )}
+        {pannable && (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] text-muted-foreground">
+              {adjusting
+                ? 'Drag the photo on the canvas, or nudge it with the arrow keys.'
+                : 'Move the photo inside its frame.'}
+            </p>
+            <Button
+              variant={adjusting ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => store.getState().setPhotoPan(adjusting ? null : element.id)}
+            >
+              {adjusting ? 'Done' : 'Adjust photo'}
+            </Button>
           </div>
         )}
       </div>

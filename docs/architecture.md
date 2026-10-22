@@ -64,6 +64,9 @@ assetId?, fit, crop?, fill }`. The mask is the element's own shape, so a frame c
   a placeholder and be filled later by a drop, and resizing it re-masks the photo instead of
   stretching it. The document stores the same asset geometry an image element would (`cover`
   crops, `fill` stretches, `crop` is a source window), which is why canvas and SVG agree.
+  Adjust-photo mode (double-click a filled frame) is editor state (`photoPanId`), not document
+  state: the adapter locks the frame, pans the photo live by moving its crop window, and reports
+  the final normalized `crop` once, on pointer up.
 - **Icons** store `{ iconId, color, strokeWidth }` rather than shape data: the geometry lives in
   `@opencanvas/icons`, so an icon costs ~80 bytes in the document, recolours and scales without
   loss. `iconId` is validated as a slug, and an id from a newer build renders as nothing while

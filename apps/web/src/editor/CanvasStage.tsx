@@ -81,6 +81,11 @@ export function CanvasStage() {
           );
         },
         onSelectionChanged: (ids) => store.getState().setSelection(ids),
+        onPhotoPanChanged: (elementId) => store.getState().setPhotoPan(elementId),
+        onPhotoPanned: (elementId, crop) => {
+          const { activePageId, dispatch } = store.getState();
+          dispatch({ type: 'element.update', pageId: activePageId, elementId, patch: { crop } });
+        },
         onZoomChanged: (zoom) => store.getState().setZoom(zoom),
         onViewportChanged: () => controller.bumpViewport(),
         onInteractionChanged: (interacting) => controller.setInteracting(interacting),
@@ -122,8 +127,13 @@ export function CanvasStage() {
     adapter.fitToViewport();
     controller.attach(adapter);
 
+    adapter.setPhotoPanTarget(store.getState().photoPanId);
+
     const unsubscribe = store.subscribe((state, previous) => {
       if (sceneChanged(state, previous)) renderScene();
+      // Adjust-photo mode lives in the store (the properties panel toggles it too), so the
+      // canvas follows it rather than owning it.
+      if (state.photoPanId !== previous.photoPanId) adapter.setPhotoPanTarget(state.photoPanId);
     });
 
     const observer = new ResizeObserver(() => {

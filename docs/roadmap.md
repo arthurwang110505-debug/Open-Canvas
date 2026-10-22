@@ -47,8 +47,9 @@ Delivered in Phase A/B and C1:
 - [x] Text presets, display casing and bullet/numbered lists
 - [x] Bundled CC0 photo library (see [photos.md](photos.md))
 - [x] Photo frames: rect/oval masks with cover/fill and the same crop on the canvas and in exports
+- [x] Adjust-photo mode: drag (or arrow-nudge) the photo inside a frame, one undo step per gesture
 
-Next in Phase C: drag-to-reposition inside a frame (C1b), then the remaining items in the plan.
+Next in Phase C: on-canvas image crop (C2) and the remaining items in the plan.
 
 ## Milestone 4 — AI assistant
 

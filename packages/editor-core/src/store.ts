@@ -29,6 +29,11 @@ export interface EditorState {
   zoom: number;
   /** Last rejected command, surfaced to the UI; cleared with `clearError()`. */
   lastError: CommandError | null;
+  /**
+   * The frame whose photo is being repositioned inside its mask ("adjust photo" mode). UI state,
+   * not document state: it changes no data and never reaches the undo history.
+   */
+  photoPanId: string | null;
 }
 
 /** Actions are plain closures (no `this`), so they can be destructured freely. */
@@ -43,6 +48,8 @@ export interface EditorActions {
   canRedo: () => boolean;
   setSelection: (ids: readonly string[]) => void;
   clearSelection: () => void;
+  /** Enters (`id`) or leaves (`null`) adjust-photo mode for a frame. */
+  setPhotoPan: (elementId: string | null) => void;
   setActivePage: (pageId: string) => void;
   setZoom: (zoom: number) => void;
   /**
@@ -75,6 +82,17 @@ function firstPageId(document: DesignDocument): string {
   const page = document.pages[0];
   if (!page) throw new Error('A document must contain at least one page.');
   return page.id;
+}
+
+/** Drops the photo-pan target when its element is no longer on the page. */
+function prunePhotoPan(
+  document: DesignDocument,
+  pageId: string,
+  photoPanId: string | null,
+): string | null {
+  if (!photoPanId) return null;
+  const page = document.pages.find((candidate) => candidate.id === pageId);
+  return page?.elements.some((element) => element.id === photoPanId) ? photoPanId : null;
 }
 
 function pruneSelection(document: DesignDocument, selectedIds: readonly string[]): string[] {
@@ -122,6 +140,7 @@ export function createEditorStore(
     dirty: false,
     zoom: clampZoom(options.initialZoom ?? 1),
     lastError: null,
+    photoPanId: null,
 
     dispatch: (command, dispatchOptions = {}) => {
       const state = get();
@@ -225,6 +244,7 @@ export function createEditorStore(
         past,
         future,
         selectedIds,
+        photoPanId: prunePhotoPan(nextDocument, activePageId, state.photoPanId),
         dirty: nextDocument !== savedDocument,
         lastError: null,
       });
@@ -252,6 +272,7 @@ export function createEditorStore(
           activePageId,
           state.selectedIds,
         ),
+        photoPanId: prunePhotoPan(previous, activePageId, state.photoPanId),
         dirty: previous !== savedDocument,
       });
       return true;
@@ -278,6 +299,7 @@ export function createEditorStore(
           activePageId,
           state.selectedIds,
         ),
+        photoPanId: prunePhotoPan(next, activePageId, state.photoPanId),
         dirty: next !== savedDocument,
       });
       return true;
@@ -294,11 +316,23 @@ export function createEditorStore(
       const unchanged =
         unique.length === state.selectedIds.length &&
         unique.every((id, index) => state.selectedIds[index] === id);
-      if (!unchanged) set({ selectedIds: unique });
+      // Adjust-photo mode ends as soon as its frame is no longer the thing being edited.
+      const photoPanId =
+        state.photoPanId !== null && unique.includes(state.photoPanId) ? state.photoPanId : null;
+      if (unchanged && photoPanId === state.photoPanId) return;
+      set({ selectedIds: unique, photoPanId });
     },
 
     clearSelection: () => {
-      if (get().selectedIds.length > 0) set({ selectedIds: [] });
+      const state = get();
+      if (state.selectedIds.length === 0 && state.photoPanId === null) return;
+      set({ selectedIds: [], photoPanId: null });
+    },
+
+    setPhotoPan: (elementId) => {
+      const state = get();
+      if (state.photoPanId === elementId) return;
+      set({ photoPanId: elementId });
     },
 
     setActivePage: (pageId) => {
@@ -307,7 +341,9 @@ export function createEditorStore(
         // Switching to a page that does not exist is a programming error, not user input.
         throw new Error(`Cannot activate unknown page "${pageId}".`);
       }
-      if (pageId !== state.activePageId) set({ activePageId: pageId, selectedIds: [] });
+      if (pageId !== state.activePageId) {
+        set({ activePageId: pageId, selectedIds: [], photoPanId: null });
+      }
     },
 
     setZoom: (zoom) => {
@@ -328,6 +364,7 @@ export function createEditorStore(
         document,
         activePageId: firstPageId(document),
         selectedIds: [],
+        photoPanId: null,
         past: [],
         future: [],
         dirty: false,

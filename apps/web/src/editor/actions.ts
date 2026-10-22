@@ -24,6 +24,7 @@ import {
   type ElementPatch,
   type ReorderTarget,
 } from '@opencanvas/editor-core';
+import { panFramePhoto } from '@opencanvas/canvas-fabric';
 import { useMemo } from 'react';
 
 import { useCanvasController, useEditorStore } from './hooks';
@@ -50,6 +51,8 @@ export interface EditorActions {
   deleteSelection: () => void;
   duplicateSelection: () => void;
   nudgeSelection: (dx: number, dy: number) => void;
+  /** Moves the photo inside the frame being adjusted; no-op outside adjust-photo mode. */
+  nudgePhoto: (dx: number, dy: number) => void;
   selectAll: () => void;
   clearSelection: () => void;
   /** Patches every selected element; `mergeKey` coalesces rapid edits into one undo step. */
@@ -335,6 +338,22 @@ export function useEditorActions(): EditorActions {
         if (updates.length > 0) {
           dispatch({ type: 'element.updateMany', pageId: page.id, updates }, { mergeKey: 'nudge' });
         }
+      },
+
+      nudgePhoto: (dx, dy) => {
+        const state = store.getState();
+        if (!state.photoPanId) return;
+        const page = selectActivePage(state);
+        const element = page.elements.find((candidate) => candidate.id === state.photoPanId);
+        if (element?.type !== 'frame' || !element.assetId) return;
+        const asset = state.document.assets[element.assetId];
+        if (!asset) return;
+        const crop = panFramePhoto(element, asset, { x: dx, y: dy });
+        if (!crop) return;
+        dispatch(
+          { type: 'element.update', pageId: page.id, elementId: element.id, patch: { crop } },
+          { mergeKey: 'photo-pan' },
+        );
       },
 
       selectAll: () => {

@@ -1,11 +1,19 @@
-import { createBlankDocument, createFrameElement, type DesignDocument } from '@opencanvas/document';
+import {
+  createBlankDocument,
+  createFrameElement,
+  createImageAsset,
+  type DesignDocument,
+} from '@opencanvas/document';
 import { TooltipProvider } from '@opencanvas/ui';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { EditorProvider } from './EditorProvider';
+import { useEditorActions } from './actions';
 import { ELEMENT_DRAG_MIME } from './elements/drag';
+import { useEditor, useEditorStore } from './hooks';
 
 const fixedDate = new Date('2026-10-22T10:00:00.000Z');
 
@@ -123,5 +131,112 @@ describe('frames', () => {
     await user.click(within(panel).getByRole('button', { name: 'Remove' }));
     expect(within(panel).getByText('Empty frame')).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: 'Choose photo' })).toBeInTheDocument();
+  });
+});
+
+describe('adjusting a photo inside its frame', () => {
+  it('turns the frame into a crop tool until Escape', async () => {
+    const { user } = renderEditor();
+    const panel = await insertFrame(user);
+    await user.click(within(panel).getByRole('button', { name: 'Choose photo' }));
+    const picker = within(panel).getByRole('listbox', { name: 'Choose a photo' });
+    await user.click(within(picker).getByRole('option', { name: 'Fill with Alpine lake' }));
+
+    await user.click(within(panel).getByRole('button', { name: 'Adjust photo' }));
+    expect(within(panel).getByRole('button', { name: 'Done' })).toBeInTheDocument();
+    expect(
+      within(panel).getByText('Drag the photo on the canvas, or nudge it with the arrow keys.'),
+    ).toBeInTheDocument();
+
+    // Done leaves the mode; Escape does the same without clearing the selection.
+    await user.click(within(panel).getByRole('button', { name: 'Done' }));
+    expect(within(panel).getByRole('button', { name: 'Adjust photo' })).toBeInTheDocument();
+
+    await user.click(within(panel).getByRole('button', { name: 'Adjust photo' }));
+    await user.keyboard('{Escape}');
+    expect(within(panel).getByRole('button', { name: 'Adjust photo' })).toBeInTheDocument();
+    expect(within(panel).getByRole('heading', { name: 'Frame' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The canvas is not scriptable in jsdom, so the arrow-key path is driven through the same
+ * action the shortcut calls, with a probe that renders the frame it edits.
+ */
+function PanHarness() {
+  const actions = useEditorActions();
+  const store = useEditorStore();
+  const frame = useEditor((state) => {
+    const element = state.document.pages[0]?.elements[0];
+    return element?.type === 'frame' ? element : undefined;
+  });
+  return (
+    <div>
+      <button onClick={() => store.getState().setPhotoPan('frame_1')}>Adjust photo</button>
+      <button onClick={() => actions.nudgePhoto(20, 0)}>Arrow right</button>
+      <button onClick={() => actions.undo()}>Undo pan</button>
+      <output data-testid="crop">
+        {frame?.crop ? `${frame.crop.x} ${frame.crop.y} ${frame.crop.width}` : 'whole photo'}
+      </output>
+      <output data-testid="left">{frame?.x}</output>
+    </div>
+  );
+}
+
+describe('nudging a photo', () => {
+  function makeDocument(): DesignDocument {
+    const asset = createImageAsset({
+      id: 'asset_wide',
+      name: 'wide.webp',
+      mimeType: 'image/webp',
+      width: 400,
+      height: 200,
+    });
+    const base = createBlankDocument({ id: 'doc_pan', name: 'Pan', now: fixedDate });
+    return {
+      ...base,
+      assets: { [asset.id]: asset },
+      pages: [
+        {
+          ...base.pages[0]!,
+          elements: [
+            createFrameElement({
+              id: 'frame_1',
+              x: 100,
+              y: 100,
+              width: 200,
+              height: 200,
+              assetId: asset.id,
+            }),
+          ],
+        },
+      ],
+    };
+  }
+
+  it('moves the photo instead of the frame, in one undo step', async () => {
+    const user = userEvent.setup();
+    const document = makeDocument();
+    render(
+      <EditorProvider document={document}>
+        <PanHarness />
+      </EditorProvider>,
+    );
+
+    expect(screen.getByTestId('crop')).toHaveTextContent('whole photo');
+
+    await user.click(screen.getByRole('button', { name: 'Adjust photo' }));
+    await user.click(screen.getByRole('button', { name: 'Arrow right' }));
+    // A 400x200 photo covered into a 200x200 frame shows the middle half: x 0.25, width 0.5.
+    expect(screen.getByTestId('crop')).toHaveTextContent('0.2 0 0.5');
+    // The frame itself has not moved.
+    expect(screen.getByTestId('left')).toHaveTextContent('100');
+
+    await user.click(screen.getByRole('button', { name: 'Arrow right' }));
+    expect(screen.getByTestId('crop')).toHaveTextContent('0.15 0 0.5');
+
+    // The nudges coalesce, so one Undo goes back to the uncropped photo.
+    await user.click(screen.getByRole('button', { name: 'Undo pan' }));
+    expect(screen.getByTestId('crop')).toHaveTextContent('whole photo');
   });
 });
