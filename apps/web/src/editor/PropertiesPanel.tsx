@@ -7,6 +7,7 @@ import {
   type ImageFit,
   type TextAlign,
   type TextElement,
+  type TextTransform,
 } from '@opencanvas/document';
 import { getIcon } from '@opencanvas/icons';
 import {
@@ -39,6 +40,8 @@ import {
   EyeOff,
   Italic,
   Link,
+  List,
+  ListOrdered,
   Lock,
   LockOpen,
   Trash2,
@@ -74,6 +77,13 @@ const TEXT_ALIGNMENTS: { value: TextAlign; label: string; icon: React.ReactNode 
   { value: 'center', label: 'Align center', icon: <AlignCenter /> },
   { value: 'right', label: 'Align right', icon: <AlignRight /> },
   { value: 'justify', label: 'Justify', icon: <AlignJustify /> },
+];
+
+const TEXT_CASES: { value: TextTransform; label: string }[] = [
+  { value: 'none', label: 'As typed' },
+  { value: 'uppercase', label: 'UPPERCASE' },
+  { value: 'lowercase', label: 'lowercase' },
+  { value: 'capitalize', label: 'Capitalize Each Word' },
 ];
 
 const ALIGN_MODES: { mode: AlignMode; label: string; icon: React.ReactNode }[] = [
@@ -323,6 +333,7 @@ function TextProperties({ element }: { element: TextElement }) {
   const familyId = useId();
   const weightId = useId();
   const contentId = useId();
+  const casingId = useId();
 
   return (
     <FieldGroup title="Typography">
@@ -438,6 +449,61 @@ function TextProperties({ element }: { element: TextElement }) {
             <Underline />
           </Button>
         </Tooltip>
+        <Separator orientation="vertical" className="mx-1 h-6" />
+        <Tooltip content="Bulleted list">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Bulleted list"
+            pressed={element.listStyle === 'bullet'}
+            onClick={() =>
+              updateSelection(
+                { listStyle: element.listStyle === 'bullet' ? 'none' : 'bullet' },
+                `listStyle:${element.id}`,
+              )
+            }
+          >
+            <List />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Numbered list">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Numbered list"
+            pressed={element.listStyle === 'number'}
+            onClick={() =>
+              updateSelection(
+                { listStyle: element.listStyle === 'number' ? 'none' : 'number' },
+                `listStyle:${element.id}`,
+              )
+            }
+          >
+            <ListOrdered />
+          </Button>
+        </Tooltip>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={casingId}>Casing</Label>
+        <Select
+          id={casingId}
+          value={element.textTransform}
+          onChange={(event) =>
+            updateSelection(
+              { textTransform: event.target.value as TextTransform },
+              `textTransform:${element.id}`,
+            )
+          }
+        >
+          {TEXT_CASES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <p className="text-[11px] text-muted-foreground">
+          Changes how the text looks; your wording stays as typed.
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <NumberField

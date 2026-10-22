@@ -11,9 +11,9 @@ posters, social media graphics, presentation covers and other visual content.
 > uploaded images and layers (drag-and-drop, cover/fill, snapping guides, align and distribute)
 > with undo/redo and keyboard shortcuts. The editor ships a 60-design template gallery (twelve
 > hand-tuned designs plus cuts generated from layout blueprints), a 372-icon vector catalogue,
-> 15 bundled OFL typefaces that are embedded in every export, and linear/radial gradient fills for
-> shapes and page backgrounds. AI assistance and cloud sync are
-> not implemented yet.
+> 15 bundled OFL typefaces that are embedded in every export, linear/radial gradient fills for shapes
+> and page backgrounds, and text style presets with display casing and bullet/numbered lists.
+> AI assistance and cloud sync are not implemented yet.
 > See [docs/roadmap.md](docs/roadmap.md) for what exists today and what comes next, and
 > [docs/fonts.md](docs/fonts.md) for the bundled typefaces and how they are embedded in exports.
 

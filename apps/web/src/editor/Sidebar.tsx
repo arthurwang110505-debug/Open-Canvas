@@ -11,6 +11,7 @@ import {
 import { useId, useState, type ReactNode } from 'react';
 
 import { useEditorActions } from './actions';
+import { FONT_PAIRINGS, TEXT_PRESETS, type TextPreset } from './textPresets';
 import { ElementsPanel } from './elements/ElementsPanel';
 import { BackgroundPanel } from './panels/BackgroundPanel';
 import { LayersPanel } from './panels/LayersPanel';
@@ -32,34 +33,70 @@ const TABS: { id: SidebarTab; label: string; icon: ReactNode }[] = [
 ];
 
 function TextPanel() {
-  const { addText } = useEditorActions();
+  const { addText, addTextPairing } = useEditorActions();
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <p className="text-xs text-muted-foreground">Click to add text — then edit on the canvas.</p>
-      <Button
-        variant="outline"
-        className="h-12 justify-start rounded-xl text-xl font-extrabold hover:border-primary/30"
-        onClick={() => addText('heading')}
-      >
-        Add a heading
-      </Button>
-      <Button
-        variant="outline"
-        className="h-11 justify-start rounded-xl text-base font-semibold hover:border-primary/30"
-        onClick={() => addText('subheading')}
-      >
-        Add a subheading
-      </Button>
-      <Button
-        variant="outline"
-        className="h-10 justify-start rounded-xl text-sm font-normal hover:border-primary/30"
-        onClick={() => addText('body')}
-      >
-        Add a little bit of body text
-      </Button>
-      <div className="rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 p-4 text-white">
-        <p className="text-sm font-semibold">✦ Try Canva-style combos</p>
-        <p className="mt-1 text-xs text-white/80">Headings + body + spacing create hierarchy.</p>
+      <div className="flex flex-col gap-2" role="group" aria-label="Text styles">
+        {(Object.keys(TEXT_PRESETS) as TextPreset[]).map((preset) => {
+          const spec = TEXT_PRESETS[preset];
+          return (
+            <button
+              key={preset}
+              type="button"
+              aria-label={spec.text}
+              onClick={() => addText(preset)}
+              className="rounded-xl border border-border bg-panel px-3 py-2 text-left text-foreground transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span
+                className="block truncate leading-tight"
+                style={{
+                  fontSize: `${spec.previewSize}px`,
+                  fontWeight: spec.fontWeight,
+                  fontStyle: spec.fontStyle,
+                  letterSpacing: `${((spec.letterSpacing * spec.previewSize) / spec.fontSize).toFixed(2)}px`,
+                  textTransform: spec.textTransform,
+                }}
+              >
+                {spec.text}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex flex-col gap-2">
+        <h3 className="text-[13px] font-semibold">Font pairings</h3>
+        <p className="text-[11px] text-muted-foreground">
+          A heading and body in a matched pair, inserted together.
+        </p>
+        <div className="flex flex-col gap-2" role="group" aria-label="Font pairings">
+          {FONT_PAIRINGS.map((pairing) => (
+            <button
+              key={pairing.id}
+              type="button"
+              aria-label={`Add ${pairing.label} pairing`}
+              onClick={() => addTextPairing(pairing.id)}
+              className="flex items-center gap-3 rounded-xl border border-border bg-panel px-3 py-2 text-left transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span
+                aria-hidden="true"
+                className="w-9 shrink-0 text-2xl leading-none"
+                style={{
+                  fontFamily: `"${pairing.headingFamily}"`,
+                  fontWeight: pairing.headingWeight,
+                }}
+              >
+                Aa
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold">{pairing.label}</span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {pairing.headingFamily} + {pairing.bodyFamily}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

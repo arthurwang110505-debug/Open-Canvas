@@ -166,6 +166,71 @@ describe('EditorPage', () => {
     ]);
   });
 
+  it('toggles bulleted and numbered lists without changing the text', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add a heading' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const bullets = within(panel).getByRole('button', { name: 'Bulleted list' });
+    const numbers = within(panel).getByRole('button', { name: 'Numbered list' });
+
+    expect(bullets).toHaveAttribute('aria-pressed', 'false');
+    await user.click(bullets);
+    expect(bullets).toHaveAttribute('aria-pressed', 'true');
+    expect(within(panel).getByLabelText('Content')).toHaveValue('Add a heading');
+    await user.click(numbers);
+    expect(bullets).toHaveAttribute('aria-pressed', 'false');
+    expect(numbers).toHaveAttribute('aria-pressed', 'true');
+    await user.click(numbers);
+    expect(numbers).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('inserts a text style preset with its size, tracking and casing baked in', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add a label' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    expect(within(panel).getByLabelText('Content')).toHaveValue('Add a label');
+    expect(within(panel).getByLabelText('Size')).toHaveValue('22');
+    expect(within(panel).getByLabelText('Letter spacing')).toHaveValue('4');
+    expect(within(panel).getByLabelText('Casing')).toHaveValue('uppercase');
+  });
+
+  it('inserts a font pairing as one undoable step', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add Editorial pairing' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    // The heading is selected so it can be edited straight away.
+    expect(within(panel).getByLabelText('Content')).toHaveValue('Add a heading');
+    expect(within(panel).getByLabelText('Font')).toHaveValue('Playfair Display');
+    expect(within(panel).getByLabelText('Weight')).toHaveValue('700');
+
+    await user.keyboard('{Control>}a{/Control}');
+    expect(screen.getByRole('heading', { name: '2 elements selected' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+  });
+
+  it('changes display casing without rewriting the text', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add a heading' }));
+    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const casing = within(panel).getByLabelText('Casing');
+
+    expect(casing).toHaveValue('none');
+    await user.selectOptions(casing, 'uppercase');
+    expect(casing).toHaveValue('uppercase');
+    // Display-only: the content field keeps the wording the author typed.
+    expect(within(panel).getByLabelText('Content')).toHaveValue('Add a heading');
+
+    // Rapid changes share one undo step.
+    await user.selectOptions(casing, 'capitalize');
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(within(panel).getByLabelText('Casing')).toHaveValue('none');
+  });
+
   it('reorders layers through the arrange controls', async () => {
     const { user } = renderEditor();
     await insertRectangle(user);

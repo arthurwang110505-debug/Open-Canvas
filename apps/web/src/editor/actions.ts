@@ -26,15 +26,19 @@ import {
 import { useMemo } from 'react';
 
 import { useCanvasController, useEditorStore } from './hooks';
+import { FONT_PAIRINGS, TEXT_PRESETS, type TextPreset } from './textPresets';
+
+export type { TextPreset } from './textPresets';
 
 export type ShapeKind =
   'rect' | 'rounded-rect' | 'ellipse' | 'line' | 'triangle' | 'star' | 'hexagon' | 'sparkle';
-export type TextPreset = 'heading' | 'subheading' | 'body';
 
 export interface EditorActions {
   /** Adds a shape in the middle of the page, or centred on `at` (page coordinates). */
   addShape: (kind: ShapeKind, at?: { x: number; y: number }) => void;
   addText: (preset: TextPreset, at?: { x: number; y: number }) => void;
+  /** Inserts the heading and body of a font pairing as one undo step. */
+  addTextPairing: (pairingId: string) => void;
   /** Places a bundled icon; the id comes from `@opencanvas/icons`. */
   addIcon: (iconId: string, at?: { x: number; y: number }) => void;
   deleteSelection: () => void;
@@ -64,15 +68,6 @@ export interface EditorActions {
   undo: () => void;
   redo: () => void;
 }
-
-const TEXT_PRESETS: Record<
-  TextPreset,
-  { text: string; fontSize: number; fontWeight: 400 | 600 | 700 | 800; widthRatio: number }
-> = {
-  heading: { text: 'Add a heading', fontSize: 96, fontWeight: 800, widthRatio: 0.8 },
-  subheading: { text: 'Add a subheading', fontSize: 56, fontWeight: 600, widthRatio: 0.7 },
-  body: { text: 'Add a little bit of body text', fontSize: 32, fontWeight: 400, widthRatio: 0.6 },
-};
 
 /**
  * Top-left for a `width`x`height` box: centred on the page by default, or centred on `at` when a
@@ -243,10 +238,53 @@ export function useEditorActions(): EditorActions {
           text: spec.text,
           fontSize,
           fontWeight: spec.fontWeight,
+          fontStyle: spec.fontStyle,
+          letterSpacing: Math.round(spec.letterSpacing * scale),
+          textTransform: spec.textTransform,
           textAlign: 'center',
         });
         addElement(element);
         canvas.beginTextEditing(element.id);
+      },
+
+      addTextPairing: (pairingId) => {
+        const pairing = FONT_PAIRINGS.find((candidate) => candidate.id === pairingId);
+        if (!pairing) return;
+        const { size } = store.getState().document;
+        const scale = Math.min(size.width, size.height) / 1080;
+        const headingSize = Math.max(12, Math.round(TEXT_PRESETS.heading.fontSize * scale));
+        const bodySize = Math.max(10, Math.round(TEXT_PRESETS.body.fontSize * scale));
+        const headingWidth = Math.round(size.width * TEXT_PRESETS.heading.widthRatio);
+        const bodyWidth = Math.round(size.width * TEXT_PRESETS.body.widthRatio);
+        const headingHeight = Math.round(headingSize * 1.2);
+        const bodyHeight = Math.round(bodySize * 1.4);
+        const gap = Math.round(32 * scale);
+        const top = Math.round((size.height - (headingHeight + gap + bodyHeight)) / 2);
+        const body = createTextElement({
+          x: Math.round((size.width - bodyWidth) / 2),
+          y: top + headingHeight + gap,
+          width: bodyWidth,
+          height: bodyHeight,
+          text: TEXT_PRESETS.body.text,
+          fontSize: bodySize,
+          fontFamily: pairing.bodyFamily,
+          textAlign: 'center',
+        });
+        const heading = createTextElement({
+          x: Math.round((size.width - headingWidth) / 2),
+          y: top,
+          width: headingWidth,
+          height: headingHeight,
+          text: TEXT_PRESETS.heading.text,
+          fontSize: headingSize,
+          fontWeight: pairing.headingWeight,
+          fontFamily: pairing.headingFamily,
+          textAlign: 'center',
+        });
+        // One undo step for the pair; the heading is added last so it ends up selected.
+        const mergeKey = `text-pairing:${heading.id}`;
+        dispatch({ type: 'element.add', pageId: pageId(), element: body }, { mergeKey });
+        dispatch({ type: 'element.add', pageId: pageId(), element: heading }, { mergeKey });
       },
 
       deleteSelection: () => {

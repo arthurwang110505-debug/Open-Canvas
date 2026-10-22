@@ -163,8 +163,14 @@ product stops feeling like a prototype.
 B6 shipped without the build-time WebP preview script: documents are built once per gallery mount, so
 the dashboard renders 60 SVG thumbnails from memory instead of a binary asset pipeline. If profiling
 shows that cost, a preview script can be added later without touching the catalogue.
-| B7 | **Text panel upgrade.** Style presets as visual rows (size + weight + tracking baked in), font pairing presets ("Editorial", "Bold poster", "Soft serif"), bullet and numbered lists, and all-caps/small-caps as a `textTransform` property. | `Sidebar.tsx`, `properties/TextProperties.tsx`, schema `textTransform` + `listStyle` | Lists render in Fabric (multi-line bullets) and in SVG/PDF; presets are one click and undoable | M |
-| B8 | **Backgrounds: gradients and images.** Extend `Fill` from `solid \| none` to `solid \| linear \| radial \| image \| none` with a migration; adapt `fillToFabric`, SVG `<linearGradient>`/`<radialGradient>` and `<image>` backgrounds; 24 curated gradients in a new Background panel grid. | `document/src/schema.ts`, `canvas-fabric/src/mapping.ts`, `export/src/svg.ts`, `panels/BackgroundPanel.tsx` | Existing documents migrate and render identically; gradient backgrounds export in all three formats | L |
+| B7 | **Text panel upgrade.** ✅ Style presets as visual rows (size + weight + tracking baked in), font pairing presets ("Editorial", "Bold poster", "Soft serif"), bullet and numbered lists, and display casing as a `textTransform` property. Schema v7 (`textTransform`) and v8 (`listStyle`), each with its own migration fixture. Casing and markers are applied by the renderers, so the stored text is never rewritten. | `Sidebar.tsx`, `textPresets.ts`, `PropertiesPanel.tsx`, `canvas-fabric/src/textbox.ts`, `export/src/textLayout.ts`, schema `textTransform` + `listStyle` | Lists render in Fabric (multi-line bullets) and in SVG/PDF; presets are one click and undoable | M |
+| B8 | **Backgrounds: gradients and images.** ✅ Extended `Fill` from `solid \| none` to `solid \| linear \| radial \| none` (schema v6) and added 24 curated gradients to a Background panel grid. Image backgrounds are deliberately not shipped: a page-sized image element already covers the case, and it keeps the fill union small. | `document/src/schema.ts`, `canvas-fabric/src/mapping.ts`, `export/src/svg.ts`, `panels/BackgroundPanel.tsx` | Existing documents migrate and render identically; gradient backgrounds export in all three formats | L |
+
+B7 shipped casing as `none · uppercase · lowercase · capitalize`, not true small caps: the bundled
+families ship no small-caps face, and synthesizing one (scaled capitals) looks worse than leaving the
+option out. Casing is applied before wrapping and list markers after it, so canvas, SVG and PDF agree
+line for line without touching the document text; `listStyle` accepts `none · bullet · number`, and
+the marker gutter (1.5 em) narrows the wrap width so a bullet never pushes a line out of its box.
 
 Why B3 as a new element rather than SVG assets: an icon that cannot be recolored is a sticker,
 not a design element; an icon that is an image asset bloats documents and cannot inherit color.

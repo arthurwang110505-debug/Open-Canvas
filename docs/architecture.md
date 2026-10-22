@@ -37,7 +37,7 @@ Node consumer (`apps/api`) needs it.
 
 ## 2. Document model (`packages/document`)
 
-- **Schema version** `6` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
+- **Schema version** `8` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
 - **Structure**: `DesignDocument { id, name, size, pages[], assets, metadata }` →
   `Page { id, background, elements[] }` → `DesignElement` (discriminated union on `type`:
   `rect`, `ellipse`, `text`, `image`, `path`, `icon`, `group`). Z-order is array order (index 0
@@ -64,6 +64,11 @@ byteSize?, source, createdAt }`. It carries **metadata only** — bytes live in 
 - **Styling**: `Fill` (`solid` | `none`), optional `Stroke`, `opacity`, text typography
   (`fontFamily`, `fontSize`, `fontWeight` 100–900, `fontStyle`, `textAlign`, `lineHeight`
   multiplier, `letterSpacing` px, `underline`, `color`).
+- **Text casing and lists are display-only**: `textTransform` (`none` | `uppercase` |
+  `lowercase` | `capitalize`) and `listStyle` (`none` | `bullet` | `number`) change how the text
+  is drawn, never the stored `text`. Renderers apply the casing before wrapping and add list
+  markers after it, so switching either property off restores the author's wording exactly and
+  exports match the canvas without rewriting the document.
 - **Limits** (`LIMITS`): canvas ≤ 16 384 px, ≤ 2 000 elements per page, ≤ 100 pages, text ≤ 20 000
   chars, etc. They guard the editor, exporters and AI validation against pathological input.
 - **Validation**: `validateDocument(unknown)` and `parseDocument(string | unknown)` return a
