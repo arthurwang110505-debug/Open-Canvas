@@ -54,7 +54,6 @@ import {
 import { useId, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 
-import { BUNDLED_PHOTOS } from '../assets/photos/catalog';
 import { useEditorActions } from './actions';
 import { useImageImport } from './assets/useImageImport';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
@@ -63,6 +62,7 @@ import { useEditor, useEditorStore } from './hooks';
 import { ColorField, FieldGroup, NumberField } from './panels/fields';
 import { GradientPicker } from './panels/GradientPicker';
 import { IconPicker, IconPreview } from './panels/IconPicker';
+import { PhotoPicker } from './panels/PhotoPicker';
 
 /** Names for the weights the bundled families expose; anything else shows its number. */
 const FONT_WEIGHT_LABELS: Record<number, string> = {
@@ -553,7 +553,7 @@ const FRAME_SHAPES: { value: FrameShape; label: string }[] = [
  */
 function FrameProperties({ element }: { element: FrameElement }) {
   const { updateSelection } = useEditorActions();
-  const { insertPhoto } = useImageImport();
+  const { insertPhoto, importFiles } = useImageImport();
   const store = useEditorStore();
   const photoPanId = useEditor((state) => state.photoPanId);
   const shapeId = useId();
@@ -625,30 +625,19 @@ function FrameProperties({ element }: { element: FrameElement }) {
           </div>
         </div>
         {picking && (
-          <div className="grid grid-cols-3 gap-1.5" role="listbox" aria-label="Choose a photo">
-            {BUNDLED_PHOTOS.map((photo) => (
-              <button
-                key={photo.id}
-                type="button"
-                role="option"
-                aria-selected={false}
-                aria-label={`Fill with ${photo.title}`}
-                onClick={() => {
-                  insertPhoto(photo.id, { frameId: element.id });
-                  setPicking(false);
-                }}
-                className="aspect-[4/3] overflow-hidden rounded-lg border border-border hover:border-primary/50"
-              >
-                <img
-                  src={photo.url}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  className="size-full object-cover"
-                />
-              </button>
-            ))}
-          </div>
+          <PhotoPicker
+            label="Choose a photo"
+            optionLabel={(title) => `Fill with ${title}`}
+            onPick={(photoId) => {
+              insertPhoto(photoId, { frameId: element.id });
+              setPicking(false);
+            }}
+            onUpload={(files) => {
+              void importFiles(files, { frameId: element.id });
+              setPicking(false);
+            }}
+            uploadLabel="Upload a photo for this frame"
+          />
         )}
         {hasPhoto && (
           <div className="flex flex-col gap-1">
@@ -750,8 +739,10 @@ function IconProperties({ element }: { element: IconElement }) {
 
 function ImageProperties({ element }: { element: ImageElement }) {
   const { updateSelection } = useEditorActions();
+  const { insertPhoto, importFiles } = useImageImport();
   const asset = useEditor((state) => state.document.assets[element.assetId]);
   const fitId = useId();
+  const [replacing, setReplacing] = useState(false);
   const current = IMAGE_FITS.find((fit) => fit.value === element.fit);
   const filters = element.filters ?? { brightness: 100, contrast: 100, saturate: 100, blur: 0 };
   const hasCrop = !!element.crop;
@@ -803,6 +794,29 @@ function ImageProperties({ element }: { element: ImageElement }) {
           <dt className="text-muted-foreground">Original</dt>
           <dd>{asset ? `${asset.width}×${asset.height} px` : '—'}</dd>
         </dl>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-expanded={replacing}
+          onClick={() => setReplacing((open) => !open)}
+        >
+          {replacing ? 'Close' : 'Replace image'}
+        </Button>
+        {replacing && (
+          <PhotoPicker
+            label="Replace with a photo"
+            optionLabel={(title) => `Replace with ${title}`}
+            onPick={(photoId) => {
+              insertPhoto(photoId, { replaceId: element.id });
+              setReplacing(false);
+            }}
+            onUpload={(files) => {
+              void importFiles(files, { replaceId: element.id });
+              setReplacing(false);
+            }}
+            uploadLabel="Upload a replacement image"
+          />
+        )}
       </FieldGroup>
       <FieldGroup title="Adjust">
         <NumberField

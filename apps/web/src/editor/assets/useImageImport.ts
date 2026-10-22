@@ -1,5 +1,6 @@
 import {
   LIMITS,
+  collectReferencedAssetIds,
   createImageAsset,
   createImageElement,
   fitWithin,
@@ -21,6 +22,11 @@ export interface InsertOptions {
   at?: { x: number; y: number };
   /** Frame to fill instead of adding a new image element (a photo dropped on a frame). */
   frameId?: string;
+  /**
+   * Image element to point at the new asset instead of adding one (a photo dropped on an image,
+   * or Replace image in the panel). Geometry, crop and filters all stay.
+   */
+  replaceId?: string;
 }
 
 export interface ImageImport {
@@ -78,12 +84,45 @@ export function useImageImport(): ImageImport {
       );
     };
 
+    /**
+     * Points an existing image at another asset. Every other property stays: the box, the crop
+     * window, the filters and the flips describe the element, not the picture.
+     */
+    const replaceImage = (elementId: string, asset: ImageAsset, mergeKey: string) => {
+      const state = store.getState();
+      const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+      const element = page?.elements.find((candidate) => candidate.id === elementId);
+      if (!page || element?.type !== 'image') return null;
+      const previousAssetId = element.assetId;
+      const updated = state.dispatch(
+        { type: 'element.update', pageId: page.id, elementId, patch: { assetId: asset.id } },
+        { mergeKey },
+      );
+      if (!updated.ok) return updated;
+      // Release the old record when nothing points at it any more. The bytes stay in the asset
+      // store and Undo restores the record with the snapshot, so a replaced upload can come back.
+      const after = store.getState().document;
+      if (
+        previousAssetId !== asset.id &&
+        after.assets[previousAssetId] !== undefined &&
+        !collectReferencedAssetIds(after).has(previousAssetId)
+      ) {
+        store.getState().dispatch({ type: 'asset.remove', assetId: previousAssetId }, { mergeKey });
+      }
+      return updated;
+    };
+
     const addImageElement = (
       asset: ImageAsset,
       options: InsertOptions | undefined,
       mergeKey: string,
     ) => {
       if (options?.frameId) return fillFrame(options.frameId, asset, mergeKey);
+      if (options?.replaceId) {
+        const replaced = replaceImage(options.replaceId, asset, mergeKey);
+        // The element vanished between the drop and the update: add the photo rather than lose it.
+        if (replaced) return replaced;
+      }
       const { activePageId, dispatch } = store.getState();
       const element = createImageElement({
         assetId: asset.id,

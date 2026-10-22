@@ -13,6 +13,12 @@ import { ZoomControl } from './ZoomControl';
 import { useCanvasController, useEditor, useEditorStore, useNotificationStore } from './hooks';
 import { useDraw } from './draw/DrawContext';
 
+/** What a dropped photo replaces: a frame it fills or an image it swaps. */
+interface DropTarget {
+  kind: 'frame' | 'image';
+  id: string;
+}
+
 function sceneChanged(next: EditorStoreState, previous: EditorStoreState): boolean {
   return (
     next.document !== previous.document ||
@@ -204,10 +210,11 @@ export function CanvasStage() {
       : null;
 
   /**
-   * The frame a drop lands on, if any: the top-most unlocked frame whose box contains the point.
-   * Dropping a photo there fills the frame instead of stacking a second element on top of it.
+   * What a dropped photo lands on: the top-most unlocked frame or image whose box contains the
+   * point. A photo dropped on a frame fills it and one dropped on an image swaps it, so the drop
+   * never stacks a second picture on top of the first.
    */
-  const frameAt = (point: { x: number; y: number } | null): string | null => {
+  const dropTargetAt = (point: { x: number; y: number } | null): DropTarget | null => {
     if (!point) return null;
     const state = store.getState();
     const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
@@ -219,7 +226,7 @@ export function CanvasStage() {
     for (let index = page.elements.length - 1; index >= 0; index -= 1) {
       const element = page.elements[index];
       if (
-        element?.type === 'frame' &&
+        (element?.type === 'frame' || element?.type === 'image') &&
         element.visible &&
         !element.locked &&
         x >= element.x &&
@@ -227,11 +234,21 @@ export function CanvasStage() {
         y >= element.y &&
         y <= element.y + element.height
       ) {
-        return element.id;
+        return { kind: element.type, id: element.id };
       }
     }
     return null;
   };
+
+  /** Insert options that swap or fill the target instead of adding an element. */
+  const targetOptions = (target: DropTarget | null, at: { x: number; y: number } | undefined) =>
+    target?.kind === 'frame'
+      ? { frameId: target.id }
+      : target?.kind === 'image'
+        ? { replaceId: target.id }
+        : at
+          ? { at }
+          : undefined;
 
   /** The element's eventual page size in screen pixels, or `null` for an unknown drag. */
   const ghostSize = (event: DragEvent<HTMLDivElement>): number | null => {
@@ -253,6 +270,13 @@ export function CanvasStage() {
     if (hasElementDrag(event.dataTransfer)) {
       event.preventDefault();
       event.dataTransfer.dropEffect = 'copy';
+      const payload = readElementDragPayload(event.dataTransfer);
+      // Over a frame or an image the drop replaces a picture instead of adding one, so a
+      // "new element" preview would be a lie.
+      if (payload?.kind === 'photo' && dropTargetAt(pagePoint(event))) {
+        setGhost(null);
+        return;
+      }
       const size = ghostSize(event);
       const container = containerRef.current;
       if (size && container) {
@@ -279,9 +303,9 @@ export function CanvasStage() {
       const at = pagePoint(event) ?? undefined;
       if (payload.kind === 'icon') actions.addIcon(payload.iconId, at);
       else if (payload.kind === 'photo') {
-        // A photo dropped on a frame fills it; anywhere else it becomes an image element.
-        const frameId = frameAt(pagePoint(event));
-        insertPhoto(payload.photoId, frameId ? { frameId } : at ? { at } : undefined);
+        // A photo dropped on a frame fills it and one dropped on an image swaps it; anywhere
+        // else it becomes a new image element.
+        insertPhoto(payload.photoId, targetOptions(dropTargetAt(pagePoint(event)), at));
       } else if (payload.kind === 'frame') actions.addFrame(payload.frame, at);
       else actions.addShape(payload.shape, at);
       return;
@@ -290,11 +314,9 @@ export function CanvasStage() {
     event.preventDefault();
     setDropActive(false);
     const point = pagePoint(event);
-    const at = point ?? undefined;
-    const frameId = frameAt(point);
     void importFiles(
       Array.from(event.dataTransfer.files),
-      frameId ? { frameId } : at ? { at } : undefined,
+      targetOptions(dropTargetAt(point), point ?? undefined),
     );
   };
 

@@ -48,6 +48,7 @@ Delivered in Phase A/B and C1:
 - [x] Bundled CC0 photo library (see [photos.md](photos.md))
 - [x] Photo frames: rect/oval masks with cover/fill and the same crop on the canvas and in exports
 - [x] Adjust-photo mode: drag (or arrow-nudge) the photo inside a frame, one undo step per gesture
+- [x] Replace an image from the panel (bundled photo or upload) and by dropping a photo on it
 
 Next in Phase C: on-canvas image crop (C2) and the remaining items in the plan.
 
