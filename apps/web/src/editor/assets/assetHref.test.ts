@@ -1,4 +1,4 @@
-import { createImageAsset } from '@opencanvas/document';
+import { createImageAsset, type AssetSource } from '@opencanvas/document';
 import { MemoryAssetBlobStore } from '@opencanvas/storage';
 import { describe, expect, it } from 'vitest';
 
@@ -7,7 +7,7 @@ import { resolveAssetHref, TRANSPARENT_PNG } from './assetHref';
 
 const fixedDate = new Date('2026-10-22T09:00:00.000Z');
 
-function asset(overrides: Parameters<typeof createImageAsset>[0]) {
+function asset(overrides: { id: string; source?: AssetSource }) {
   return createImageAsset({
     mimeType: 'image/webp',
     width: 100,
