@@ -10,6 +10,8 @@ import {
   type PathPoint,
   type RectElement,
   type TextElement,
+  type ListStyle,
+  type TextTransform,
 } from '@opencanvas/document';
 import { getIcon, ICON_VIEWBOX, iconShapeToPathData, type IconShape } from '@opencanvas/icons';
 
@@ -213,6 +215,10 @@ export interface TextFabricProps extends CommonFabricProps {
   lineHeight: number;
   charSpacing: number;
   underline: boolean;
+  /** Display casing; the element keeps the text as typed and the renderer applies this. */
+  textTransform: TextTransform;
+  /** Marker drawn before each rendered line; the stored text is never prefixed. */
+  listStyle: ListStyle;
   fill: string;
   editable: boolean;
 }
@@ -379,6 +385,8 @@ export function textToFabricProps(element: TextElement): TextFabricProps {
     // Fabric expresses letter spacing in thousandths of an em.
     charSpacing: (element.letterSpacing / element.fontSize) * 1000,
     underline: element.underline,
+    textTransform: element.textTransform,
+    listStyle: element.listStyle,
     fill: element.color,
     editable: !element.locked,
   };

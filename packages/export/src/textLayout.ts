@@ -1,4 +1,9 @@
-import type { TextElement } from '@opencanvas/document';
+import {
+  applyListMarkers,
+  applyTextTransform,
+  LIST_INDENT_EM,
+  type TextElement,
+} from '@opencanvas/document';
 
 /**
  * Vertical text metrics shared with the canvas renderer.
@@ -73,10 +78,22 @@ function wrapLine(
  * automatic wrapping); with one, each hard line is wrapped to the element width.
  */
 export function wrapTextLines(element: TextElement, measure?: TextMeasurer): string[] {
-  const hardLines = splitHardLines(element.text);
-  if (!measure) return hardLines;
-  const maxWidth = element.width;
-  if (!Number.isFinite(maxWidth) || maxWidth <= 0) return hardLines;
+  // Casing is display-only, so the document keeps the text as typed and every renderer applies it
+  // here — before wrapping, exactly like the canvas text object does.
+  const hardLines = splitHardLines(applyTextTransform(element.text, element.textTransform));
+  const lines = measure ? wrapHardLines(hardLines, element, measure) : hardLines;
+  // List markers are added after wrapping so they land on visual lines, never in the stored text.
+  return applyListMarkers(lines, element.listStyle);
+}
+
+function wrapHardLines(
+  hardLines: readonly string[],
+  element: TextElement,
+  measure: TextMeasurer,
+): string[] {
+  const indent = element.listStyle === 'none' ? 0 : element.fontSize * LIST_INDENT_EM;
+  const maxWidth = element.width - indent;
+  if (!Number.isFinite(maxWidth) || maxWidth <= 0) return [...hardLines];
   const style = textStyleOf(element);
   return hardLines.flatMap((line) => wrapLine(line, maxWidth, style, measure));
 }

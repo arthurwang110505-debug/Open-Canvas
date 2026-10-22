@@ -151,7 +151,16 @@ describe('elementToFabricProps', () => {
       textAlign: 'center',
       fill: '#123456',
       editable: true,
+      textTransform: 'none',
+      listStyle: 'none',
     });
+  });
+
+  it('passes the document casing through without touching the text', () => {
+    const text = createTextElement({ text: 'Spring Sale', textTransform: 'uppercase' });
+    const mapped = elementToFabricProps(text);
+    if (mapped.kind !== 'text') throw new Error('expected text');
+    expect(mapped.props).toMatchObject({ text: 'Spring Sale', textTransform: 'uppercase' });
   });
 
   it('locks interaction for locked elements', () => {

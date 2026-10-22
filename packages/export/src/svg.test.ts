@@ -163,6 +163,39 @@ describe('renderPageToSvg', () => {
     expect(svg).toContain('<tspan x="300"');
   });
 
+  it('applies text casing to the drawn glyphs and leaves the document text as typed', async () => {
+    const document = makeDocument();
+    const element = createTextElement({
+      id: 't1',
+      width: 300,
+      text: 'spring sale\nnow on',
+      textTransform: 'uppercase',
+    });
+    firstPage(document).elements.push(element);
+
+    const svg = await render(document);
+    expect(svg).toContain('>SPRING SALE</tspan>');
+    expect(svg).toContain('>NOW ON</tspan>');
+    expect(element.text).toBe('spring sale\nnow on');
+  });
+
+  it('keeps measured wrapping identical to the casing the canvas draws', async () => {
+    const document = makeDocument();
+    firstPage(document).elements.push(
+      createTextElement({
+        id: 't1',
+        width: 100,
+        fontSize: 10,
+        text: 'one two three',
+        textTransform: 'capitalize',
+      }),
+    );
+    // Every character is 10px wide, so ten characters fill the 100px box.
+    const svg = await render(document, { measureText: (text) => text.length * 10 });
+    expect(svg).toContain('>One Two</tspan>');
+    expect(svg).toContain('>Three</tspan>');
+  });
+
   it('wraps text when a measurer is provided', async () => {
     const document = makeDocument();
     firstPage(document).elements.push(
@@ -172,6 +205,24 @@ describe('renderPageToSvg', () => {
     const svg = await render(document, { measureText: (text) => text.length * 10 });
     expect(svg).toContain('>one two</tspan>');
     expect(svg).toContain('>three</tspan>');
+  });
+
+  it('draws list markers on wrapped lines and keeps the document text unprefixed', async () => {
+    const document = makeDocument();
+    const element = createTextElement({
+      id: 't1',
+      width: 100,
+      fontSize: 10,
+      text: 'one two three',
+      listStyle: 'number',
+    });
+    firstPage(document).elements.push(element);
+
+    // Every character is 10px wide and the 1.5em marker gutter leaves 85px per line.
+    const svg = await render(document, { measureText: (text) => text.length * 10 });
+    expect(svg).toContain('>1. one two</tspan>');
+    expect(svg).toContain('>2. three</tspan>');
+    expect(element.text).toBe('one two three');
   });
 
   it('escapes markup and control characters in text and names', async () => {

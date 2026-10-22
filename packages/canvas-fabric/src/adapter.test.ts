@@ -11,6 +11,7 @@ import { ActiveSelection, Gradient, Rect, Textbox } from 'fabric';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import { FabricCanvasAdapter, type CanvasAdapterCallbacks } from './adapter';
+import { DocumentTextbox } from './textbox';
 
 function makePage(elements: DesignElement[]): Page {
   return { id: 'page_1', background: { type: 'solid', color: '#fafafa' }, elements };
@@ -220,6 +221,41 @@ describe('FabricCanvasAdapter', () => {
     expect(callbacks.onTextMeasured).toHaveBeenCalledWith('t', expect.any(Number));
     const measured = callbacks.onTextMeasured.mock.calls[0]?.[1];
     expect(measured).toBeGreaterThan(1);
+  });
+
+  it('renders the document casing and updates it without a text commit', () => {
+    const text = createTextElement({ id: 't', text: 'Spring Sale', textTransform: 'uppercase' });
+    adapter.render({ page: makePage([text]), size, selectedIds: [], assets: {} });
+    const object = elementObjects()[0];
+    if (!(object instanceof DocumentTextbox)) throw new Error('expected document textbox');
+    expect(object.textLines).toEqual(['SPRING SALE']);
+    expect(object.text).toBe('Spring Sale');
+
+    adapter.render({
+      page: makePage([{ ...text, textTransform: 'lowercase' }]),
+      size,
+      selectedIds: [],
+      assets: {},
+    });
+    expect(object.textLines).toEqual(['spring sale']);
+    expect(callbacks.onTextCommitted).not.toHaveBeenCalled();
+  });
+
+  it('draws list markers and updates the style without a text commit', () => {
+    const text = createTextElement({ id: 't', text: 'one\ntwo', listStyle: 'bullet' });
+    adapter.render({ page: makePage([text]), size, selectedIds: [], assets: {} });
+    const object = elementObjects()[0];
+    if (!(object instanceof DocumentTextbox)) throw new Error('expected document textbox');
+    expect(object.textLines).toEqual(['• one', '• two']);
+
+    adapter.render({
+      page: makePage([{ ...text, listStyle: 'number' }]),
+      size,
+      selectedIds: [],
+      assets: {},
+    });
+    expect(object.textLines).toEqual(['1. one', '2. two']);
+    expect(callbacks.onTextCommitted).not.toHaveBeenCalled();
   });
 
   it('commits edited text when editing ends', () => {

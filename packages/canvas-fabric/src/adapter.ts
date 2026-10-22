@@ -6,7 +6,9 @@ import type {
   IconElement,
   ImageElement,
   ImageFit,
+  ListStyle,
   Page,
+  TextTransform,
 } from '@opencanvas/document';
 import {
   ActiveSelection,
@@ -45,6 +47,7 @@ import {
   type PathFabricProps,
 } from './mapping';
 import { PLACEHOLDER_SIZE, createPlaceholderBitmap } from './placeholder';
+import { DocumentTextbox } from './textbox';
 
 export interface ElementGeometryChange {
   elementId: string;
@@ -687,7 +690,10 @@ export class FabricCanvasAdapter {
       case 'ellipse':
         return new Ellipse({ ...mapped.props, fill: this.paint(element.id, mapped.props.fill) });
       case 'text':
-        return new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
+        return new DocumentTextbox(mapped.props.text, {
+          ...mapped.props,
+          splitByGrapheme: false,
+        });
       case 'image':
         return new FabricImage(this.loadingBitmap, mapped.props);
       case 'path': {
@@ -798,7 +804,10 @@ export class FabricCanvasAdapter {
           });
           break;
         case 'text':
-          fabricObj = new Textbox(mapped.props.text, { ...mapped.props, splitByGrapheme: false });
+          fabricObj = new DocumentTextbox(mapped.props.text, {
+            ...mapped.props,
+            splitByGrapheme: false,
+          });
           break;
         case 'image':
           fabricObj = new FabricImage(this.loadingBitmap, mapped.props);
@@ -952,6 +961,15 @@ export class FabricCanvasAdapter {
     }
     let changed = false;
     for (const [key, value] of Object.entries(props)) {
+      // Casing changes the measured lines, so it needs a re-split rather than a plain assignment.
+      if (key === 'textTransform' && object instanceof DocumentTextbox) {
+        changed = object.setTextTransform(value as TextTransform) || changed;
+        continue;
+      }
+      if (key === 'listStyle' && object instanceof DocumentTextbox) {
+        changed = object.setListStyle(value as ListStyle) || changed;
+        continue;
+      }
       if (object.get(key) !== value) {
         object.set(key, value);
         changed = true;
