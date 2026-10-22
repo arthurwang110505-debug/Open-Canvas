@@ -13,7 +13,7 @@ function start(options: BlueprintOptions) {
     name: options.name,
     presetId: options.presetId,
   });
-  frame.background(options.palette.bg);
+  frame.background(options.background ?? options.palette.bg);
   return {
     document,
     frame,

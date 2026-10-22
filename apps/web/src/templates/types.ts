@@ -1,4 +1,4 @@
-import type { DesignDocument } from '@opencanvas/document';
+import type { DesignDocument, GradientFill } from '@opencanvas/document';
 
 export type TemplateCategory = 'social' | 'presentation' | 'print' | 'video' | 'business' | 'all';
 
@@ -61,6 +61,8 @@ export interface BlueprintOptions {
   content: TemplateContent;
   /** Mirrors the layout left-to-right (panels, splits, banners). */
   flip?: boolean;
+  /** Replaces the palette's flat background with a gradient (schema v6). */
+  background?: GradientFill;
 }
 
 export interface Blueprint {
@@ -84,4 +86,5 @@ export interface TemplateInstance {
   type: TemplateTypography;
   content: TemplateContent;
   flip?: boolean;
+  background?: GradientFill;
 }

@@ -7,6 +7,7 @@ import {
   createRectElement,
   createTextElement,
   type DesignDocument,
+  type Fill,
   type Page,
   type PathPoint,
   type RectElement,
@@ -89,8 +90,8 @@ export class Frame {
     return { document, frame: new Frame(document) };
   }
 
-  background(color: string): void {
-    this.page.background = { type: 'solid', color };
+  background(fill: string | Fill): void {
+    this.page.background = typeof fill === 'string' ? { type: 'solid', color: fill } : fill;
   }
 
   /** Font size in page pixels for a fraction-of-short-side size. */

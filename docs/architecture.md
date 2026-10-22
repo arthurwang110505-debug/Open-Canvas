@@ -37,11 +37,17 @@ Node consumer (`apps/api`) needs it.
 
 ## 2. Document model (`packages/document`)
 
-- **Schema version** `5` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
+- **Schema version** `6` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
 - **Structure**: `DesignDocument { id, name, size, pages[], assets, metadata }` →
   `Page { id, background, elements[] }` → `DesignElement` (discriminated union on `type`:
   `rect`, `ellipse`, `text`, `image`, `path`, `icon`, `group`). Z-order is array order (index 0
   = back).
+- **Fills** are a discriminated union: `solid`, `none`, `linear` (an angle plus 2–8 ordered
+  stops) and `radial`. Page backgrounds use the same type. Gradient coordinates are expressed as
+  fractions of the shape's box, which is both SVG's `objectBoundingBox` unit and Fabric's
+  `percentage` unit, so the canvas and an exported file paint the same pixels and a resized shape
+  keeps its gradient. Stops must be non-decreasing: SVG clamps unordered offsets silently, and a
+  document that renders two different ways is worse than one that refuses to load.
 - **Assets**: `assets` is a record of `ImageAsset { id, kind, name?, mimeType, width, height,
 byteSize?, source, createdAt }`. It carries **metadata only** — bytes live in an asset store
   keyed by id (`source: { type: 'local' }`) or behind an http(s) URL (`source: { type: 'url' }`).

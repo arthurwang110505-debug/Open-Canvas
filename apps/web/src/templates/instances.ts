@@ -33,6 +33,14 @@ export const INSTANCES: readonly TemplateInstance[] = [
     tags: ['story', 'lifestyle', 'calm'],
     blueprint: 'statement',
     palette: { bg: '#eef2e6', ink: '#1d2a1a', accent: '#4d7c0f', soft: '#cfe0b8' },
+    background: {
+      type: 'linear',
+      angle: 160,
+      stops: [
+        { offset: 0, color: '#eef2e6' },
+        { offset: 1, color: '#cfe0b8' },
+      ],
+    },
     type: { display: 'Instrument Serif', body: 'DM Sans' },
     content: {
       eyebrow: 'Ritual no. 04',
@@ -397,6 +405,14 @@ export const INSTANCES: readonly TemplateInstance[] = [
       soft: '#1e293b',
       onAccent: '#0f172a',
     },
+    background: {
+      type: 'linear',
+      angle: 165,
+      stops: [
+        { offset: 0, color: '#1e293b' },
+        { offset: 1, color: '#0f172a' },
+      ],
+    },
     type: { display: 'Space Grotesk', body: 'Manrope' },
     content: {
       badge: 'Members first',
@@ -417,6 +433,14 @@ export const INSTANCES: readonly TemplateInstance[] = [
     tags: ['quote', 'inspiration', 'minimal'],
     blueprint: 'quote',
     palette: { bg: '#f8fafc', ink: '#0f172a', accent: '#6366f1', soft: '#e0e7ff' },
+    background: {
+      type: 'linear',
+      angle: 180,
+      stops: [
+        { offset: 0, color: '#f8fafc' },
+        { offset: 1, color: '#e0e7ff' },
+      ],
+    },
     type: { display: 'Fraunces', body: 'Inter' },
     content: {
       title: 'The best work starts as a question nobody asked out loud.',

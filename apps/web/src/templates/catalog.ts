@@ -34,6 +34,7 @@ function buildGenerated(): TemplateDefinition[] {
           type: instance.type,
           content: instance.content,
           ...(instance.flip !== undefined ? { flip: instance.flip } : {}),
+          ...(instance.background !== undefined ? { background: instance.background } : {}),
         }),
     };
   });

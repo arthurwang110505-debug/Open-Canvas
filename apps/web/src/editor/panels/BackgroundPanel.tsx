@@ -4,6 +4,7 @@ import { cn } from '@opencanvas/ui';
 import { useEditorActions } from '../actions';
 import { useEditor } from '../hooks';
 import { ColorField } from './fields';
+import { GradientPicker } from './GradientPicker';
 
 const SWATCHES = [
   '#ffffff',
@@ -39,7 +40,8 @@ export function BackgroundPanel() {
         <p className="mb-2 text-xs text-muted-foreground">Solid colors</p>
         <div className="grid grid-cols-5 gap-2" role="listbox" aria-label="Background colors">
           {SWATCHES.map((color) => {
-            const selected = color.toLowerCase() === current.toLowerCase();
+            const selected =
+              background.type === 'solid' && color.toLowerCase() === current.toLowerCase();
             return (
               <button
                 key={color}
@@ -58,6 +60,13 @@ export function BackgroundPanel() {
             );
           })}
         </div>
+      </div>
+      <div>
+        <p className="mb-2 text-xs text-muted-foreground">Gradients</p>
+        <GradientPicker
+          value={background}
+          onPick={(fill, mergeKey) => setPageBackground(fill, mergeKey)}
+        />
       </div>
       <ColorField
         label="Custom color"

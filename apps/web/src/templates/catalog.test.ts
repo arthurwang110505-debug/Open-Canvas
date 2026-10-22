@@ -91,6 +91,18 @@ describe('the template catalogue', () => {
     }
   });
 
+  it('uses gradient backgrounds where the design calls for one', async () => {
+    const gradientTemplates = INSTANCES.filter((instance) => instance.background !== undefined);
+    expect(gradientTemplates.length).toBeGreaterThanOrEqual(3);
+
+    const slow = getTemplate('slow-mornings')?.build();
+    expect(slow?.pages[0]?.background.type).toBe('linear');
+    // The gradient is a real fill, so it reaches the exported file as vector data.
+    const nested = await renderPageToSvg(slow!);
+    expect(nested.ok).toBe(true);
+    if (nested.ok) expect(nested.value).toContain('<linearGradient');
+  });
+
   it('renders every design to a vector file with no broken numbers', async () => {
     for (const template of TEMPLATES) {
       const document = template.build();

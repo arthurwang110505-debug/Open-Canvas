@@ -53,6 +53,7 @@ import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
 import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
 import { useEditor } from './hooks';
 import { ColorField, FieldGroup, NumberField } from './panels/fields';
+import { GradientPicker } from './panels/GradientPicker';
 import { IconPicker, IconPreview } from './panels/IconPicker';
 
 /** Names for the weights the bundled families expose; anything else shows its number. */
@@ -761,6 +762,7 @@ function ElementProperties({ element }: { element: DesignElement }) {
     ? (element as { stroke?: { color: string; width: number } }).stroke
     : undefined;
   const [aspectLocked, setAspectLocked] = useState(false);
+  const [gradientOpen, setGradientOpen] = useState(false);
   const aspect = element.height !== 0 ? element.width / element.height : 1;
 
   return (
@@ -861,7 +863,13 @@ function ElementProperties({ element }: { element: DesignElement }) {
           {element.type !== 'path' && (
             <>
               <ColorField
-                label={element.fill.type === 'none' ? 'Fill (none)' : 'Fill'}
+                label={
+                  element.fill.type === 'none'
+                    ? 'Fill (none)'
+                    : element.fill.type === 'solid'
+                      ? 'Fill'
+                      : 'Fill (gradient)'
+                }
                 value={element.fill.type === 'solid' ? element.fill.color : '#ffffff'}
                 onCommit={(color) =>
                   updateSelection({ fill: { type: 'solid', color } }, key('fill'))
@@ -918,11 +926,39 @@ function ElementProperties({ element }: { element: DesignElement }) {
           </div>
           {element.type === 'path' && (
             <ColorField
-              label={element.fill.type === 'none' ? 'Fill (none)' : 'Fill'}
+              label={
+                element.fill.type === 'none'
+                  ? 'Fill (none)'
+                  : element.fill.type === 'solid'
+                    ? 'Fill'
+                    : 'Fill (gradient)'
+              }
               value={element.fill.type === 'solid' ? element.fill.color : '#ffffff'}
               onCommit={(color) => updateSelection({ fill: { type: 'solid', color } }, key('fill'))}
             />
           )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={gradientOpen ? 'secondary' : 'outline'}
+              size="sm"
+              aria-expanded={gradientOpen}
+              onClick={() => setGradientOpen((open) => !open)}
+              className="rounded-full"
+            >
+              Gradient
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {element.fill.type === 'linear' || element.fill.type === 'radial'
+                ? 'Gradient applied'
+                : 'Pick a preset'}
+            </span>
+          </div>
+          {gradientOpen ? (
+            <GradientPicker
+              value={element.fill}
+              onPick={(fill, mergeKey) => updateSelection({ fill }, mergeKey ?? key('fill'))}
+            />
+          ) : null}
           {element.type === 'path' && (
             <label className="flex items-center gap-2 text-xs text-foreground">
               <input
