@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 import { EditorProvider } from './EditorProvider';
 import { useEditorActions } from './actions';
 import { ELEMENT_DRAG_MIME } from './elements/drag';
@@ -28,10 +29,10 @@ function renderEditor(document?: DesignDocument) {
   return { user, document: doc };
 }
 
-const propertiesPanel = () => screen.getByRole('complementary', { name: 'Properties' });
+const propertiesPanel = () => openPropertiesPanel();
 
 async function insertFrame(user: ReturnType<typeof userEvent.setup>, name = 'Photo frame') {
-  await user.click(screen.getByRole('tab', { name: 'Elements' }));
+  await activateSidebarTab(user, 'Elements');
   await user.click(screen.getByRole('button', { name }));
   return propertiesPanel();
 }

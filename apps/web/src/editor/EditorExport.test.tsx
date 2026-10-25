@@ -17,6 +17,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 import type { ExportServices } from './export/ExportServices';
 
 const fixedDate = new Date('2026-05-06T07:08:09.000Z');
@@ -328,9 +329,9 @@ describe('exporting a design', () => {
     const document = createBlankDocument({ id: 'doc_live', name: 'Live', now: fixedDate });
     const { user, downloads } = renderEditor(document);
 
-    await user.click(screen.getByRole('tab', { name: 'Elements' }));
+    await activateSidebarTab(user, 'Elements');
     await user.click(screen.getByRole('button', { name: 'Rectangle' }));
-    const properties = screen.getByRole('complementary', { name: 'Properties' });
+    const properties = openPropertiesPanel();
     expect(within(properties).getByRole('heading', { name: 'Rectangle' })).toBeInTheDocument();
 
     await exportFormat(user, 'SVG');

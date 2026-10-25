@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 
 const fixedDate = new Date('2026-01-02T03:04:05.000Z');
 
@@ -21,16 +22,16 @@ function renderEditor() {
 
 type User = ReturnType<typeof userEvent.setup>;
 
-const properties = () => screen.getByRole('complementary', { name: 'Properties' });
+const properties = () => openPropertiesPanel();
 
 async function insert(user: User, what: 'Rectangle' | 'Ellipse' | 'Add a heading') {
   const tab = what === 'Add a heading' ? 'Text' : 'Elements';
-  await user.click(screen.getByRole('tab', { name: tab }));
+  await activateSidebarTab(user, tab);
   await user.click(screen.getByRole('button', { name: what }));
 }
 
 async function openLayers(user: User) {
-  await user.click(screen.getByRole('tab', { name: 'Layers' }));
+  await activateSidebarTab(user, 'Layers');
   return screen.getByRole('listbox', { name: 'Layers' });
 }
 
@@ -77,7 +78,6 @@ describe('Layers panel', () => {
     const list = await openLayers(user);
 
     await user.click(within(list).getByRole('option', { name: 'Rectangle' }));
-    expect(within(properties()).getByRole('heading', { name: 'Rectangle' })).toBeInTheDocument();
     expect(within(list).getByRole('option', { name: 'Rectangle' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -91,19 +91,29 @@ describe('Layers panel', () => {
     await user.keyboard('{Shift>}');
     await user.click(within(list).getByRole('option', { name: 'Add a heading' }));
     await user.keyboard('{/Shift}');
-    expect(screen.getByRole('heading', { name: '3 elements selected' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('toolbar', { name: 'Contextual toolbar' })).getByText('3 selected'),
+    ).toBeInTheDocument();
 
     // A plain click resets the selection and the anchor; Ctrl-click toggles membership.
     await user.click(within(list).getByRole('option', { name: 'Ellipse' }));
-    expect(within(properties()).getByRole('heading', { name: 'Ellipse' })).toBeInTheDocument();
+    expect(within(list).getByRole('option', { name: 'Ellipse' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await user.keyboard('{Control>}');
     await user.click(within(list).getByRole('option', { name: 'Rectangle' }));
     await user.keyboard('{/Control}');
-    expect(screen.getByRole('heading', { name: '2 elements selected' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('toolbar', { name: 'Contextual toolbar' })).getByText('2 selected'),
+    ).toBeInTheDocument();
     await user.keyboard('{Control>}');
     await user.click(within(list).getByRole('option', { name: 'Rectangle' }));
     await user.keyboard('{/Control}');
-    expect(within(properties()).getByRole('heading', { name: 'Ellipse' })).toBeInTheDocument();
+    expect(within(list).getByRole('option', { name: 'Ellipse' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 
   it('renames an element inline and the rename is undoable', async () => {
@@ -118,7 +128,6 @@ describe('Layers panel', () => {
 
     expect(within(list).getByRole('option', { name: 'Hero box' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /Rename/ })).not.toBeInTheDocument();
-    expect(within(properties()).getByText('Hero box')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Undo' }));
     expect(within(list).getByRole('option', { name: 'Rectangle' })).toBeInTheDocument();
@@ -141,7 +150,10 @@ describe('Layers panel', () => {
       'true',
     );
     // The ellipse stays selected; the toggle acts on the row, not on the selection.
-    expect(within(properties()).getByRole('heading', { name: 'Ellipse' })).toBeInTheDocument();
+    expect(within(list).getByRole('option', { name: 'Ellipse' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
 
     await user.click(within(list).getByRole('button', { name: 'Lock Rectangle' }));
     expect(within(list).getByRole('button', { name: 'Unlock Rectangle' })).toBeInTheDocument();
@@ -250,7 +262,8 @@ describe('Align and distribute', () => {
 
     await user.keyboard('{Control>}a{/Control}');
     await user.click(within(properties()).getByRole('button', { name: 'Align right' }));
-    await user.click(within(list).getByRole('option', { name: 'Ellipse' }));
+    const alignedList = await openLayers(user);
+    await user.click(within(alignedList).getByRole('option', { name: 'Ellipse' }));
     expect(fieldValue('X')).toBe('756');
   });
 

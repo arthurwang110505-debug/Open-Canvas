@@ -1,11 +1,15 @@
-import { Button, cn } from '@opencanvas/ui';
+import { Button, Separator, cn } from '@opencanvas/ui';
 import {
+  ChevronLeft,
+  ChevronRight,
   ImageIcon,
   Layers,
   LayoutTemplate,
   PaintBucket,
   PenTool,
+  Ruler,
   Shapes,
+  SlidersHorizontal,
   Type,
 } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
@@ -16,11 +20,21 @@ import { ElementsPanel } from './elements/ElementsPanel';
 import { BackgroundPanel } from './panels/BackgroundPanel';
 import { LayersPanel } from './panels/LayersPanel';
 import { UploadsPanel } from './panels/UploadsPanel';
+import { PagePropertiesPanel, PropertiesPanel } from './PropertiesPanel';
 import { useDraw } from './draw/DrawContext';
 import { TemplateGallery } from '../templates/TemplateGallery';
 import { getTemplate } from '../templates/catalog';
 
-type SidebarTab = 'design' | 'elements' | 'text' | 'draw' | 'uploads' | 'background' | 'layers';
+export type SidebarTab =
+  | 'design'
+  | 'elements'
+  | 'text'
+  | 'draw'
+  | 'uploads'
+  | 'background'
+  | 'layers'
+  | 'properties'
+  | 'page';
 
 const TABS: { id: SidebarTab; label: string; icon: ReactNode }[] = [
   { id: 'design', label: 'Design', icon: <LayoutTemplate /> },
@@ -30,6 +44,8 @@ const TABS: { id: SidebarTab; label: string; icon: ReactNode }[] = [
   { id: 'uploads', label: 'Uploads', icon: <ImageIcon /> },
   { id: 'background', label: 'Background', icon: <PaintBucket /> },
   { id: 'layers', label: 'Layers', icon: <Layers /> },
+  { id: 'properties', label: 'Properties', icon: <SlidersHorizontal /> },
+  { id: 'page', label: 'Page', icon: <Ruler /> },
 ];
 
 function TextPanel() {
@@ -198,57 +214,107 @@ function DrawPanel() {
   );
 }
 
-export function Sidebar() {
-  const [active, setActive] = useState<SidebarTab>('design');
+export interface SidebarProps {
+  active: SidebarTab;
+  collapsed: boolean;
+  onChange: (tab: SidebarTab) => void;
+  onToggleCollapsed: () => void;
+}
+
+export function Sidebar({ active, collapsed, onChange, onToggleCollapsed }: SidebarProps) {
   const baseId = useId();
+  const activeLabel = TABS.find((tab) => tab.id === active)?.label ?? 'Design';
+
+  const activate = (tab: SidebarTab) => {
+    if (tab === active && !collapsed) {
+      onToggleCollapsed();
+      return;
+    }
+    if (tab !== active) onChange(tab);
+    if (collapsed) onToggleCollapsed();
+  };
 
   return (
-    <aside className="flex h-full border-r border-border bg-panel">
+    <div className="flex h-full min-h-0 shrink-0 border-r border-border bg-panel">
       <nav
-        aria-label="Panels"
-        className="flex w-[72px] flex-col items-stretch gap-1 border-r border-border bg-muted/30 p-2"
+        aria-label="Editor panels"
+        role="tablist"
+        aria-orientation="vertical"
+        className="flex w-[68px] shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border bg-[#faf9fc] px-1.5 py-2"
       >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={onToggleCollapsed}
+          className="mb-1 rounded-xl text-muted-foreground"
+        >
+          {collapsed ? <ChevronRight /> : <ChevronLeft />}
+        </Button>
+        <Separator className="mb-1 w-9" />
         {TABS.map((tab) => {
           const selected = tab.id === active;
+          const expanded = selected && !collapsed;
           return (
             <button
               key={tab.id}
               type="button"
               role="tab"
               id={`${baseId}-tab-${tab.id}`}
-              aria-selected={selected}
-              aria-controls={`${baseId}-panel-${tab.id}`}
-              onClick={() => setActive(tab.id)}
+              aria-selected={expanded}
+              aria-expanded={expanded}
+              aria-controls={expanded ? `${baseId}-panel-${tab.id}` : undefined}
+              onClick={() => activate(tab.id)}
+              title={collapsed ? tab.label : undefined}
               className={cn(
-                'flex flex-col items-center gap-1.5 rounded-xl px-1 py-2 text-[11px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-6',
+                'flex w-full flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-[21px]',
                 selected
-                  ? 'bg-foreground text-background shadow-sm'
-                  : 'text-muted-foreground hover:bg-white hover:text-foreground hover:shadow-sm',
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-white hover:text-foreground',
               )}
             >
               {tab.icon}
-              {tab.label}
+              <span className="max-w-full truncate">{tab.label}</span>
             </button>
           );
         })}
       </nav>
-      <section
-        role="tabpanel"
-        id={`${baseId}-panel-${active}`}
-        aria-labelledby={`${baseId}-tab-${active}`}
-        className="w-[340px] overflow-y-auto p-4"
-      >
-        <h2 className="mb-3 text-[15px] font-semibold">
-          {TABS.find((tab) => tab.id === active)?.label}
-        </h2>
-        {active === 'design' && <DesignPanel />}
-        {active === 'elements' && <ElementsPanel />}
-        {active === 'text' && <TextPanel />}
-        {active === 'draw' && <DrawPanel />}
-        {active === 'uploads' && <UploadsPanel />}
-        {active === 'background' && <BackgroundPanel />}
-        {active === 'layers' && <LayersPanel />}
-      </section>
-    </aside>
+      {!collapsed ? (
+        <section
+          role="tabpanel"
+          id={`${baseId}-panel-${active}`}
+          aria-labelledby={`${baseId}-tab-${active}`}
+          className="flex min-h-0 w-[300px] min-w-0 flex-col bg-panel"
+        >
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+            <h2 className="text-sm font-semibold">{activeLabel}</h2>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Collapse sidebar panel"
+              onClick={onToggleCollapsed}
+              className="size-7 rounded-lg text-muted-foreground"
+            >
+              <ChevronLeft />
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <div className="p-4">
+              {active === 'design' && <DesignPanel />}
+              {active === 'elements' && <ElementsPanel />}
+              {active === 'text' && <TextPanel />}
+              {active === 'draw' && <DrawPanel />}
+              {active === 'uploads' && <UploadsPanel />}
+              {active === 'background' && <BackgroundPanel />}
+              {active === 'layers' && <LayersPanel />}
+            </div>
+            {active === 'properties' && <PropertiesPanel />}
+            {active === 'page' && <PagePropertiesPanel />}
+          </div>
+        </section>
+      ) : null}
+    </div>
   );
 }

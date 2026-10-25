@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 
 const fixedDate = new Date('2026-01-02T03:04:05.000Z');
 const PNG_HEADER = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48];
@@ -42,7 +43,7 @@ function renderEditor(
 }
 
 async function openUploads(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Uploads' }));
+  await activateSidebarTab(user, 'Uploads');
   return screen.getByRole('tabpanel');
 }
 
@@ -52,7 +53,7 @@ describe('image uploads', () => {
     await openUploads(user);
     await user.upload(screen.getByLabelText('Upload images'), pngFile());
 
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     await within(panel).findByRole('heading', { name: 'Image' });
     // 1600x900 fitted into 60% of a 1080 square → 648x364.5 → rounded 648x365, centered.
     expect(within(panel).getByLabelText('Width')).toHaveValue('648');
@@ -63,6 +64,7 @@ describe('image uploads', () => {
     expect(within(panel).getAllByText('photo.png')).toHaveLength(2);
     expect(within(panel).getByText('1600×900 px')).toBeInTheDocument();
 
+    await activateSidebarTab(user, 'Uploads');
     const list = screen.getByRole('list', { name: 'Uploaded images' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes');
@@ -73,7 +75,7 @@ describe('image uploads', () => {
     const { user } = renderEditor();
     await openUploads(user);
     await user.upload(screen.getByLabelText('Upload images'), pngFile());
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     const fit = await within(panel).findByLabelText('Fit');
     await user.selectOptions(fit, 'fill');
     expect(fit).toHaveValue('fill');
@@ -88,12 +90,12 @@ describe('image uploads', () => {
 
     await user.click(screen.getByRole('button', { name: 'Undo' }));
     expect(screen.queryByRole('list', { name: 'Uploaded images' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(screen.getByText('Start your design')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: 'Redo' }));
     expect(screen.getByRole('list', { name: 'Uploaded images' })).toBeInTheDocument();
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     expect(within(panel).getByRole('heading', { name: 'Image' })).toBeInTheDocument();
   });
 
@@ -105,8 +107,10 @@ describe('image uploads', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add photo.png to the page' }));
     await user.keyboard('{Escape}');
-    expect(screen.getByText(/2 elements\. Select one/)).toBeInTheDocument();
-    // Still a single upload: re-inserting reuses the asset.
+    // Re-inserting keeps the same asset record while adding a second element to the design.
+    await activateSidebarTab(user, 'Layers');
+    expect(within(screen.getByRole('listbox', { name: 'Layers' })).getAllByRole('option')).toHaveLength(2);
+    await activateSidebarTab(user, 'Uploads');
     expect(
       within(screen.getByRole('list', { name: 'Uploaded images' })).getAllByRole('listitem'),
     ).toHaveLength(1);
@@ -121,9 +125,10 @@ describe('image uploads', () => {
     await openUploads(user);
     await user.upload(screen.getByLabelText('Upload images'), pngFile());
     await screen.findByRole('list', { name: 'Uploaded images' });
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     await user.click(within(panel).getByRole('button', { name: 'Delete' }));
-    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(screen.getByText('Nothing selected')).toBeInTheDocument();
+    await activateSidebarTab(user, 'Uploads');
     await user.click(screen.getByRole('button', { name: 'Remove photo.png' }));
     expect(screen.queryByRole('list', { name: 'Uploaded images' })).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -140,7 +145,7 @@ describe('image uploads', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Could not add "icon.svg"');
     expect(alert).toHaveTextContent(/Unsupported image format/);
-    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(screen.getByText('Start your design')).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('No unsaved changes');
   });
 
@@ -162,7 +167,7 @@ describe('image uploads', () => {
     expect(alert).toHaveTextContent('Image "photo.png" could not be displayed');
     expect(alert).toHaveTextContent(/corrupt data/);
     // The element still exists so the user can remove it.
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     expect(within(panel).getByRole('heading', { name: 'Image' })).toBeInTheDocument();
   });
 
@@ -174,7 +179,7 @@ describe('image uploads', () => {
     expect(screen.getByText('Drop images to add them to the page')).toBeInTheDocument();
     fireEvent.drop(stage, { dataTransfer, clientX: 0, clientY: 0 });
 
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     await within(panel).findByRole('heading', { name: 'Image' });
     expect(screen.queryByText('Drop images to add them to the page')).not.toBeInTheDocument();
     // Fit-to-screen puts the page center at the viewport center (600, 400); the drop at the

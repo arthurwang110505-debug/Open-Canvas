@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 import { ELEMENT_DRAG_MIME, parseElementDragPayload } from './elements/drag';
 
 const fixedDate = new Date('2026-10-21T09:30:00.000Z');
@@ -22,7 +23,7 @@ function renderEditor(document?: DesignDocument) {
 }
 
 async function openElements(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Elements' }));
+  await activateSidebarTab(user, 'Elements');
   return {
     search: screen.getByRole('searchbox', { name: 'Search elements' }),
     shapes: screen.getByRole('region', { name: 'Shapes' }),
@@ -50,7 +51,7 @@ function fakeDataTransfer(initial: Record<string, string> = {}) {
   };
 }
 
-const propertiesPanel = () => screen.getByRole('complementary', { name: 'Properties' });
+const propertiesPanel = () => openPropertiesPanel();
 
 describe('elements panel', () => {
   it('searches shapes and icons with one query', async () => {
@@ -116,15 +117,17 @@ describe('elements panel', () => {
 
   it('inserts a click straight into the middle of the page', async () => {
     const { user } = renderEditor();
-    const { shapes, icons } = await openElements(user);
+    const { shapes } = await openElements(user);
 
     await user.click(within(shapes).getByRole('button', { name: 'Rectangle' }));
-    const properties = propertiesPanel();
+    let properties = propertiesPanel();
     // 30% of a 1080 square, centred.
     expect(within(properties).getByLabelText('Width')).toHaveValue('324');
     expect(within(properties).getByLabelText('X')).toHaveValue('378');
 
-    await user.click(within(icons).getByRole('option', { name: 'Insert heart' }));
+    const { icons: iconsAgain } = await openElements(user);
+    await user.click(within(iconsAgain).getByRole('option', { name: 'Insert heart' }));
+    properties = propertiesPanel();
     expect(within(properties).getByRole('heading', { level: 2, name: 'Icon' })).toBeInTheDocument();
     expect(within(properties).getByLabelText('Width')).toHaveValue('216');
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();

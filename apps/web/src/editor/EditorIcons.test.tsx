@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 
 const fixedDate = new Date('2026-10-21T09:30:00.000Z');
 
@@ -20,7 +21,7 @@ function renderEditor(document?: DesignDocument) {
 }
 
 async function openIconsTab(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Elements' }));
+  await activateSidebarTab(user, 'Elements');
   return screen.getByRole('listbox', { name: 'Icons' });
 }
 
@@ -31,7 +32,7 @@ describe('icons', () => {
 
     await user.click(within(list).getByRole('option', { name: 'Insert heart' }));
 
-    const properties = screen.getByRole('complementary', { name: 'Properties' });
+    const properties = openPropertiesPanel();
     // "Icon" labels both the element type heading and the properties section.
     expect(within(properties).getByRole('heading', { level: 2, name: 'Icon' })).toBeInTheDocument();
     expect(within(properties).getByText('heart')).toBeInTheDocument();
@@ -72,10 +73,10 @@ describe('icons', () => {
 
     // Selecting on the Fabric canvas needs a pointer, so pick the layer like a user with a
     // stacked page would.
-    await user.click(screen.getByRole('tab', { name: 'Layers' }));
+    await activateSidebarTab(user, 'Layers');
     const layers = screen.getByRole('listbox', { name: 'Layers' });
     await user.click(within(layers).getByRole('option', { name: 'Heart' }));
-    const properties = screen.getByRole('complementary', { name: 'Properties' });
+    const properties = openPropertiesPanel();
 
     const color = within(properties).getByLabelText('Color');
     await user.clear(color);
@@ -99,6 +100,6 @@ describe('icons', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(screen.getByText('Start your design')).toBeInTheDocument();
   });
 });

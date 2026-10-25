@@ -1,11 +1,20 @@
-import { createPathElement } from '@opencanvas/document';
+import { createPathElement, type DesignElement } from '@opencanvas/document';
 import { FabricCanvasAdapter } from '@opencanvas/canvas-fabric';
 import { selectActivePage, type EditorStoreState } from '@opencanvas/editor-core';
 import { Button, cn } from '@opencanvas/ui';
 import { LayoutTemplate, Square, Type } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type DragEvent, type PointerEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+  type PointerEvent,
+} from 'react';
 
 import { useEditorActions } from './actions';
+import { CanvasContextMenu, type ContextMenuPosition } from './CanvasContextMenu';
 import { useAssetServices } from './assets/useAssetServices';
 import { useImageImport } from './assets/useImageImport';
 import { hasElementDrag, readElementDragPayload } from './elements/drag';
@@ -20,6 +29,37 @@ interface DropTarget {
   id: string;
 }
 
+interface CanvasStageProps {
+  onOpenPageSettings: () => void;
+  onOpenProperties: () => void;
+}
+
+function elementAtPoint(
+  elements: readonly DesignElement[],
+  point: { x: number; y: number },
+): DesignElement | undefined {
+  for (let index = elements.length - 1; index >= 0; index -= 1) {
+    const element = elements[index];
+    if (!element?.visible) continue;
+    const angle = (-element.rotation * Math.PI) / 180;
+    const centreX = element.x + element.width / 2;
+    const centreY = element.y + element.height / 2;
+    const dx = point.x - centreX;
+    const dy = point.y - centreY;
+    const localX = centreX + dx * Math.cos(angle) - dy * Math.sin(angle);
+    const localY = centreY + dx * Math.sin(angle) + dy * Math.cos(angle);
+    if (
+      localX >= element.x &&
+      localX <= element.x + element.width &&
+      localY >= element.y &&
+      localY <= element.y + element.height
+    ) {
+      return element;
+    }
+  }
+  return undefined;
+}
+
 function sceneChanged(next: EditorStoreState, previous: EditorStoreState): boolean {
   return (
     next.document !== previous.document ||
@@ -32,7 +72,7 @@ function sceneChanged(next: EditorStoreState, previous: EditorStoreState): boole
  * Hosts the Fabric canvas. State flows one way: store -> adapter.render(); user interactions
  * come back as commands through the adapter callbacks, never as direct state writes.
  */
-export function CanvasStage() {
+export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStageProps) {
   const store = useEditorStore();
   const controller = useCanvasController();
   const notifications = useNotificationStore();
@@ -43,6 +83,7 @@ export function CanvasStage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const adapterRef = useRef<FabricCanvasAdapter | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
   // Screen-space preview of what a dragged element will become, while it hovers the canvas.
   const [ghost, setGhost] = useState<{ x: number; y: number; size: number } | null>(null);
   const zoom = useEditor((state) => state.zoom);
@@ -220,6 +261,32 @@ export function CanvasStage() {
     Number.isFinite(event.clientX) && Number.isFinite(event.clientY)
       ? controller.clientToPage(event.clientX, event.clientY)
       : null;
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const handleContextMenu = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      if (drawEnabled || store.getState().cropId) return;
+
+      const state = store.getState();
+      const page = selectActivePage(state);
+      const point = controller.clientToPage(event.clientX, event.clientY);
+      const target = point ? elementAtPoint(page.elements, point) : undefined;
+      if (target) {
+        if (!state.selectedIds.includes(target.id)) state.setSelection([target.id]);
+      } else {
+        state.setSelection([]);
+      }
+
+      const rect = event.currentTarget.getBoundingClientRect();
+      setContextMenu({
+        x: Math.max(8, Math.min(event.clientX - rect.left, rect.width - 232)),
+        y: Math.max(8, Math.min(event.clientY - rect.top, rect.height - 330)),
+      });
+    },
+    [controller, drawEnabled, store],
+  );
 
   /**
    * What a dropped photo lands on: the top-most unlocked frame or image whose box contains the
@@ -404,6 +471,7 @@ export function CanvasStage() {
         dropActive && 'ring-2 ring-ring ring-inset',
         drawEnabled && 'cursor-crosshair',
       )}
+      onContextMenu={handleContextMenu}
       onDragOver={onDragOver}
       onDragLeave={(event) => {
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
@@ -420,6 +488,14 @@ export function CanvasStage() {
       <canvas ref={canvasRef} aria-label="Design canvas" />
       <CropOverlay />
       <ZoomControl />
+      {contextMenu ? (
+        <CanvasContextMenu
+          position={contextMenu}
+          onClose={closeContextMenu}
+          onOpenPageSettings={onOpenPageSettings}
+          onOpenProperties={onOpenProperties}
+        />
+      ) : null}
       {isEmpty && !drawEnabled && !dropActive ? (
         <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center px-6">
           <div className="pointer-events-none flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border border-border/80 bg-white/95 px-6 py-5 text-center shadow-[0_12px_40px_rgba(16,24,40,0.12)] backdrop-blur">

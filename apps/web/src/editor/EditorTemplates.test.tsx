@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 
 const fixedDate = new Date('2026-10-21T09:30:00.000Z');
 
@@ -21,7 +22,7 @@ function renderEditor(document?: DesignDocument) {
 }
 
 async function useTemplate(user: ReturnType<typeof userEvent.setup>, name: string, pick: string) {
-  await user.click(screen.getByRole('tab', { name: 'Design' }));
+  await activateSidebarTab(user, 'Design');
   await user.type(screen.getByRole('searchbox', { name: 'Search templates' }), name);
   await user.click(screen.getByRole('button', { name: `Use ${pick} template` }));
 }
@@ -35,12 +36,12 @@ describe('applying generated templates', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
 
     // The poster's vector pieces arrive as ordinary elements, icons included.
-    await user.click(screen.getByRole('tab', { name: 'Layers' }));
+    await activateSidebarTab(user, 'Layers');
     const layers = screen.getByRole('listbox', { name: 'Layers' });
     expect(within(layers).getAllByRole('option').length).toBeGreaterThanOrEqual(4);
 
     await user.click(within(layers).getAllByRole('option')[0]!);
-    expect(screen.getByRole('complementary', { name: 'Properties' })).toBeInTheDocument();
+    expect(openPropertiesPanel()).toBeInTheDocument();
   });
 
   it('replaces the page in one undo step', async () => {
@@ -55,7 +56,7 @@ describe('applying generated templates', () => {
   it('adds a generated design as a second page when asked', async () => {
     const { user } = renderEditor();
     await user.click(screen.getByRole('checkbox', { name: /Add as a new page/i }));
-    await user.click(screen.getByRole('tab', { name: 'Design' }));
+    await activateSidebarTab(user, 'Design');
     await user.type(screen.getByRole('searchbox', { name: 'Search templates' }), 'Noise Fest');
     await user.click(screen.getByRole('button', { name: 'Use Noise Fest template' }));
 
@@ -65,7 +66,7 @@ describe('applying generated templates', () => {
 
   it('keeps the template catalogue searchable below the fold', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Design' }));
+    await activateSidebarTab(user, 'Design');
 
     // The sidebar pages the catalogue; the rest is one button away.
     expect(screen.getByRole('button', { name: /Show 18 more of 60/ })).toBeInTheDocument();

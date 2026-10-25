@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPagePropertiesPanel, openPropertiesPanel } from './testHelpers';
 
 const fixedDate = new Date('2026-01-02T03:04:05.000Z');
 
@@ -20,21 +21,24 @@ function renderEditor() {
 }
 
 async function insertRectangle(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Elements' }));
+  await activateSidebarTab(user, 'Elements');
   await user.click(screen.getByRole('button', { name: 'Rectangle' }));
-  return screen.getByRole('complementary', { name: 'Properties' });
+  return openPropertiesPanel();
 }
 
 describe('EditorPage', () => {
-  it('renders the editor chrome with an empty page state', () => {
-    renderEditor();
+  it('renders the editor chrome with an empty page state', async () => {
+    const { user } = renderEditor();
     expect(screen.getByRole('textbox', { name: 'Design name' })).toHaveValue('Test design');
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Redo' })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'Design' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(screen.getByRole('toolbar', { name: 'Contextual toolbar' })).toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: 'Properties' })).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('No unsaved changes');
     expect(screen.getByLabelText('Design canvas')).toBeInTheDocument();
+    await activateSidebarTab(user, 'Page');
+    expect(within(openPagePropertiesPanel()).getByText(/Nothing on the page yet/)).toBeInTheDocument();
   });
 
   it('inserts a rectangle, selects it and shows its properties', async () => {
@@ -76,7 +80,7 @@ describe('EditorPage', () => {
     const { user } = renderEditor();
     await insertRectangle(user);
     await user.keyboard('{Delete}');
-    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(screen.getByText('Nothing selected')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
   });
 
@@ -84,7 +88,7 @@ describe('EditorPage', () => {
     const { user } = renderEditor();
     await insertRectangle(user);
     await user.keyboard('{Control>}z{/Control}');
-    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(screen.getByText('Nothing selected')).toBeInTheDocument();
     await user.keyboard('{Control>}{Shift>}z{/Shift}{/Control}');
     expect(screen.getByRole('heading', { name: 'Rectangle' })).toBeInTheDocument();
   });
@@ -119,7 +123,7 @@ describe('EditorPage', () => {
 
   it('changes the page background from the sidebar', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Background' }));
+    await activateSidebarTab(user, 'Background');
     await user.click(screen.getByRole('option', { name: 'Background #0f172a' }));
     expect(screen.getByRole('option', { name: 'Background #0f172a' })).toHaveAttribute(
       'aria-selected',
@@ -130,9 +134,9 @@ describe('EditorPage', () => {
 
   it('inserts editable text with the chosen preset', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await activateSidebarTab(user, 'Text');
     await user.click(screen.getByRole('button', { name: 'Add a heading' }));
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     expect(within(panel).getByRole('heading', { name: 'Text' })).toBeInTheDocument();
     expect(within(panel).getByLabelText('Content')).toHaveValue('Add a heading');
     expect(within(panel).getByLabelText('Size')).toHaveValue('96');
@@ -141,9 +145,9 @@ describe('EditorPage', () => {
 
   it('offers the bundled families and previews the chosen font', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await activateSidebarTab(user, 'Text');
     await user.click(screen.getByRole('button', { name: 'Add a heading' }));
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     const font = within(panel).getByLabelText('Font');
 
     // Bundled families are grouped, and only weights the family ships are offered.
@@ -168,9 +172,9 @@ describe('EditorPage', () => {
 
   it('toggles bulleted and numbered lists without changing the text', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await activateSidebarTab(user, 'Text');
     await user.click(screen.getByRole('button', { name: 'Add a heading' }));
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     const bullets = within(panel).getByRole('button', { name: 'Bulleted list' });
     const numbers = within(panel).getByRole('button', { name: 'Numbered list' });
 
@@ -187,9 +191,9 @@ describe('EditorPage', () => {
 
   it('inserts a text style preset with its size, tracking and casing baked in', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await activateSidebarTab(user, 'Text');
     await user.click(screen.getByRole('button', { name: 'Add a label' }));
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     expect(within(panel).getByLabelText('Content')).toHaveValue('Add a label');
     expect(within(panel).getByLabelText('Size')).toHaveValue('22');
     expect(within(panel).getByLabelText('Letter spacing')).toHaveValue('4');
@@ -198,9 +202,9 @@ describe('EditorPage', () => {
 
   it('inserts a font pairing as one undoable step', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await activateSidebarTab(user, 'Text');
     await user.click(screen.getByRole('button', { name: 'Add Editorial pairing' }));
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     // The heading is selected so it can be edited straight away.
     expect(within(panel).getByLabelText('Content')).toHaveValue('Add a heading');
     expect(within(panel).getByLabelText('Font')).toHaveValue('Playfair Display');
@@ -209,14 +213,14 @@ describe('EditorPage', () => {
     await user.keyboard('{Control>}a{/Control}');
     expect(screen.getByRole('heading', { name: '2 elements selected' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(screen.getByText('Nothing selected')).toBeInTheDocument();
   });
 
   it('changes display casing without rewriting the text', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await activateSidebarTab(user, 'Text');
     await user.click(screen.getByRole('button', { name: 'Add a heading' }));
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     const casing = within(panel).getByLabelText('Casing');
 
     expect(casing).toHaveValue('none');
@@ -234,16 +238,18 @@ describe('EditorPage', () => {
   it('reorders layers through the arrange controls', async () => {
     const { user } = renderEditor();
     await insertRectangle(user);
+    await activateSidebarTab(user, 'Elements');
     await user.click(screen.getByRole('button', { name: 'Ellipse' }));
-    // Ellipse is now on top and selected; send it to the back.
-    await user.click(screen.getByRole('button', { name: 'Send to back' }));
+    // Ellipse is now on top and selected; send it to the back from its edit drawer.
+    const panel = openPropertiesPanel();
+    await user.click(within(panel).getByRole('button', { name: 'Send to back' }));
     await user.keyboard('{Control>}a{/Control}');
     expect(screen.getByRole('heading', { name: '2 elements selected' })).toBeInTheDocument();
   });
 
-  it('changes the canvas size through presets', async () => {
+  it('changes the canvas size through the page settings drawer', async () => {
     const { user } = renderEditor();
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPagePropertiesPanel();
     await user.selectOptions(within(panel).getByLabelText('Preset'), 'youtube-thumbnail');
     expect(within(panel).getByLabelText('Width')).toHaveValue('1280');
     expect(within(panel).getByLabelText('Height')).toHaveValue('720');
@@ -276,7 +282,7 @@ describe('EditorPage', () => {
     await user.click(screen.getByRole('button', { name: 'Add a shape' }));
 
     expect(screen.queryByText('Start your design')).not.toBeInTheDocument();
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     expect(within(panel).getByRole('heading', { name: 'Rectangle' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
   });
@@ -290,10 +296,11 @@ describe('EditorPage', () => {
 
   it('keeps the selection toolbar available after inserting an element', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Elements' }));
+    await activateSidebarTab(user, 'Elements');
     await user.click(screen.getByRole('button', { name: 'Ellipse' }));
-    expect(screen.getByRole('toolbar', { name: 'Selection actions' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Duplicate selection' })).toBeEnabled();
+    const selectionToolbar = screen.getByRole('toolbar', { name: 'Selection actions' });
+    expect(selectionToolbar).toBeInTheDocument();
+    expect(within(selectionToolbar).getByRole('button', { name: 'Duplicate selection' })).toBeEnabled();
   });
 
   it('exposes zoom controls once the canvas is mounted', async () => {

@@ -1263,16 +1263,28 @@ function MultiSelectionProperties({ elements }: { elements: DesignElement[] }) {
   );
 }
 
+export function PagePropertiesPanel() {
+  return (
+    <aside aria-label="Page properties" className="flex min-h-full flex-col bg-panel">
+      <PageProperties />
+    </aside>
+  );
+}
+
 export function PropertiesPanel() {
   const selected = useEditor(useShallow(selectSelectedElements));
   const single = selected.length === 1 ? selected[0] : undefined;
 
   return (
-    <aside
-      aria-label="Properties"
-      className="flex h-full w-[300px] flex-col overflow-y-auto border-l border-border bg-panel"
-    >
-      {selected.length === 0 && <PageProperties />}
+    <aside aria-label="Properties" className="flex min-h-full min-w-0 flex-col bg-panel">
+      {selected.length === 0 ? (
+        <div className="px-4 py-5">
+          <h2 className="text-[15px] font-semibold">Nothing selected</h2>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Select an element on the page to edit its size, appearance, typography, and position.
+          </p>
+        </div>
+      ) : null}
       {single && <ElementProperties key={single.id} element={single} />}
       {selected.length > 1 && <MultiSelectionProperties elements={selected} />}
     </aside>
