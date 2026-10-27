@@ -84,7 +84,7 @@ function TextControls({ element }: { element: TextElement }) {
           updateSelection({ fontFamily: event.target.value }, `fontFamily:${element.id}`)
         }
         className="h-8 w-[154px] border-transparent bg-transparent text-xs hover:border-input"
-        style={{ fontFamily: `\"${element.fontFamily}\"` }}
+        style={{ fontFamily: `"${element.fontFamily}"` }}
       >
         {FONT_CATEGORIES.map((group) => (
           <optgroup key={group.label} label={group.label}>
@@ -119,7 +119,10 @@ function TextControls({ element }: { element: TextElement }) {
           aria-label="Bold"
           pressed={isBold}
           onClick={() =>
-            updateSelection({ fontWeight: isBold ? regularWeight : boldWeight }, `weight:${element.id}`)
+            updateSelection(
+              { fontWeight: isBold ? regularWeight : boldWeight },
+              `weight:${element.id}`,
+            )
           }
         >
           <Bold />
@@ -155,11 +158,13 @@ function TextControls({ element }: { element: TextElement }) {
         </Button>
       </Tooltip>
       <Separator orientation="vertical" className="mx-0.5 h-6" />
-      {([
-        { value: 'left', label: 'Align left', icon: <AlignLeft /> },
-        { value: 'center', label: 'Align center', icon: <AlignCenter /> },
-        { value: 'right', label: 'Align right', icon: <AlignRight /> },
-      ] as const).map((alignment) => (
+      {(
+        [
+          { value: 'left', label: 'Align left', icon: <AlignLeft /> },
+          { value: 'center', label: 'Align center', icon: <AlignCenter /> },
+          { value: 'right', label: 'Align right', icon: <AlignRight /> },
+        ] as const
+      ).map((alignment) => (
         <Tooltip key={alignment.value} content={alignment.label}>
           <Button
             variant="ghost"
@@ -231,7 +236,7 @@ export function ContextualToolbar({ onOpenPanel }: ContextualToolbarProps) {
       ) : (
         <>
           <span className="ml-1 shrink-0 text-xs font-semibold text-foreground">
-            {selected.length > 1 ? `${selected.length} selected` : single?.type ?? 'Selection'}
+            {selected.length > 1 ? `${selected.length} selected` : (single?.type ?? 'Selection')}
           </span>
           <Separator orientation="vertical" className="mx-1 h-6" />
           {single?.type === 'text' ? <TextControls element={single} /> : null}

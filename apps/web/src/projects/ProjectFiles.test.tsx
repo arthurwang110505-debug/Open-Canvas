@@ -6,6 +6,7 @@ import {
   type DesignDocument,
 } from '@opencanvas/document';
 import {
+  createMemoryProjectOrganizationStore,
   createMemoryProjectStore,
   packProject,
   unpackProject,
@@ -68,9 +69,14 @@ function renderDashboard(services: ProjectsServices) {
   return { user };
 }
 
+async function openProjects(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Projects' }));
+}
+
 function servicesFor(store: ProjectStore, downloads: Download[]): ProjectsServices {
   return {
     store,
+    organization: createMemoryProjectOrganizationStore(),
     backend: 'memory',
     download: (blob, filename) => downloads.push({ blob, filename }),
   };
@@ -102,6 +108,7 @@ describe('exporting a project file', () => {
     const store = await storeWith(design);
     const downloads: Download[] = [];
     const { user } = renderDashboard(servicesFor(store, downloads));
+    await openProjects(user);
 
     await user.click(await screen.findByRole('button', { name: 'Export Flyer' }));
 
@@ -126,6 +133,7 @@ describe('exporting a project file', () => {
     const store = await storeWith(designWithImage(), { withBytes: false });
     const downloads: Download[] = [];
     const { user } = renderDashboard(servicesFor(store, downloads));
+    await openProjects(user);
 
     await user.click(await screen.findByRole('button', { name: 'Export Flyer' }));
 
@@ -165,6 +173,7 @@ describe('importing a project file', () => {
     const store = await storeWith(design);
     const downloads: Download[] = [];
     const { user } = renderDashboard(servicesFor(store, downloads));
+    await openProjects(user);
     await screen.findByRole('heading', { name: 'Flyer' });
 
     await user.upload(

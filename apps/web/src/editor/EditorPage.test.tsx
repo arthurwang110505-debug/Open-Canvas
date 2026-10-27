@@ -38,7 +38,9 @@ describe('EditorPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('No unsaved changes');
     expect(screen.getByLabelText('Design canvas')).toBeInTheDocument();
     await activateSidebarTab(user, 'Page');
-    expect(within(openPagePropertiesPanel()).getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(
+      within(openPagePropertiesPanel()).getByText(/Nothing on the page yet/),
+    ).toBeInTheDocument();
   });
 
   it('inserts a rectangle, selects it and shows its properties', async () => {
@@ -300,7 +302,9 @@ describe('EditorPage', () => {
     await user.click(screen.getByRole('button', { name: 'Ellipse' }));
     const selectionToolbar = screen.getByRole('toolbar', { name: 'Selection actions' });
     expect(selectionToolbar).toBeInTheDocument();
-    expect(within(selectionToolbar).getByRole('button', { name: 'Duplicate selection' })).toBeEnabled();
+    expect(
+      within(selectionToolbar).getByRole('button', { name: 'Duplicate selection' }),
+    ).toBeEnabled();
   });
 
   it('exposes zoom controls once the canvas is mounted', async () => {

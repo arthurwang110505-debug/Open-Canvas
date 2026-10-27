@@ -1,40 +1,18 @@
-import { CANVAS_PRESETS, LIMITS } from '@opencanvas/document';
-import type { ProjectStoreError, ProjectSummary } from '@opencanvas/storage';
-import type { Result } from '@opencanvas/document';
-import {
-  Button,
-  Input,
-  Menu,
-  MenuContent,
-  MenuItem,
-  MenuLabel,
-  MenuTrigger,
-  Select,
-} from '@opencanvas/ui';
-import {
-  ChevronDown,
-  Clock,
-  Copy,
-  Download,
-  FileUp,
-  LayoutTemplate,
-  Pencil,
-  Plus,
-  Search,
-  Sparkles,
-  Trash2,
-} from 'lucide-react';
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type KeyboardEvent,
-} from 'react';
+import { CANVAS_PRESETS } from '@opencanvas/document';
+import type {
+  ProjectFolder,
+  ProjectOrganizationSnapshot,
+  ProjectStoreError,
+  ProjectSummary,
+} from '@opencanvas/storage';
+import { Button, Input, Select } from '@opencanvas/ui';
+import { Clock, FileUp, Folder, LayoutTemplate, Search, Sparkles, Star } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 
 import { navigate } from '../router';
+import { getTemplate } from '../templates/catalog';
+import { TemplateGallery } from '../templates/TemplateGallery';
+import { TemplatePreviewModal } from '../templates/TemplatePreviewModal';
 import {
   createProject,
   createProjectFromTemplate,
@@ -42,12 +20,15 @@ import {
   duplicateProject,
   renameProject,
 } from './actions';
-import { exportProjectFile, importProjectFile } from './projectFiles';
-import { describeProjectContents, formatCanvasSize, formatTimestamp } from './format';
-import { useProjects } from './useProjects';
+import { CreateDesignDialog } from './CreateDesignDialog';
+import { FolderDialog } from './FolderDialog';
+import { HomeHero } from './HomeHero';
+import { HomeSidebar, type DashboardView } from './HomeSidebar';
+import { ProjectCard } from './ProjectCard';
 import { ProjectThumbnail } from './ProjectThumbnail';
-import { getTemplate } from '../templates/catalog';
-import { TemplateGallery } from '../templates/TemplateGallery';
+import { exportProjectFile, importProjectFile } from './projectFiles';
+import { formatCanvasSize, formatTimestamp } from './format';
+import { useProjects } from './useProjects';
 
 type ListState =
   | { status: 'loading' }
@@ -56,164 +37,125 @@ type ListState =
 
 const DEFAULT_NAME = 'Untitled design';
 const PROJECT_FILE_ACCEPT = '.opencanvas,application/zip,application/octet-stream';
+const EMPTY_ORGANIZATION: ProjectOrganizationSnapshot = { projects: [], folders: [] };
 
-function Logo() {
-  return (
-    <span
-      aria-hidden="true"
-      className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm"
-    >
-      <svg viewBox="0 0 32 32" className="size-5" fill="currentColor">
-        <rect x="5" y="5" width="12" height="12" rx="3" />
-        <circle cx="21" cy="21" r="7" opacity="0.85" />
-      </svg>
-    </span>
-  );
+function projectErrorMessage(error: ProjectStoreError): string {
+  return error.message;
 }
 
-function EmptyStateIllustration() {
-  return (
-    <div className="relative mx-auto flex w-full max-w-md items-end justify-center gap-3 py-4">
-      {/* three floating cards like Canva */}
-      <div className="w-24 rounded-xl bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-border -rotate-6">
-        <div className="aspect-[3/4] rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 p-2">
-          <div className="h-2 w-8 rounded bg-white/90" />
-          <div className="mt-2 h-1 w-12 rounded bg-white/60" />
-        </div>
-        <div className="mt-2 h-1.5 w-full rounded bg-muted" />
-      </div>
-      <div className="w-28 rounded-xl bg-white p-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.10)] ring-1 ring-border z-10 -translate-y-2">
-        <div className="aspect-square rounded-lg bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400 p-3 flex flex-col justify-end">
-          <div className="h-3 w-3/4 rounded bg-white" />
-          <div className="mt-1.5 h-1.5 w-1/2 rounded bg-white/70" />
-        </div>
-        <div className="mt-2 flex gap-1">
-          <div className="h-6 flex-1 rounded-full bg-primary" />
-          <div className="h-6 flex-1 rounded-full bg-muted" />
-        </div>
-      </div>
-      <div className="w-24 rounded-xl bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-border rotate-6">
-        <div className="aspect-[4/3] rounded-lg bg-gradient-to-br from-cyan-400 to-sky-600 p-2 flex items-center justify-center">
-          <LayoutTemplate className="size-8 text-white/90" />
-        </div>
-        <div className="mt-2 h-1.5 w-full rounded bg-muted" />
-      </div>
-    </div>
-  );
+function viewFolderId(view: DashboardView): string | null {
+  return view.startsWith('folder:') ? view.slice('folder:'.length) : null;
 }
 
-const PRESET_CATEGORIES: { id: CanvasPresetCategory; label: string }[] = [
-  { id: 'social', label: 'Social' },
-  { id: 'presentation', label: 'Presentation' },
-  { id: 'print', label: 'Print' },
-  { id: 'video', label: 'Video' },
-];
-
-type CanvasPresetCategory = (typeof CANVAS_PRESETS)[number]['category'];
-
-/** Category-grouped size picker: the whole catalog is one click away, like Canva's home screen. */
-function SizePicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
-  const current = CANVAS_PRESETS.find((preset) => preset.id === value) ?? CANVAS_PRESETS[0];
-  return (
-    <Menu className="w-full sm:w-64">
-      <MenuTrigger asChild>
-        <Button
-          variant="outline"
-          aria-label="Canvas size"
-          className="h-10 w-full justify-between rounded-full px-4 text-[13px] font-medium"
-        >
-          <span className="truncate">
-            {current?.label} · {current?.width}×{current?.height}
-          </span>
-          <ChevronDown className="size-4 shrink-0 opacity-60" />
-        </Button>
-      </MenuTrigger>
-      <MenuContent className="max-h-80 w-72 overflow-y-auto">
-        {PRESET_CATEGORIES.map((category) => {
-          const presets = CANVAS_PRESETS.filter((preset) => preset.category === category.id);
-          if (presets.length === 0) return null;
-          return (
-            <div key={category.id}>
-              <MenuLabel>{category.label}</MenuLabel>
-              {presets.map((preset) => (
-                <MenuItem
-                  key={preset.id}
-                  hint={`${preset.width}×${preset.height}`}
-                  onSelect={() => onChange(preset.id)}
-                >
-                  {preset.label}
-                </MenuItem>
-              ))}
-            </div>
-          );
-        })}
-      </MenuContent>
-    </Menu>
-  );
+function viewHeading(
+  view: DashboardView,
+  folders: readonly ProjectFolder[],
+): { title: string; subtitle: string } {
+  if (view === 'starred')
+    return { title: 'Starred designs', subtitle: 'Your favorite work, all in one place.' };
+  const folderId = viewFolderId(view);
+  if (folderId) {
+    const folder = folders.find((candidate) => candidate.id === folderId);
+    return {
+      title: folder?.name ?? 'Folder not found',
+      subtitle: 'Designs saved in this folder.',
+    };
+  }
+  return { title: 'Projects', subtitle: 'All your designs, saved locally in this browser.' };
 }
-
-const STARTER_TEMPLATES: { label: string; presetId: string; gradient: string }[] = [
-  {
-    label: 'Instagram post',
-    presetId: 'instagram-post',
-    gradient: 'from-violet-500 to-indigo-600',
-  },
-  {
-    label: 'Instagram story',
-    presetId: 'instagram-story',
-    gradient: 'from-fuchsia-500 to-pink-500',
-  },
-  { label: 'Presentation', presetId: 'presentation-16-9', gradient: 'from-sky-500 to-blue-600' },
-  { label: 'Poster A4', presetId: 'poster-a4', gradient: 'from-emerald-500 to-teal-600' },
-  { label: 'YouTube cover', presetId: 'youtube-thumbnail', gradient: 'from-orange-500 to-red-500' },
-  { label: 'Business card', presetId: 'business-card', gradient: 'from-zinc-700 to-zinc-900' },
-];
 
 /**
- * Local project browser: create, open, rename, duplicate and delete designs stored in this
- * browser. Every action reports its failure instead of degrading silently.
+ * Home, project organization, and template discovery for local designs. Documents stay portable;
+ * favorites and folders are stored separately in the browser's organization store.
  */
 export function Dashboard() {
-  const { store, backend, download } = useProjects();
+  const { store, organization, backend, download } = useProjects();
+  const [activeView, setActiveView] = useState<DashboardView>('home');
   const [list, setList] = useState<ListState>({ status: 'loading' });
+  const [organizationSnapshot, setOrganizationSnapshot] = useState(EMPTY_ORGANIZATION);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [presetId, setPresetId] = useState(() => CANVAS_PRESETS[0]?.id ?? '');
-  const [renaming, setRenaming] = useState<{ projectId: string; draft: string } | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'recent' | 'name'>('recent');
+  const [showCreateDesign, setShowCreateDesign] = useState(false);
+  const [folderDialog, setFolderDialog] = useState<{ id?: string; name?: string } | null>(null);
+  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
-  const applyListResult = useCallback((listed: Result<ProjectSummary[], ProjectStoreError>) => {
-    if (listed.ok) setList({ status: 'ready', projects: listed.value });
-    else setList({ status: 'error', message: listed.error.message });
-  }, []);
+  const applyListResult = useCallback(
+    (result: Awaited<ReturnType<typeof store.list>>) => {
+      if (result.ok) setList({ status: 'ready', projects: result.value });
+      else setList({ status: 'error', message: projectErrorMessage(result.error) });
+    },
+    [store],
+  );
 
-  /** Re-reads the list after a mutation or an explicit retry. */
-  const refresh = useCallback(async () => {
+  const refreshProjects = useCallback(async () => {
     applyListResult(await store.list());
   }, [applyListResult, store]);
 
+  const refreshOrganization = useCallback(async () => {
+    const result = await organization.load();
+    if (result.ok) {
+      setOrganizationSnapshot(result.value);
+      return true;
+    }
+    setActionError(result.error.message);
+    return false;
+  }, [organization]);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshProjects(), refreshOrganization()]);
+  }, [refreshOrganization, refreshProjects]);
+
   useEffect(() => {
     let cancelled = false;
-    void store.list().then((listed) => {
-      if (!cancelled) applyListResult(listed);
+    void store.list().then((result) => {
+      if (!cancelled) applyListResult(result);
+    });
+    void organization.load().then((result) => {
+      if (cancelled) return;
+      if (result.ok) setOrganizationSnapshot(result.value);
+      else setActionError(result.error.message);
     });
     return () => {
       cancelled = true;
     };
-  }, [store, applyListResult]);
+  }, [applyListResult, organization, store]);
 
-  const onCreate = async (overridePresetId?: string) => {
+  const closeCreateDesign = useCallback(() => {
+    setShowCreateDesign(false);
+    setActionError(null);
+  }, []);
+  const closeFolderDialog = useCallback(() => {
+    setFolderDialog(null);
+    setActionError(null);
+  }, []);
+  const closeTemplatePreview = useCallback(() => setPreviewTemplateId(null), []);
+
+  const onCreate = async (name: string, width: number, height: number): Promise<boolean> => {
     setBusy('create');
     setActionError(null);
-    const targetId = overridePresetId ?? presetId;
-    const preset = CANVAS_PRESETS.find((candidate) => candidate.id === targetId);
+    const created = await createProject(store, { name, width, height });
+    setBusy(null);
+    if (!created.ok) {
+      setActionError(created.error.message);
+      return false;
+    }
+    navigate({ name: 'editor', projectId: created.value.id });
+    return true;
+  };
+
+  const onCreatePreset = async (presetId: string) => {
+    const preset = CANVAS_PRESETS.find((candidate) => candidate.id === presetId);
+    if (!preset) return;
+    setBusy('create');
+    setActionError(null);
     const created = await createProject(store, {
       name: DEFAULT_NAME,
-      ...(preset ? { width: preset.width, height: preset.height } : {}),
+      width: preset.width,
+      height: preset.height,
     });
     setBusy(null);
     if (!created.ok) {
@@ -226,33 +168,34 @@ export function Dashboard() {
   const onUseTemplate = async (templateId: string) => {
     setBusy('create');
     setActionError(null);
-    const tpl = getTemplate(templateId);
-    if (!tpl) {
+    const template = getTemplate(templateId);
+    if (!template) {
       setBusy(null);
       setActionError(`Unknown template ${templateId}`);
       return;
     }
-    const doc = tpl.build();
-    const created = await createProjectFromTemplate(store, doc);
+    const created = await createProjectFromTemplate(store, template.build());
     setBusy(null);
     if (!created.ok) {
       setActionError(created.error.message);
       return;
     }
+    setPreviewTemplateId(null);
     navigate({ name: 'editor', projectId: created.value.id });
   };
 
-  const onRename = async (projectId: string, draft: string) => {
+  const onRename = async (projectId: string, draft: string): Promise<boolean> => {
     setBusy(`rename:${projectId}`);
     setActionError(null);
     const renamed = await renameProject(store, projectId, draft.trim());
     setBusy(null);
     if (!renamed.ok) {
       setActionError(renamed.error.message);
-      return;
+      return false;
     }
-    setRenaming(null);
-    await refresh();
+    await refreshProjects();
+    setNotice(`Renamed to “${renamed.value.name}”.`);
+    return true;
   };
 
   const onDuplicate = async (projectId: string) => {
@@ -264,20 +207,84 @@ export function Dashboard() {
       setActionError(duplicated.error.message);
       return;
     }
-    await refresh();
+    await refreshProjects();
+    setNotice(`Created “${duplicated.value.name}”.`);
   };
 
-  const onDelete = async (projectId: string) => {
+  const onDelete = async (projectId: string): Promise<boolean> => {
     setBusy(`delete:${projectId}`);
     setActionError(null);
     const removed = await deleteProject(store, projectId);
-    setBusy(null);
     if (!removed.ok) {
+      setBusy(null);
       setActionError(removed.error.message);
+      return false;
+    }
+    const metadataRemoved = await organization.removeProject(projectId);
+    setBusy(null);
+    if (!metadataRemoved.ok) setActionError(metadataRemoved.error.message);
+    await refresh();
+    setNotice('Design deleted.');
+    return true;
+  };
+
+  const onToggleStar = async (projectId: string, starred: boolean) => {
+    setBusy(`organize:${projectId}`);
+    setActionError(null);
+    const result = await organization.setStarred(projectId, starred);
+    setBusy(null);
+    if (!result.ok) {
+      setActionError(result.error.message);
       return;
     }
-    setConfirmingDelete(null);
-    await refresh();
+    await refreshOrganization();
+  };
+
+  const onMove = async (projectId: string, folderId: string | null) => {
+    setBusy(`organize:${projectId}`);
+    setActionError(null);
+    const result = await organization.setFolder(projectId, folderId);
+    setBusy(null);
+    if (!result.ok) {
+      setActionError(result.error.message);
+      return;
+    }
+    const folderName = folderId
+      ? organizationSnapshot.folders.find((folder) => folder.id === folderId)?.name
+      : undefined;
+    setNotice(folderName ? `Moved to “${folderName}”.` : 'Moved to Projects.');
+    await refreshOrganization();
+  };
+
+  const onSaveFolder = async (name: string): Promise<boolean> => {
+    setActionError(null);
+    const result = folderDialog?.id
+      ? await organization.renameFolder(folderDialog.id, name)
+      : await organization.createFolder(name);
+    if (!result.ok) {
+      setActionError(result.error.message);
+      return false;
+    }
+    await refreshOrganization();
+    if (!folderDialog?.id) setActiveView(`folder:${result.value.id}`);
+    setNotice(
+      folderDialog?.id
+        ? `Folder renamed to “${result.value.name}”.`
+        : `Folder “${result.value.name}” created.`,
+    );
+    return true;
+  };
+
+  const onDeleteFolder = async (folder: ProjectFolder) => {
+    setActionError(null);
+    const result = await organization.deleteFolder(folder.id);
+    if (!result.ok) {
+      setActionError(result.error.message);
+      return;
+    }
+    if (activeView === `folder:${folder.id}`) setActiveView('projects');
+    await refreshOrganization();
+    setNotice(`“${folder.name}” was deleted. Its designs are now in Projects.`);
   };
 
   /** Writes the project to a `.opencanvas` file and hands it to the browser to download. */
@@ -297,7 +304,6 @@ export function Dashboard() {
   /** Reads a `.opencanvas` file into the store; an existing id becomes a copy. */
   const onImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
-    // Reset so choosing the same file again still fires a change event.
     event.currentTarget.value = '';
     if (!file) return;
 
@@ -315,450 +321,500 @@ export function Dashboard() {
         ? `Imported as "${imported.value.name}" (a design with that id already exists).`
         : `Imported "${imported.value.name}".`,
     );
-    await refresh();
+    await refreshProjects();
+    setActiveView('projects');
   };
 
-  const onRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    const draft = event.currentTarget.value;
-    const projectId = renaming?.projectId;
-    if (event.key === 'Enter' && projectId) {
-      event.preventDefault();
-      event.currentTarget.blur();
-      void onRename(projectId, draft);
-    } else if (event.key === 'Escape') {
-      setRenaming(null);
-      setActionError(null);
+  const metadataByProject = useMemo(
+    () => new Map(organizationSnapshot.projects.map((metadata) => [metadata.projectId, metadata])),
+    [organizationSnapshot.projects],
+  );
+  const folderCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const metadata of organizationSnapshot.projects) {
+      if (metadata.folderId)
+        counts.set(metadata.folderId, (counts.get(metadata.folderId) ?? 0) + 1);
     }
-  };
+    return counts;
+  }, [organizationSnapshot.projects]);
+  const starredCount = useMemo(
+    () => organizationSnapshot.projects.filter((metadata) => metadata.starred).length,
+    [organizationSnapshot.projects],
+  );
 
   const filteredProjects = useMemo(() => {
     if (list.status !== 'ready') return [];
-    const query = searchQuery.trim().toLowerCase();
-    const matches = query
-      ? list.projects.filter(
-          (p) => p.name.toLowerCase().includes(query) || p.id.toLowerCase().includes(query),
-        )
-      : [...list.projects];
+    const folderId = viewFolderId(activeView);
+    const query = searchQuery.trim().toLocaleLowerCase();
+    const matches = list.projects.filter((project) => {
+      const metadata = metadataByProject.get(project.id);
+      if (activeView === 'starred' && !metadata?.starred) return false;
+      if (folderId && metadata?.folderId !== folderId) return false;
+      if (
+        query &&
+        !project.name.toLocaleLowerCase().includes(query) &&
+        !project.id.toLocaleLowerCase().includes(query)
+      ) {
+        return false;
+      }
+      return true;
+    });
     return sortBy === 'name'
       ? matches.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-      : matches;
-  }, [list, searchQuery, sortBy]);
+      : matches.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+  }, [activeView, list, metadataByProject, searchQuery, sortBy]);
+
+  const folderId = viewFolderId(activeView);
+  const currentFolder = folderId
+    ? organizationSnapshot.folders.find((folder) => folder.id === folderId)
+    : undefined;
+  const folderDialogInitialName = folderDialog?.name;
+  const folderDialogId = folderDialog?.id;
+
+  const openCreateFolder = useCallback(() => {
+    setActionError(null);
+    setFolderDialog({});
+  }, []);
+
+  const renderProjectGrid = (projects: readonly ProjectSummary[]) => (
+    <ul aria-label="Designs" className="grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
+      {projects.map((project) => {
+        const metadata = metadataByProject.get(project.id);
+        return (
+          <ProjectCard
+            key={project.id}
+            project={project}
+            starred={metadata?.starred ?? false}
+            folderId={metadata?.folderId ?? null}
+            folders={organizationSnapshot.folders}
+            busy={busy !== null}
+            onOpen={(projectId) => navigate({ name: 'editor', projectId })}
+            onToggleStar={(projectId, starred) => void onToggleStar(projectId, starred)}
+            onMove={(projectId, targetFolderId) => void onMove(projectId, targetFolderId)}
+            onRename={onRename}
+            onDuplicate={(projectId) => void onDuplicate(projectId)}
+            onExport={(projectId, name) => void onExportFile(projectId, name)}
+            onDelete={onDelete}
+          />
+        );
+      })}
+    </ul>
+  );
+
+  const isProjectView = activeView === 'projects' || activeView === 'starred' || folderId !== null;
+  const pageHeading =
+    activeView === 'starred'
+      ? viewHeading(activeView, organizationSnapshot.folders)
+      : currentFolder
+        ? viewHeading(activeView, organizationSnapshot.folders)
+        : viewHeading('projects', organizationSnapshot.folders);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[#f8f9fb] text-foreground">
-      <header className="flex shrink-0 items-center gap-4 border-b border-border bg-white px-6 py-3 shadow-sm">
-        <Logo />
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-            OpenCanvas{' '}
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold tracking-widest text-primary">
-              BETA
-            </span>
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f7f8fc] text-foreground lg:flex-row">
+      <HomeSidebar
+        activeView={activeView}
+        folders={organizationSnapshot.folders}
+        projectCount={list.status === 'ready' ? list.projects.length : 0}
+        starredCount={starredCount}
+        folderCounts={folderCounts}
+        onChangeView={setActiveView}
+        onCreateDesign={() => {
+          setActionError(null);
+          setShowCreateDesign(true);
+        }}
+        onCreateFolder={openCreateFolder}
+        onRenameFolder={(folder) => {
+          setActionError(null);
+          setFolderDialog({ id: folder.id, name: folder.name });
+        }}
+        onDeleteFolder={(folder) => void onDeleteFolder(folder)}
+      />
+
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-white/90 px-4 backdrop-blur sm:px-6 lg:px-8">
+          <p className="hidden text-xs text-muted-foreground sm:block">
             {backend === 'indexeddb'
-              ? 'Designs are saved in this browser with IndexedDB.'
+              ? 'Your designs are saved on this device.'
               : 'This browser has no IndexedDB: designs are kept in memory only and are lost on reload.'}
           </p>
-        </div>
-        <div className="hidden items-center gap-2 md:flex">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full"
-            disabled={busy !== null}
-            onClick={() => fileInput.current?.click()}
-          >
-            <FileUp />
-            Import design
-          </Button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept={PROJECT_FILE_ACCEPT}
-            className="sr-only"
-            aria-label="OpenCanvas project file"
-            tabIndex={-1}
-            onChange={(event) => void onImportFile(event)}
-          />
-        </div>
-      </header>
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              disabled={busy !== null}
+              onClick={() => fileInput.current?.click()}
+            >
+              <FileUp className="size-4" /> Import design
+            </Button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept={PROJECT_FILE_ACCEPT}
+              className="sr-only"
+              aria-label="OpenCanvas project file"
+              tabIndex={-1}
+              onChange={(event) => void onImportFile(event)}
+            />
+          </div>
+        </header>
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-6xl px-6 py-8">
-          {/* Hero / create bar — Canva-style */}
-          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-border">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-1">
-                <h1 className="flex items-center gap-2 text-[22px] font-bold tracking-tight">
-                  <Sparkles className="size-5 text-primary" />
-                  Your designs
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Start from a template or create a blank canvas — just like Canva.
-                </p>
-              </div>
-              <form
-                className="flex flex-wrap items-center gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void onCreate();
-                }}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-9">
+            {notice ? (
+              <p
+                role="status"
+                className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
               >
-                <SizePicker value={presetId} onChange={setPresetId} />
-                <Button
-                  type="submit"
-                  disabled={busy !== null}
-                  className="rounded-full px-5 shadow-sm"
-                >
-                  <Plus />
-                  New design
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy !== null}
-                  onClick={() => fileInput.current?.click()}
-                  className="rounded-full md:hidden"
-                >
-                  <FileUp />
-                  Import
-                </Button>
-              </form>
-            </div>
-
-            {/* Template quick-start strip */}
-            <div className="mt-5 flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
-              {STARTER_TEMPLATES.map((tpl) => (
+                {notice}
+              </p>
+            ) : null}
+            {actionError ? (
+              <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">
+                <p role="alert">{actionError}</p>
                 <button
-                  key={tpl.presetId}
                   type="button"
-                  disabled={busy !== null}
-                  onClick={() => void onCreate(tpl.presetId)}
-                  className="group flex shrink-0 items-center gap-2.5 rounded-full border border-border bg-background px-3 py-2 pr-4 text-sm font-medium shadow-sm transition-all hover:shadow-md hover:border-primary/30 hover:bg-primary/[0.04] disabled:opacity-50"
+                  aria-label="Dismiss message"
+                  onClick={() => setActionError(null)}
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
                 >
-                  <span
-                    className={`grid size-7 place-items-center rounded-full bg-gradient-to-br ${tpl.gradient} text-white shadow-sm`}
-                  >
-                    <Plus className="size-3.5" />
-                  </span>
-                  {tpl.label}
+                  ×
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Continue editing — the returning-user happy path */}
-          {list.status === 'ready' && list.projects.length > 0 ? (
-            <section aria-label="Continue editing" className="mt-6">
-              <div className="flex items-baseline justify-between gap-3">
-                <h2 className="flex items-center gap-2 text-[15px] font-semibold">
-                  <Clock className="size-4 text-primary" /> Continue editing
-                </h2>
-                <span className="text-xs text-muted-foreground">Your three most recent</span>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                {list.projects.slice(0, 3).map((project) => (
-                  <button
-                    key={project.id}
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => navigate({ name: 'editor', projectId: project.id })}
-                    className="flex items-center gap-3 rounded-xl border border-border bg-white p-2.5 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md disabled:opacity-50"
-                  >
-                    <span className="w-20 shrink-0">
-                      <ProjectThumbnail project={project} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-semibold">
-                        {project.name}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {formatCanvasSize(project)}
-                      </span>
-                      <span className="block text-xs text-muted-foreground">
-                        Updated {formatTimestamp(project.updatedAt)}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ) : null}
+            ) : null}
 
-          {/* Template gallery — Canva-like discovery */}
-          <div className="mt-6">
-            <TemplateGallery onUse={(id) => void onUseTemplate(id)} />
-          </div>
-
-          {/* Search + filter bar */}
-          {list.status === 'ready' && list.projects.length > 0 ? (
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="relative max-w-sm flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="search"
-                  placeholder="Search your designs"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-9 w-full rounded-full border border-input bg-white py-2 pl-9 pr-4 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20"
+            {activeView === 'home' ? (
+              <div className="space-y-9">
+                <HomeHero
+                  onCreateDesign={() => setShowCreateDesign(true)}
+                  onCreatePreset={(preset) => void onCreatePreset(preset.id)}
+                  onBrowseTemplates={() => setActiveView('templates')}
                 />
-              </div>
-              <div className="flex items-center gap-3">
-                <p className="text-xs text-muted-foreground">
-                  {filteredProjects.length === list.projects.length
-                    ? `${list.projects.length} design${list.projects.length === 1 ? '' : 's'}`
-                    : `${filteredProjects.length} of ${list.projects.length}`}
-                </p>
-                <Select
-                  aria-label="Sort designs"
-                  value={sortBy}
-                  onChange={(event) => setSortBy(event.target.value as 'recent' | 'name')}
-                  className="h-9 w-36 rounded-full bg-white text-[13px]"
-                >
-                  <option value="recent">Last edited</option>
-                  <option value="name">Name</option>
-                </Select>
-              </div>
-            </div>
-          ) : null}
-
-          {notice ? (
-            <p
-              role="status"
-              className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-            >
-              {notice}
-            </p>
-          ) : null}
-
-          {actionError ? (
-            <p
-              role="alert"
-              className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm"
-            >
-              {actionError}
-            </p>
-          ) : null}
-
-          {list.status === 'loading' ? (
-            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="animate-pulse rounded-2xl border border-border bg-white p-3"
-                >
-                  <div className="aspect-[4/3] rounded-xl bg-muted" />
-                  <div className="mt-3 h-4 w-3/4 rounded bg-muted" />
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {list.status === 'error' ? (
-            <div className="mt-6 space-y-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-4 text-sm">
-              <p role="alert">{list.message}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full"
-                onClick={() => void refresh()}
-              >
-                Try again
-              </Button>
-            </div>
-          ) : null}
-
-          {list.status === 'ready' && list.projects.length === 0 ? (
-            <div className="mt-6 rounded-2xl border border-border bg-white px-6 py-10 text-center shadow-sm">
-              <EmptyStateIllustration />
-              <h2 className="mt-6 text-lg font-semibold">No designs yet</h2>
-              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Pick a size above or jump in with a template. Your designs are saved automatically
-                in this browser.
-              </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2">
-                <Button onClick={() => void onCreate()} className="rounded-full px-6">
-                  <Plus /> Create blank design
-                </Button>
-                <Button
-                  variant="outline"
-                  className="rounded-full"
-                  onClick={() => fileInput.current?.click()}
-                >
-                  <FileUp /> Import .opencanvas
-                </Button>
-              </div>
-              <p className="mt-4 text-xs text-muted-foreground">
-                Tip: Try “Instagram post” or “Poster A4” from the strip above.
-              </p>
-            </div>
-          ) : null}
-
-          {list.status === 'ready' && filteredProjects.length === 0 && list.projects.length > 0 ? (
-            <div className="mt-8 rounded-2xl border border-dashed border-border bg-white px-6 py-12 text-center">
-              <p className="font-medium">No matches for “{searchQuery}”</p>
-              <p className="text-sm text-muted-foreground">Try a different search term.</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3 rounded-full"
-                onClick={() => setSearchQuery('')}
-              >
-                Clear search
-              </Button>
-            </div>
-          ) : null}
-
-          {list.status === 'ready' && filteredProjects.length > 0 ? (
-            <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredProjects.map((project) => {
-                const isRenaming = renaming?.projectId === project.id;
-                const isBusy = busy !== null;
-                return (
-                  <li
-                    key={project.id}
-                    className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-sm transition-all hover:shadow-md hover:border-primary/20"
-                  >
-                    {/* Thumbnail area — clickable to open */}
+                {list.status === 'ready' && list.projects.length > 0 ? (
+                  <section aria-label="Continue editing">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="flex items-center gap-2 text-base font-semibold">
+                          <Clock className="size-4 text-primary" /> Continue editing
+                        </h2>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Pick up where you left off.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveView('projects')}
+                        className="text-xs font-semibold text-primary hover:underline"
+                      >
+                        See all projects
+                      </button>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {list.projects.slice(0, 3).map((project) => (
+                        <button
+                          key={project.id}
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => navigate({ name: 'editor', projectId: project.id })}
+                          className="flex min-w-0 items-center gap-3 rounded-2xl border border-border bg-white p-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-md disabled:opacity-50"
+                        >
+                          <span className="w-24 shrink-0">
+                            <ProjectThumbnail project={project} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-semibold">
+                              {project.name}
+                            </span>
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              {formatCanvasSize(project)}
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              Updated {formatTimestamp(project.updatedAt)}
+                            </span>
+                          </span>
+                          {metadataByProject.get(project.id)?.starred ? (
+                            <Star
+                              aria-label="Starred"
+                              className="size-4 shrink-0 fill-amber-400 text-amber-400"
+                            />
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+                {list.status === 'ready' && list.projects.length === 0 ? (
+                  <section className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-white px-5 py-8 text-center sm:flex-row sm:text-left">
+                    <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+                      <Sparkles className="size-5" />
+                    </span>
+                    <div className="mt-3 flex-1 sm:mt-0 sm:ml-4">
+                      <h2 className="font-semibold">No designs yet</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Create a first canvas or explore a template. Your work stays on this device.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => setShowCreateDesign(true)}
+                      className="mt-4 rounded-full sm:mt-0"
+                    >
+                      Create your first design
+                    </Button>
+                  </section>
+                ) : null}
+                {list.status === 'loading' ? (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[1, 2, 3].map((index) => (
+                      <div
+                        key={index}
+                        className="h-24 animate-pulse rounded-2xl bg-white ring-1 ring-border"
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                <section aria-labelledby="home-template-heading">
+                  <div className="mb-3 flex items-end justify-between gap-3">
+                    <div>
+                      <h2
+                        id="home-template-heading"
+                        className="flex items-center gap-2 text-base font-semibold"
+                      >
+                        <LayoutTemplate className="size-4 text-primary" /> Templates for every idea
+                      </h2>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        A few starting points from the template collection.
+                      </p>
+                    </div>
                     <button
                       type="button"
-                      aria-label={`Open ${project.name}`}
-                      disabled={isBusy}
-                      onClick={() => navigate({ name: 'editor', projectId: project.id })}
-                      className="relative block w-full p-2 text-left transition-colors hover:bg-muted/30 disabled:opacity-50"
+                      onClick={() => setActiveView('templates')}
+                      className="shrink-0 text-xs font-semibold text-primary hover:underline"
                     >
-                      <ProjectThumbnail project={project} />
+                      Explore all templates
                     </button>
+                  </div>
+                  <TemplateGallery
+                    variant="home"
+                    maxItems={6}
+                    onUse={(id) => void onUseTemplate(id)}
+                    onPreview={setPreviewTemplateId}
+                  />
+                </section>
+              </div>
+            ) : null}
 
-                    <div className="flex flex-1 flex-col gap-2 px-4 pb-3 pt-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          {isRenaming ? (
-                            <Input
-                              aria-label={`New name for ${project.name}`}
-                              defaultValue={renaming?.draft ?? project.name}
-                              maxLength={LIMITS.maxNameLength}
-                              autoFocus
-                              onChange={(event) =>
-                                setRenaming({ projectId: project.id, draft: event.target.value })
-                              }
-                              onBlur={(event) =>
-                                void onRename(project.id, event.currentTarget.value)
-                              }
-                              onKeyDown={onRenameKeyDown}
-                              className="h-8 rounded-full"
-                            />
-                          ) : (
-                            <h2 className="truncate text-sm font-semibold leading-tight">
-                              {project.name}
-                            </h2>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            {formatCanvasSize(project)} · {describeProjectContents(project)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Updated {formatTimestamp(project.updatedAt)}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          aria-label={`Open ${project.name}`}
-                          disabled={isBusy}
-                          onClick={() => navigate({ name: 'editor', projectId: project.id })}
-                          className="shrink-0 rounded-full px-4"
-                        >
-                          Open
-                        </Button>
-                      </div>
+            {activeView === 'templates' ? (
+              <div>
+                <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                      Template library
+                    </p>
+                    <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
+                      Find your next favorite
+                    </h1>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Search, filter, preview, and make any layout your own.
+                    </p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    60+ editable starting points
+                  </span>
+                </div>
+                <TemplateGallery
+                  onUse={(id) => void onUseTemplate(id)}
+                  onPreview={setPreviewTemplateId}
+                />
+              </div>
+            ) : null}
 
-                      <div className="mt-1 flex items-center gap-1 border-t border-border pt-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Rename ${project.name}`}
-                          disabled={isBusy || isRenaming}
-                          onClick={() => {
-                            setActionError(null);
-                            setRenaming({ projectId: project.id, draft: project.name });
-                          }}
-                          className="h-7 rounded-full px-2.5 text-xs"
-                        >
-                          <Pencil className="size-3.5" />
-                          Rename
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Duplicate ${project.name}`}
-                          disabled={isBusy}
-                          onClick={() => void onDuplicate(project.id)}
-                          className="h-7 rounded-full px-2.5 text-xs"
-                        >
-                          <Copy className="size-3.5" />
-                          Duplicate
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Export ${project.name}`}
-                          disabled={isBusy}
-                          onClick={() => void onExportFile(project.id, project.name)}
-                          className="h-7 rounded-full px-2.5 text-xs"
-                        >
-                          <Download className="size-3.5" />
-                          Export
-                        </Button>
-                        <div className="ml-auto flex items-center gap-1">
-                          {confirmingDelete === project.id ? (
-                            <>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                aria-label={`Confirm delete ${project.name}`}
-                                disabled={isBusy}
-                                onClick={() => void onDelete(project.id)}
-                                className="h-7 rounded-full px-3 text-xs"
-                              >
-                                Delete
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                aria-label={`Keep ${project.name}`}
-                                disabled={isBusy}
-                                onClick={() => setConfirmingDelete(null)}
-                                className="h-7 rounded-full px-3 text-xs"
-                              >
-                                Keep
-                              </Button>
-                            </>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label={`Delete ${project.name}`}
-                              disabled={isBusy}
-                              onClick={() => {
-                                setActionError(null);
-                                setConfirmingDelete(project.id);
-                              }}
-                              className="h-7 rounded-full px-2.5 text-xs text-muted-foreground hover:text-destructive"
-                            >
-                              <Trash2 className="size-3.5" />
-                              Delete
-                            </Button>
-                          )}
-                        </div>
-                      </div>
+            {isProjectView ? (
+              <section aria-labelledby="projects-heading">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                      {activeView === 'starred'
+                        ? 'Favorites'
+                        : currentFolder
+                          ? 'Folder'
+                          : 'Workspace'}
+                    </p>
+                    <h1
+                      id="projects-heading"
+                      className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl"
+                    >
+                      {pageHeading.title}
+                    </h1>
+                    <p className="mt-1 text-sm text-muted-foreground">{pageHeading.subtitle}</p>
+                  </div>
+                  <Button
+                    onClick={() => setShowCreateDesign(true)}
+                    className="self-start rounded-full sm:self-auto"
+                  >
+                    <Sparkles className="size-4" /> Create a design
+                  </Button>
+                </div>
+
+                {list.status === 'ready' && list.projects.length > 0 ? (
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="relative max-w-sm flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        type="search"
+                        aria-label="Search your designs"
+                        placeholder="Search your designs"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        className="h-10 rounded-full bg-white pl-9 pr-4 shadow-sm"
+                      />
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs text-muted-foreground">
+                        {filteredProjects.length} design{filteredProjects.length === 1 ? '' : 's'}
+                      </p>
+                      <Select
+                        aria-label="Sort designs"
+                        value={sortBy}
+                        onChange={(event) => setSortBy(event.target.value as 'recent' | 'name')}
+                        className="h-9 w-36 rounded-full bg-white text-[13px]"
+                      >
+                        <option value="recent">Last edited</option>
+                        <option value="name">Name</option>
+                      </Select>
+                    </div>
+                  </div>
+                ) : null}
+
+                {list.status === 'loading' ? (
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {[1, 2, 3].map((index) => (
+                      <div
+                        key={index}
+                        className="h-72 animate-pulse rounded-2xl bg-white ring-1 ring-border"
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {list.status === 'error' ? (
+                  <div className="space-y-3 rounded-2xl border border-destructive/30 bg-white p-6">
+                    <p role="alert" className="text-sm">
+                      {list.message}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void refreshProjects()}
+                      className="rounded-full"
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                ) : null}
+                {list.status === 'ready' && list.projects.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border bg-white px-6 py-12 text-center">
+                    <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-muted text-muted-foreground">
+                      <Folder className="size-5" />
+                    </span>
+                    <h2 className="mt-4 text-lg font-semibold">No designs yet</h2>
+                    <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                      Start with a custom canvas or explore an editable template.
+                    </p>
+                    <Button
+                      onClick={() => setShowCreateDesign(true)}
+                      className="mt-5 rounded-full px-5"
+                    >
+                      Create a design
+                    </Button>
+                  </div>
+                ) : null}
+                {list.status === 'ready' && list.projects.length > 0 && filteredProjects.length > 0
+                  ? renderProjectGrid(filteredProjects)
+                  : null}
+                {list.status === 'ready' &&
+                list.projects.length > 0 &&
+                filteredProjects.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border bg-white px-6 py-12 text-center">
+                    <h2 className="font-semibold">
+                      {activeView === 'starred'
+                        ? 'No starred designs yet'
+                        : folderId
+                          ? 'This folder is empty'
+                          : 'No matches'}
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {activeView === 'starred'
+                        ? 'Use the star on a design card to save it here.'
+                        : folderId
+                          ? 'Move a design here from its card menu.'
+                          : `No designs match “${searchQuery}”.`}
+                    </p>
+                    {searchQuery ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSearchQuery('')}
+                        className="mt-4 rounded-full"
+                      >
+                        Clear search
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {activeView === 'brand' ? (
+              <section className="mx-auto max-w-3xl rounded-3xl border border-border bg-white px-6 py-12 text-center shadow-sm sm:px-10">
+                <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 text-primary">
+                  <Sparkles className="size-6" />
+                </span>
+                <p className="mt-5 text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                  Brand space
+                </p>
+                <h1 className="mt-2 text-2xl font-bold tracking-tight">
+                  Your brand, ready to create
+                </h1>
+                <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
+                  Save your colors, logos, and fonts in a local Brand Kit. The Brand Kit editor is
+                  planned for a later sprint; your designs remain private and stored on this device.
+                </p>
+                <Button
+                  onClick={() => setActiveView('home')}
+                  variant="outline"
+                  className="mt-6 rounded-full"
+                >
+                  Back to Home
+                </Button>
+              </section>
+            ) : null}
+          </div>
         </div>
       </main>
+
+      {showCreateDesign ? (
+        <CreateDesignDialog
+          error={actionError}
+          onClose={closeCreateDesign}
+          onCreate={({ name, width, height }) => onCreate(name, width, height)}
+        />
+      ) : null}
+      {folderDialog ? (
+        <FolderDialog
+          key={folderDialogId ?? 'new-folder'}
+          initialName={folderDialogInitialName}
+          error={actionError}
+          onClose={closeFolderDialog}
+          onSave={onSaveFolder}
+        />
+      ) : null}
+      {previewTemplateId ? (
+        <TemplatePreviewModal
+          templateId={previewTemplateId}
+          busy={busy === 'create'}
+          onClose={closeTemplatePreview}
+          onUse={(templateId) => void onUseTemplate(templateId)}
+        />
+      ) : null}
     </div>
   );
 }

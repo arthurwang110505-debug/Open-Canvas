@@ -109,7 +109,9 @@ describe('image uploads', () => {
     await user.keyboard('{Escape}');
     // Re-inserting keeps the same asset record while adding a second element to the design.
     await activateSidebarTab(user, 'Layers');
-    expect(within(screen.getByRole('listbox', { name: 'Layers' })).getAllByRole('option')).toHaveLength(2);
+    expect(
+      within(screen.getByRole('listbox', { name: 'Layers' })).getAllByRole('option'),
+    ).toHaveLength(2);
     await activateSidebarTab(user, 'Uploads');
     expect(
       within(screen.getByRole('list', { name: 'Uploaded images' })).getAllByRole('listitem'),

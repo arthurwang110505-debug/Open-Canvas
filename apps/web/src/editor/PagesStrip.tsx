@@ -72,7 +72,7 @@ export function PagesStrip() {
 
   const onDrop = (event: DragEvent<HTMLDivElement>, targetPageId: string) => {
     event.preventDefault();
-    const draggedId = draggedPageId.current || event.dataTransfer.getData('text/plain');
+    const draggedId = draggedPageId.current ?? event.dataTransfer.getData('text/plain');
     const from = pages.findIndex((page) => page.id === draggedId);
     const to = pages.findIndex((page) => page.id === targetPageId);
     if (from !== -1 && to !== -1 && from !== to) {

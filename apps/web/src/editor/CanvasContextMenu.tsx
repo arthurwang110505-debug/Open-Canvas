@@ -88,7 +88,11 @@ export function CanvasContextMenu({
     selected.length === 0
       ? [
           { label: 'Add heading', icon: <Type />, run: () => addText('heading') },
-          { label: 'Add rectangle', icon: <span className="text-base leading-none">▭</span>, run: () => addShape('rect') },
+          {
+            label: 'Add rectangle',
+            icon: <span className="text-base leading-none">▭</span>,
+            run: () => addShape('rect'),
+          },
           {
             label: 'Add page',
             icon: <FilePlus2 />,
@@ -98,14 +102,26 @@ export function CanvasContextMenu({
         ]
       : [
           { label: 'Duplicate', icon: <Copy />, run: duplicateSelection },
-          { label: allLocked ? 'Unlock' : 'Lock', icon: allLocked ? <LockOpen /> : <Lock />, run: () => updateSelection({ locked: !allLocked }) },
-          { label: allHidden ? 'Show' : 'Hide', icon: allHidden ? <Eye /> : <EyeOff />, run: () => updateSelection({ visible: allHidden }) },
+          {
+            label: allLocked ? 'Unlock' : 'Lock',
+            icon: allLocked ? <LockOpen /> : <Lock />,
+            run: () => updateSelection({ locked: !allLocked }),
+          },
+          {
+            label: allHidden ? 'Show' : 'Hide',
+            icon: allHidden ? <Eye /> : <EyeOff />,
+            run: () => updateSelection({ visible: allHidden }),
+          },
           ...(single?.type === 'group'
             ? [{ label: 'Ungroup', icon: <Ungroup />, run: ungroupSelection }]
             : selected.length > 1
               ? [{ label: 'Group', icon: <Group />, run: groupSelection }]
               : []),
-          { label: 'Bring to front', icon: <ArrowUpToLine />, run: () => reorderSelection('front') },
+          {
+            label: 'Bring to front',
+            icon: <ArrowUpToLine />,
+            run: () => reorderSelection('front'),
+          },
           { label: 'Send to back', icon: <ArrowDownToLine />, run: () => reorderSelection('back') },
           { label: 'Edit details', icon: <SlidersHorizontal />, run: onOpenProperties },
           { label: 'Delete', icon: <Trash2 />, run: deleteSelection, destructive: true },
