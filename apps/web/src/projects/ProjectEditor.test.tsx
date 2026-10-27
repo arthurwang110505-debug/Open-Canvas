@@ -1,5 +1,6 @@
 import { createBlankDocument, createRectElement, err } from '@opencanvas/document';
 import {
+  createMemoryProjectOrganizationStore,
   createMemoryProjectStore,
   projectStoreError,
   type ProjectStore,
@@ -20,6 +21,7 @@ const SAVE_TIMEOUT = 5000;
 function servicesFor(store: ProjectStore): ProjectsServices {
   return {
     store,
+    organization: createMemoryProjectOrganizationStore(),
     backend: 'memory',
     // The dashboard is not exercised here; a no-op keeps the services complete.
     download: () => {

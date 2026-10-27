@@ -1,6 +1,17 @@
 import { selectCanRedo, selectCanUndo } from '@opencanvas/editor-core';
-import { Button, Input, Separator, Tooltip } from '@opencanvas/ui';
-import { Magnet, MonitorPlay, Redo2, Share2, Undo2 } from 'lucide-react';
+import {
+  Button,
+  Input,
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuLabel,
+  MenuSeparator,
+  MenuTrigger,
+  Separator,
+  Tooltip,
+} from '@opencanvas/ui';
+import { FileText, Magnet, MonitorPlay, Redo2, Ruler, Save, Share2, Undo2 } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 
 import { useEditorActions } from './actions';
@@ -8,6 +19,8 @@ import { ExportControls } from './ExportControls';
 import { useCanvasController, useEditor, usePersistenceState, useSnappingEnabled } from './hooks';
 import { ShareDialog } from '../share/ShareDialog';
 import { PresentMode } from '../share/PresentMode';
+import { navigate } from '../router';
+import type { SidebarTab } from './Sidebar';
 
 function DocumentTitle() {
   const name = useEditor((state) => state.document.name);
@@ -124,17 +137,22 @@ function SaveStatus() {
   );
 }
 
-export function TopBar() {
+interface TopBarProps {
+  onOpenPanel: (panel: SidebarTab) => void;
+}
+
+export function TopBar({ onOpenPanel }: TopBarProps) {
   const canUndo = useEditor(selectCanUndo);
   const canRedo = useEditor(selectCanRedo);
   const { undo, redo } = useEditorActions();
   const document = useEditor((s) => s.document);
+  const saveNow = usePersistenceState((state) => state.saveNow);
   const [showShare, setShowShare] = useState(false);
   const [showPresent, setShowPresent] = useState(false);
 
   return (
     <>
-      <header className="flex h-[52px] items-center gap-2.5 border-b border-border bg-panel px-3">
+      <header className="flex h-[52px] items-center gap-2 border-b border-border bg-panel px-3">
         <a
           href="#/"
           aria-label="OpenCanvas: back to your designs"
@@ -152,6 +170,26 @@ export function TopBar() {
           <span className="hidden sm:inline">OpenCanvas</span>
         </a>
         <Separator orientation="vertical" className="h-6" />
+        <Menu>
+          <MenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="rounded-lg px-2.5">
+              File
+            </Button>
+          </MenuTrigger>
+          <MenuContent aria-label="File menu">
+            <MenuLabel>Design</MenuLabel>
+            <MenuItem icon={<FileText />} onSelect={() => navigate({ name: 'dashboard' })}>
+              Back to your designs
+            </MenuItem>
+            <MenuItem icon={<Save />} hint="Ctrl S" onSelect={() => void saveNow()}>
+              Save now
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem icon={<Ruler />} onSelect={() => onOpenPanel('page')}>
+              Page size & settings
+            </MenuItem>
+          </MenuContent>
+        </Menu>
         <DocumentTitle />
         <div className="flex items-center gap-0.5" role="group" aria-label="History">
           <Tooltip content="Undo (Ctrl Z)">
@@ -177,7 +215,15 @@ export function TopBar() {
             </Button>
           </Tooltip>
         </div>
-        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden rounded-lg lg:inline-flex"
+            onClick={() => onOpenPanel('page')}
+          >
+            <Ruler className="size-4" /> Resize
+          </Button>
           <Button
             variant="outline"
             size="sm"

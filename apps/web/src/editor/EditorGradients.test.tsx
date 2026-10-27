@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 import type { ExportServices } from './export/ExportServices';
 
 const fixedDate = new Date('2026-10-22T10:00:00.000Z');
@@ -26,7 +27,7 @@ function renderEditor(document?: DesignDocument) {
 }
 
 async function openBackground(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Background' }));
+  await activateSidebarTab(user, 'Background');
 }
 
 describe('gradient backgrounds', () => {
@@ -105,10 +106,10 @@ describe('gradient backgrounds', () => {
 describe('gradient shape fills', () => {
   it('fills a rectangle with a gradient and can go back to a solid colour', async () => {
     const { user } = renderEditor();
-    await user.click(screen.getByRole('tab', { name: 'Elements' }));
+    await activateSidebarTab(user, 'Elements');
     await user.click(screen.getByRole('button', { name: 'Rectangle' }));
 
-    const properties = screen.getByRole('complementary', { name: 'Properties' });
+    const properties = openPropertiesPanel();
     await user.click(within(properties).getByRole('button', { name: 'Gradient' }));
     await user.click(within(properties).getByRole('button', { name: 'Gradient Mint' }));
 

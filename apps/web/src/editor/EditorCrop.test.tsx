@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 
 const fixedDate = new Date('2026-10-22T11:00:00.000Z');
 
@@ -68,7 +69,7 @@ function renderEditor(document: DesignDocument = cropDocument()) {
   return { user };
 }
 
-const propertiesPanel = () => screen.getByRole('complementary', { name: 'Properties' });
+const propertiesPanel = () => openPropertiesPanel();
 
 function group(name: string): HTMLElement {
   const section = within(propertiesPanel()).getByRole('heading', { name }).closest('section');
@@ -78,7 +79,7 @@ function group(name: string): HTMLElement {
 
 /** Selects the only element through the Layers panel and opens crop mode from the panel. */
 async function startCrop(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Layers' }));
+  await activateSidebarTab(user, 'Layers');
   const layers = screen.getByRole('listbox', { name: 'Layers' });
   const [first] = within(layers).getAllByRole('option');
   if (!first) throw new Error('expected one layer');

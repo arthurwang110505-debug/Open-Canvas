@@ -1,5 +1,16 @@
 import { selectSelectedElements } from '@opencanvas/editor-core';
-import { Button, Separator, Tooltip, cn } from '@opencanvas/ui';
+import {
+  Button,
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuLabel,
+  MenuSeparator,
+  MenuTrigger,
+  Separator,
+  Tooltip,
+  cn,
+} from '@opencanvas/ui';
 import {
   ArrowDown,
   ArrowDownToLine,
@@ -11,6 +22,8 @@ import {
   Group,
   Lock,
   LockOpen,
+  MoreHorizontal,
+  SlidersHorizontal,
   Trash2,
   Ungroup,
 } from 'lucide-react';
@@ -28,12 +41,12 @@ interface Placement {
   top: number;
 }
 
-/**
- * Selection toolbar that floats directly above the selected object (below it when there is no
- * room above). It steps out of the way while dragging or editing text, and clamps itself to the
- * workspace so it never disappears off-screen.
- */
-export function FloatingToolbar() {
+interface FloatingToolbarProps {
+  onOpenProperties: () => void;
+}
+
+/** A small selection pill; less-used arrange and visibility actions live in More. */
+export function FloatingToolbar({ onOpenProperties }: FloatingToolbarProps) {
   const selected = useEditor(useShallow(selectSelectedElements));
   const {
     duplicateSelection,
@@ -51,7 +64,6 @@ export function FloatingToolbar() {
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [, setWindowTick] = useState(0);
 
-  // Window resizes move the page under a fixed client rect, so recompute then too.
   useEffect(() => {
     const onResize = () => setWindowTick((tick) => tick + 1);
     window.addEventListener('resize', onResize);
@@ -67,7 +79,6 @@ export function FloatingToolbar() {
     const rect = canvas.getSelectionClientRect();
     const parent = element.offsetParent;
     if (!rect || !(parent instanceof HTMLElement)) {
-      // jsdom and other layout-less environments: fall back to the CSS-centered position.
       setPlacement(null);
       return;
     }
@@ -91,11 +102,11 @@ export function FloatingToolbar() {
 
   if (selected.length === 0 || interacting || editingText) return null;
 
-  const allLocked = selected.every((el) => el.locked);
-  const allHidden = selected.every((el) => !el.visible);
+  const allLocked = selected.every((element) => element.locked);
+  const allHidden = selected.every((element) => !element.visible);
   const single = selected.length === 1;
   const canGroup = selected.length >= 2;
-  const canUngroup = selected.length === 1 && selected[0]?.type === 'group';
+  const canUngroup = single && selected[0]?.type === 'group';
 
   return (
     <div
@@ -123,7 +134,6 @@ export function FloatingToolbar() {
           <Copy />
         </Button>
       </Tooltip>
-
       <Tooltip content={allLocked ? 'Unlock selection' : 'Lock selection'}>
         <Button
           variant="ghost"
@@ -136,100 +146,62 @@ export function FloatingToolbar() {
           {allLocked ? <Lock /> : <LockOpen />}
         </Button>
       </Tooltip>
-
-      <Tooltip content={allHidden ? 'Show selection' : 'Hide selection'}>
+      <Tooltip content="Edit selection details">
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={allHidden ? 'Show selection' : 'Hide selection'}
-          pressed={allHidden}
-          onClick={() => updateSelection({ visible: allHidden })}
+          aria-label="Edit selection details"
+          onClick={onOpenProperties}
           className="rounded-full"
         >
-          {allHidden ? <EyeOff /> : <Eye />}
+          <SlidersHorizontal />
         </Button>
       </Tooltip>
-
-      <Separator orientation="vertical" className="mx-1 h-5" />
-
-      <Tooltip content="Bring forward">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Bring forward (selection)"
-          disabled={!single}
-          onClick={() => reorderSelection('forward')}
-          className="rounded-full"
-        >
-          <ArrowUp />
-        </Button>
-      </Tooltip>
-      <Tooltip content="Bring to front">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Bring to front (selection)"
-          disabled={!single}
-          onClick={() => reorderSelection('front')}
-          className="rounded-full"
-        >
-          <ArrowUpToLine />
-        </Button>
-      </Tooltip>
-      <Tooltip content="Send backward">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Send backward (selection)"
-          disabled={!single}
-          onClick={() => reorderSelection('backward')}
-          className="rounded-full"
-        >
-          <ArrowDown />
-        </Button>
-      </Tooltip>
-      <Tooltip content="Send to back">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Send to back (selection)"
-          disabled={!single}
-          onClick={() => reorderSelection('back')}
-          className="rounded-full"
-        >
-          <ArrowDownToLine />
-        </Button>
-      </Tooltip>
-
-      <Separator orientation="vertical" className="mx-1 h-5" />
-      {canGroup ? (
-        <Tooltip content="Group (Ctrl G)">
+      <Separator orientation="vertical" className="mx-0.5 h-5" />
+      <Menu>
+        <MenuTrigger asChild>
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Group selection"
-            onClick={groupSelection}
+            aria-label="More selection actions"
             className="rounded-full"
           >
-            <Group />
+            <MoreHorizontal />
           </Button>
-        </Tooltip>
-      ) : null}
-      {canUngroup ? (
-        <Tooltip content="Ungroup (Ctrl Shift G)">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Ungroup selection"
-            onClick={ungroupSelection}
-            className="rounded-full"
+        </MenuTrigger>
+        <MenuContent align="end" aria-label="Selection actions menu">
+          <MenuLabel>Arrange</MenuLabel>
+          <MenuItem icon={<ArrowUpToLine />} onSelect={() => reorderSelection('front')}>
+            Bring to front
+          </MenuItem>
+          <MenuItem icon={<ArrowUp />} onSelect={() => reorderSelection('forward')}>
+            Bring forward
+          </MenuItem>
+          <MenuItem icon={<ArrowDown />} onSelect={() => reorderSelection('backward')}>
+            Send backward
+          </MenuItem>
+          <MenuItem icon={<ArrowDownToLine />} onSelect={() => reorderSelection('back')}>
+            Send to back
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            icon={allHidden ? <EyeOff /> : <Eye />}
+            onSelect={() => updateSelection({ visible: allHidden })}
           >
-            <Ungroup />
-          </Button>
-        </Tooltip>
-      ) : null}
-      {canGroup || canUngroup ? <Separator orientation="vertical" className="mx-1 h-5" /> : null}
-
+            {allHidden ? 'Show selection' : 'Hide selection'}
+          </MenuItem>
+          {canGroup ? (
+            <MenuItem icon={<Group />} onSelect={groupSelection}>
+              Group selection
+            </MenuItem>
+          ) : null}
+          {canUngroup ? (
+            <MenuItem icon={<Ungroup />} onSelect={ungroupSelection}>
+              Ungroup
+            </MenuItem>
+          ) : null}
+        </MenuContent>
+      </Menu>
       <Tooltip content="Delete (Del)">
         <Button
           variant="ghost"

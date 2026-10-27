@@ -12,7 +12,7 @@ import {
 
 export const PROJECT_DB_NAME = 'opencanvas';
 /** Bumped whenever the schema below changes; Dexie upgrades are declared per version. */
-export const PROJECT_DB_VERSION = 1;
+export const PROJECT_DB_VERSION = 2;
 
 /** Denormalized summary fields so listing never has to parse a document. */
 export interface ProjectRow extends ProjectSummary {
@@ -42,9 +42,15 @@ export function assetTable(db: Dexie): AssetTable {
  */
 export function openProjectDatabase(name: string = PROJECT_DB_NAME): Dexie {
   const db = new Dexie(name);
+  db.version(1).stores({
+    projects: 'id, updatedAt',
+    assets: '[projectId+assetId], projectId',
+  });
   db.version(PROJECT_DB_VERSION).stores({
     projects: 'id, updatedAt',
     assets: '[projectId+assetId], projectId',
+    projectOrganization: 'projectId, starred, folderId, updatedAt',
+    projectFolders: 'id, name, createdAt, updatedAt',
   });
   return db;
 }

@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 import { ELEMENT_DRAG_MIME } from './elements/drag';
 
 const fixedDate = new Date('2026-10-22T10:00:00.000Z');
@@ -78,7 +79,7 @@ function renderEditor(document: DesignDocument) {
   return { user };
 }
 
-const propertiesPanel = () => screen.getByRole('complementary', { name: 'Properties' });
+const propertiesPanel = () => openPropertiesPanel();
 
 /** The field group with this heading; labels like "Width" appear in more than one group. */
 function group(name: string): HTMLElement {
@@ -89,7 +90,7 @@ function group(name: string): HTMLElement {
 
 /** Selects the only element through the Layers panel, as a user without a pointed cursor would. */
 async function selectOnlyElement(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Layers' }));
+  await activateSidebarTab(user, 'Layers');
   const layers = screen.getByRole('listbox', { name: 'Layers' });
   const [first] = within(layers).getAllByRole('option');
   if (!first) throw new Error('expected one layer');
@@ -187,7 +188,7 @@ describe('replacing an image', () => {
     await user.click(within(picker).getByRole('option', { name: 'Replace with Snow ridge' }));
 
     // The Uploads panel lists every asset record in the document: the unused one is gone.
-    await user.click(screen.getByRole('tab', { name: 'Uploads' }));
+    await activateSidebarTab(user, 'Uploads');
     const uploads = screen.getByRole('tabpanel');
     expect(within(uploads).queryByLabelText('Add Alpine lake to the page')).not.toBeInTheDocument();
     expect(within(uploads).getByLabelText('Add Snow ridge to the page')).toBeInTheDocument();

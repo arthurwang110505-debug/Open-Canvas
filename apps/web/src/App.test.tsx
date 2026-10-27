@@ -1,5 +1,9 @@
 import { createBlankDocument, createRectElement } from '@opencanvas/document';
-import { createMemoryProjectStore, type ProjectStore } from '@opencanvas/storage';
+import {
+  createMemoryProjectOrganizationStore,
+  createMemoryProjectStore,
+  type ProjectStore,
+} from '@opencanvas/storage';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -12,6 +16,7 @@ const PROJECT_ID = 'doc_app';
 function servicesFor(store: ProjectStore): ProjectsServices {
   return {
     store,
+    organization: createMemoryProjectOrganizationStore(),
     backend: 'memory',
     // The dashboard is not exercised here; a no-op keeps the services complete.
     download: () => {
@@ -46,7 +51,9 @@ describe('App routing', () => {
 
   it('starts on the dashboard', async () => {
     render(<App projects={servicesFor(createMemoryProjectStore())} />);
-    expect(await screen.findByRole('heading', { name: 'Your designs' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'What will you design today?' }),
+    ).toBeInTheDocument();
   });
 
   it('opens the editor for a design hash', async () => {
@@ -59,13 +66,15 @@ describe('App routing', () => {
     const user = userEvent.setup();
     const services = await seededServices();
     render(<App projects={services} />);
-    await screen.findByRole('heading', { name: 'Your designs' });
+    await screen.findByRole('heading', { name: 'What will you design today?' });
 
     setHash(`#/design/${PROJECT_ID}`);
     expect(await screen.findByRole('textbox', { name: 'Design name' })).toHaveValue('Route design');
 
     await user.click(screen.getByRole('link', { name: 'OpenCanvas: back to your designs' }));
-    expect(await screen.findByRole('heading', { name: 'Your designs' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'What will you design today?' }),
+    ).toBeInTheDocument();
     expect(window.location.hash).toBe('#/');
   });
 
@@ -77,6 +86,8 @@ describe('App routing', () => {
     expect(await screen.findByRole('heading', { name: 'Nothing here' })).toBeInTheDocument();
     expect(screen.getByText('#/settings')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Back to your designs' }));
-    expect(await screen.findByRole('heading', { name: 'Your designs' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'What will you design today?' }),
+    ).toBeInTheDocument();
   });
 });

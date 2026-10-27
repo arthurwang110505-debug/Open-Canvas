@@ -1,8 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Search, Sparkles } from 'lucide-react';
-import { Button } from '@opencanvas/ui';
+import { Button, Select } from '@opencanvas/ui';
 import { TEMPLATES, categoryLabel, type TemplateCategory } from './catalog';
 import { TemplateThumbnail } from './TemplateThumbnail';
+import {
+  templateColorMoods,
+  templateOrientation,
+  type TemplateColorMood,
+  type TemplateOrientation,
+} from './templateMetadata';
 
 const CATEGORIES: TemplateCategory[] = [
   'all',
@@ -15,28 +21,67 @@ const CATEGORIES: TemplateCategory[] = [
 
 export interface TemplateGalleryProps {
   onUse: (templateId: string) => void;
+  onPreview?: (templateId: string) => void;
+  maxItems?: number;
   /**
-   * `page` is the dashboard gallery (large cards, descriptions).
-   * `panel` is the compact two-column browser used inside the editor sidebar.
+   * `page` is the full discovery view, `home` is a short featured row, and `panel` is the
+   * compact two-column browser used inside the editor sidebar.
    */
-  variant?: 'page' | 'panel';
+  variant?: 'page' | 'home' | 'panel';
 }
 
 /** How many cards the compact sidebar browser shows before asking for more. */
 const PANEL_PAGE = 18;
+const COLOR_FILTERS: { id: TemplateColorMood | 'all'; label: string }[] = [
+  { id: 'all', label: 'Any color' },
+  { id: 'warm', label: 'Warm' },
+  { id: 'cool', label: 'Cool' },
+  { id: 'neutral', label: 'Neutral' },
+  { id: 'vibrant', label: 'Vibrant' },
+];
+const ORIENTATION_FILTERS: { id: TemplateOrientation | 'all'; label: string }[] = [
+  { id: 'all', label: 'Any orientation' },
+  { id: 'portrait', label: 'Portrait' },
+  { id: 'square', label: 'Square' },
+  { id: 'landscape', label: 'Landscape' },
+];
 
-export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProps) {
+export function TemplateGallery({
+  onUse,
+  onPreview,
+  maxItems,
+  variant = 'page',
+}: TemplateGalleryProps) {
   const panel = variant === 'panel';
+  const home = variant === 'home';
   const [category, setCategory] = useState<TemplateCategory>('all');
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(PANEL_PAGE);
+  const [orientation, setOrientation] = useState<TemplateOrientation | 'all'>('all');
+  const [color, setColor] = useState<TemplateColorMood | 'all'>('all');
   // Build each template once. Sixty cards must not rebuild sixty documents on every keystroke.
   const documents = useMemo(() => new Map(TEMPLATES.map((tpl) => [tpl.id, tpl.build()])), []);
+  const metadata = useMemo(
+    () =>
+      new Map(
+        TEMPLATES.map((tpl) => {
+          const document = documents.get(tpl.id) ?? tpl.build();
+          return [
+            tpl.id,
+            { orientation: templateOrientation(document), colors: templateColorMoods(document) },
+          ] as const;
+        }),
+      ),
+    [documents],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return TEMPLATES.filter((t) => {
       if (category !== 'all' && t.category !== category) return false;
+      const details = metadata.get(t.id);
+      if (orientation !== 'all' && details?.orientation !== orientation) return false;
+      if (color !== 'all' && !details?.colors.includes(color)) return false;
       if (!q) return true;
       return (
         t.label.toLowerCase().includes(q) ||
@@ -44,13 +89,14 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
         t.tags.some((tag) => tag.includes(q))
       );
     });
-  }, [category, query]);
+  }, [category, color, metadata, orientation, query]);
 
-  const visible = panel ? filtered.slice(0, limit) : filtered;
+  const visibleCount = panel ? limit : maxItems;
+  const visible = visibleCount ? filtered.slice(0, visibleCount) : filtered;
 
   return (
     <section
-      className={panel ? '' : 'rounded-2xl bg-white p-5 shadow-sm ring-1 ring-border'}
+      className={panel || home ? '' : 'rounded-2xl bg-white p-5 shadow-sm ring-1 ring-border'}
       aria-label="Templates"
     >
       <div
@@ -60,7 +106,7 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
             : 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'
         }
       >
-        {!panel ? (
+        {!panel && !home ? (
           <p className="flex items-center gap-2 text-[15px] font-semibold">
             <Sparkles className="size-4 text-primary" />
             Templates
@@ -69,45 +115,93 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
             </span>
           </p>
         ) : null}
-        <div className={panel ? '' : 'relative max-w-xs flex-1 sm:max-w-[260px]'}>
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            placeholder="Search templates"
-            aria-label="Search templates"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="h-9 w-full rounded-full border border-input bg-white py-2 pr-4 pl-9 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
-          />
-        </div>
+        {!home ? (
+          <div className={panel ? '' : 'relative max-w-xs flex-1 sm:max-w-[260px]'}>
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              placeholder="Search templates"
+              aria-label="Search templates"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-9 w-full rounded-full border border-input bg-white py-2 pr-4 pl-9 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
+            />
+          </div>
+        ) : null}
       </div>
 
-      <div className={panel ? 'mt-2.5 flex flex-wrap gap-1.5' : 'mt-3 flex flex-wrap gap-1.5'}>
-        {CATEGORIES.map((c) => (
-          <button
-            key={c}
-            type="button"
-            aria-pressed={category === c}
-            onClick={() => {
-              setCategory(c);
-              setLimit(PANEL_PAGE);
-            }}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-              category === c
-                ? 'bg-foreground text-background shadow-sm'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-            }`}
+      {!home ? (
+        <div className={panel ? 'mt-2.5 flex flex-wrap gap-1.5' : 'mt-3 flex flex-wrap gap-1.5'}>
+          {CATEGORIES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-pressed={category === c}
+              onClick={() => {
+                setCategory(c);
+                setLimit(PANEL_PAGE);
+              }}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                category === c
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+              }`}
+            >
+              {categoryLabel(c)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {!panel && !home ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-medium text-muted-foreground">Refine by</span>
+          <Select
+            aria-label="Template orientation"
+            value={orientation}
+            onChange={(event) => setOrientation(event.target.value as TemplateOrientation | 'all')}
+            className="h-8 w-auto min-w-36 rounded-full bg-white text-xs"
           >
-            {categoryLabel(c)}
-          </button>
-        ))}
-      </div>
+            {ORIENTATION_FILTERS.map((filter) => (
+              <option key={filter.id} value={filter.id}>
+                {filter.label}
+              </option>
+            ))}
+          </Select>
+          <Select
+            aria-label="Template color"
+            value={color}
+            onChange={(event) => setColor(event.target.value as TemplateColorMood | 'all')}
+            className="h-8 w-auto min-w-32 rounded-full bg-white text-xs"
+          >
+            {COLOR_FILTERS.map((filter) => (
+              <option key={filter.id} value={filter.id}>
+                {filter.label}
+              </option>
+            ))}
+          </Select>
+          {orientation !== 'all' || color !== 'all' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setOrientation('all');
+                setColor('all');
+              }}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Clear refinements
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div
         className={
           panel
             ? 'mt-3 grid grid-cols-2 gap-2'
-            : 'mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+            : home
+              ? 'mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3'
+              : 'mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
         }
       >
         {visible.map((tpl) => (
@@ -118,9 +212,9 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
           >
             <button
               type="button"
-              onClick={() => onUse(tpl.id)}
+              onClick={() => (onPreview ? onPreview(tpl.id) : onUse(tpl.id))}
               className="p-1.5 text-left transition-colors hover:bg-muted/30"
-              aria-label={`Use ${tpl.label} template`}
+              aria-label={`${onPreview ? 'Preview' : 'Use'} ${tpl.label} template`}
             >
               <TemplateThumbnail document={documents.get(tpl.id) ?? tpl.build()} />
             </button>
@@ -170,6 +264,8 @@ export function TemplateGallery({ onUse, variant = 'page' }: TemplateGalleryProp
             onClick={() => {
               setQuery('');
               setCategory('all');
+              setOrientation('all');
+              setColor('all');
             }}
           >
             Clear filters

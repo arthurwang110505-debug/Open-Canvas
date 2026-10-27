@@ -5,8 +5,10 @@ import {
   type DesignDocument,
 } from '@opencanvas/document';
 import {
+  createMemoryProjectOrganizationStore,
   createMemoryProjectStore,
   projectStoreError,
+  type ProjectOrganizationStore,
   type ProjectStore,
 } from '@opencanvas/storage';
 import { TooltipProvider } from '@opencanvas/ui';
@@ -20,6 +22,12 @@ import type { ProjectsServices } from './ProjectsContext';
 import { ProjectsProvider } from './ProjectsProvider';
 
 const baseDate = new Date('2026-03-04T05:06:07.000Z');
+const CUSTOM_DESIGN_SIZES = [
+  { unit: 'px', width: '850', height: '1100', expected: { width: 850, height: 1100 } },
+  { unit: 'in', width: '8.5', height: '11', expected: { width: 2550, height: 3300 } },
+  { unit: 'mm', width: '215.9', height: '279.4', expected: { width: 2550, height: 3300 } },
+  { unit: 'cm', width: '21.59', height: '27.94', expected: { width: 2550, height: 3300 } },
+] as const;
 
 function makeDocument(id: string, name: string, updatedAt: string): DesignDocument {
   const document = createBlankDocument({ id, name, now: baseDate });
@@ -28,9 +36,14 @@ function makeDocument(id: string, name: string, updatedAt: string): DesignDocume
   return document;
 }
 
-function servicesFor(store: ProjectStore, downloads: Download[] = []): ProjectsServices {
+function servicesFor(
+  store: ProjectStore,
+  downloads: Download[] = [],
+  organization: ProjectOrganizationStore = createMemoryProjectOrganizationStore(),
+): ProjectsServices {
   return {
     store,
+    organization,
     backend: 'memory',
     download: (blob, filename) => downloads.push({ blob, filename }),
   };
@@ -62,6 +75,10 @@ function renderDashboard(services: ProjectsServices) {
   return { user };
 }
 
+async function openProjects(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Projects' }));
+}
+
 beforeEach(() => {
   window.location.hash = '';
 });
@@ -74,8 +91,10 @@ describe('Dashboard', () => {
   it('shows an empty state when nothing has been saved yet', async () => {
     renderDashboard(servicesFor(createMemoryProjectStore()));
     expect(await screen.findByText('No designs yet')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Your designs' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'New design' })).toBeEnabled();
+    expect(
+      screen.getByRole('heading', { name: 'What will you design today?' }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Create a design' }).length).toBeGreaterThan(0);
   });
 
   it('lists saved designs newest first with their contents and timestamp', async () => {
@@ -83,7 +102,8 @@ describe('Dashboard', () => {
       makeDocument('doc_old', 'Old flyer', '2026-01-01T09:00:00.000Z'),
       makeDocument('doc_new', 'Spring poster', '2026-03-01T09:00:00.000Z'),
     ]);
-    renderDashboard(servicesFor(store));
+    const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
 
     const cards = await screen.findAllByRole('listitem');
     expect(cards).toHaveLength(2);
@@ -105,9 +125,12 @@ describe('Dashboard', () => {
     const store = createMemoryProjectStore();
     const { user } = renderDashboard(servicesFor(store));
 
-    await user.click(screen.getByRole('button', { name: 'Canvas size' }));
-    await user.click(screen.getByRole('menuitem', { name: /Poster A4/ }));
-    await user.click(screen.getByRole('button', { name: 'New design' }));
+    await user.click(screen.getAllByRole('button', { name: 'Create a design' })[0]!);
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Starting format' }),
+      'poster-a4',
+    );
+    await user.click(screen.getByRole('button', { name: 'Create design' }));
 
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/design\/doc_/));
     const projectId = decodeURIComponent(window.location.hash.replace('#/design/', ''));
@@ -118,6 +141,31 @@ describe('Dashboard', () => {
     expect(loaded.value.size).toEqual({ width: 2480, height: 3508 });
   });
 
+  it.each(CUSTOM_DESIGN_SIZES)(
+    'creates a custom design from $unit dimensions',
+    async ({ unit, width: widthValue, height: heightValue, expected }) => {
+      const store = createMemoryProjectStore();
+      const { user } = renderDashboard(servicesFor(store));
+
+      await user.click(screen.getAllByRole('button', { name: 'Create a design' })[0]!);
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Design units' }), unit);
+      const width = screen.getByRole('spinbutton', { name: 'Canvas width' });
+      const height = screen.getByRole('spinbutton', { name: 'Canvas height' });
+      await user.clear(width);
+      await user.type(width, widthValue);
+      await user.clear(height);
+      await user.type(height, heightValue);
+      await user.click(screen.getByRole('button', { name: 'Create design' }));
+
+      await waitFor(() => expect(window.location.hash).toMatch(/^#\/design\/doc_/));
+      const projectId = decodeURIComponent(window.location.hash.replace('#/design/', ''));
+      const loaded = await store.load(projectId);
+      expect(loaded.ok).toBe(true);
+      if (!loaded.ok) return;
+      expect(loaded.value.size).toEqual(expected);
+    },
+  );
+
   it('continues a recent design from the home screen', async () => {
     const store = await seededStore([
       makeDocument('doc_new', 'Spring poster', '2026-03-03T09:00:00.000Z'),
@@ -127,7 +175,7 @@ describe('Dashboard', () => {
     const { user } = renderDashboard(servicesFor(store));
 
     const recents = await screen.findByRole('region', { name: 'Continue editing' });
-    expect(within(recents).getAllByRole('button')).toHaveLength(3);
+    expect(within(recents).getAllByRole('button')).toHaveLength(4);
 
     await user.click(within(recents).getByRole('button', { name: /Spring poster/ }));
     await waitFor(() => expect(window.location.hash).toBe('#/design/doc_new'));
@@ -139,6 +187,7 @@ describe('Dashboard', () => {
       makeDocument('doc_a', 'Amber flyer', '2026-03-01T09:00:00.000Z'),
     ]);
     const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
 
     const list = await screen.findByRole('list');
     const namesBefore = within(list)
@@ -157,6 +206,7 @@ describe('Dashboard', () => {
   it('renames a design and stores the new name', async () => {
     const store = await seededStore([makeDocument('doc_a', 'Poster', '2026-03-01T09:00:00.000Z')]);
     const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
 
     await user.click(await screen.findByRole('button', { name: 'Rename Poster' }));
     const field = screen.getByRole('textbox', { name: 'New name for Poster' });
@@ -173,6 +223,7 @@ describe('Dashboard', () => {
   it('rejects an empty name and keeps the field open', async () => {
     const store = await seededStore([makeDocument('doc_a', 'Poster', '2026-03-01T09:00:00.000Z')]);
     const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
 
     await user.click(await screen.findByRole('button', { name: 'Rename Poster' }));
     const field = screen.getByRole('textbox', { name: 'New name for Poster' });
@@ -190,6 +241,7 @@ describe('Dashboard', () => {
   it('cancels a rename with Escape', async () => {
     const store = await seededStore([makeDocument('doc_a', 'Poster', '2026-03-01T09:00:00.000Z')]);
     const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
 
     await user.click(await screen.findByRole('button', { name: 'Rename Poster' }));
     const field = screen.getByRole('textbox', { name: 'New name for Poster' });
@@ -206,6 +258,7 @@ describe('Dashboard', () => {
   it('duplicates a design', async () => {
     const store = await seededStore([makeDocument('doc_a', 'Poster', '2026-03-01T09:00:00.000Z')]);
     const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
 
     await user.click(await screen.findByRole('button', { name: 'Duplicate Poster' }));
 
@@ -219,6 +272,7 @@ describe('Dashboard', () => {
   it('deletes a design only after confirmation', async () => {
     const store = await seededStore([makeDocument('doc_a', 'Poster', '2026-03-01T09:00:00.000Z')]);
     const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
 
     await user.click(await screen.findByRole('button', { name: 'Delete Poster' }));
     expect(screen.getByRole('button', { name: 'Keep Poster' })).toBeInTheDocument();
@@ -238,12 +292,96 @@ describe('Dashboard', () => {
   it('keeps the design when the delete confirmation is dismissed', async () => {
     const store = await seededStore([makeDocument('doc_a', 'Poster', '2026-03-01T09:00:00.000Z')]);
     const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
 
     await user.click(await screen.findByRole('button', { name: 'Delete Poster' }));
     await user.click(screen.getByRole('button', { name: 'Keep Poster' }));
 
     expect(screen.getByRole('heading', { name: 'Poster' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete Poster' })).toBeInTheDocument();
+  });
+
+  it('keeps starred designs in the Starred view and persists the local flag', async () => {
+    const store = await seededStore([makeDocument('doc_a', 'Poster', '2026-03-01T09:00:00.000Z')]);
+    const organization = createMemoryProjectOrganizationStore();
+    const { user } = renderDashboard(servicesFor(store, [], organization));
+    await openProjects(user);
+
+    const star = screen.getByRole('button', { name: 'Star Poster' });
+    await user.click(star);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Remove Poster from starred' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Starred' }));
+    expect(
+      within(await screen.findByRole('list', { name: 'Designs' })).getByRole('heading', {
+        name: 'Poster',
+      }),
+    ).toBeInTheDocument();
+    expect(await organization.load()).toMatchObject({
+      ok: true,
+      value: { projects: [{ projectId: 'doc_a', starred: true, folderId: null }] },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Remove Poster from starred' }));
+    expect(
+      await screen.findByRole('heading', { name: 'No starred designs yet' }),
+    ).toBeInTheDocument();
+  });
+
+  it('creates, assigns, renames, and deletes local project folders', async () => {
+    const store = await seededStore([makeDocument('doc_a', 'Poster', '2026-03-01T09:00:00.000Z')]);
+    const organization = createMemoryProjectOrganizationStore();
+    const { user } = renderDashboard(servicesFor(store, [], organization));
+    await openProjects(user);
+
+    await user.click(screen.getByRole('button', { name: 'Create folder' }));
+    await user.type(screen.getByRole('textbox', { name: 'Folder name' }), 'Campaigns');
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Create a folder' })).getByRole('button', {
+        name: 'Create folder',
+      }),
+    );
+    const folderButton = await screen.findByRole('button', { name: 'Campaigns' });
+    await user.click(screen.getByRole('button', { name: 'Projects' }));
+
+    await user.click(screen.getByRole('button', { name: 'Organize Poster' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Campaigns' }));
+    await user.click(folderButton);
+    expect(
+      within(await screen.findByRole('list', { name: 'Designs' })).getByRole('heading', {
+        name: 'Poster',
+      }),
+    ).toBeInTheDocument();
+    const organizationAfterMove = await organization.load();
+    expect(organizationAfterMove.ok).toBe(true);
+    if (!organizationAfterMove.ok) return;
+    expect(organizationAfterMove.value.projects).toHaveLength(1);
+    expect(organizationAfterMove.value.projects[0]?.projectId).toBe('doc_a');
+    expect(organizationAfterMove.value.projects[0]?.starred).toBe(false);
+    expect(organizationAfterMove.value.projects[0]?.folderId).toBe(
+      organizationAfterMove.value.folders[0]?.id,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Folder actions for Campaigns' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rename folder' }));
+    const folderName = screen.getByRole('textbox', { name: 'Folder name' });
+    await user.clear(folderName);
+    await user.type(folderName, 'Launches');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByRole('button', { name: 'Launches' });
+
+    await user.click(screen.getByRole('button', { name: 'Folder actions for Launches' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete folder' }));
+    await screen.findByRole('heading', { name: 'Projects' });
+    expect(await organization.load()).toMatchObject({
+      ok: true,
+      value: { projects: [], folders: [] },
+    });
+    expect(screen.getByRole('heading', { name: 'Poster' })).toBeInTheDocument();
   });
 
   it('reports a failing project list with a retry action', async () => {
@@ -260,6 +398,7 @@ describe('Dashboard', () => {
     };
     await inner.save(makeDocument('doc_a', 'Poster', '2026-03-01T09:00:00.000Z'));
     const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('IndexedDB is locked.');
     fail = false;

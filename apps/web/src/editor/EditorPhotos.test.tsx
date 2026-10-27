@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
+import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
 import { parseElementDragPayload } from './elements/drag';
 
 const fixedDate = new Date('2026-10-22T08:00:00.000Z');
@@ -22,7 +23,7 @@ function renderEditor() {
 }
 
 async function openPhotos(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Elements' }));
+  await activateSidebarTab(user, 'Elements');
   await user.click(screen.getByRole('button', { name: 'Photos' }));
   return {
     list: screen.getByRole('listbox', { name: 'Photos' }),
@@ -58,13 +59,13 @@ describe('bundled photo library', () => {
     const { list } = await openPhotos(user);
     await user.click(within(list).getByRole('option', { name: 'Insert photo Alpine lake' }));
 
-    const panel = screen.getByRole('complementary', { name: 'Properties' });
+    const panel = openPropertiesPanel();
     expect(within(panel).getByRole('heading', { name: 'Image' })).toBeInTheDocument();
     expect(within(panel).getAllByText('Alpine lake').length).toBeGreaterThan(0);
     expect(within(panel).getByLabelText('Fit')).toHaveValue('cover');
 
     await user.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(screen.getByText(/Nothing on the page yet/)).toBeInTheDocument();
+    expect(screen.getByText('Nothing selected')).toBeInTheDocument();
   });
 
   it('shows the licence on request', async () => {
