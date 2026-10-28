@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["eslint.config.js", "vitest.config.ts"]
+  "include": ["eslint.config.js", "vitest.config.ts", "playwright.config.ts", "tests/**/*.ts"]
 }

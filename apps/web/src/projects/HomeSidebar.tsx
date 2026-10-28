@@ -1,7 +1,6 @@
 import type { ProjectFolder } from '@opencanvas/storage';
 import { Button, Menu, MenuContent, MenuItem, MenuTrigger } from '@opencanvas/ui';
 import {
-  BriefcaseBusiness,
   Folder,
   FolderPlus,
   Home,
@@ -12,8 +11,7 @@ import {
   Star,
 } from 'lucide-react';
 
-export type DashboardView =
-  'home' | 'projects' | 'templates' | 'starred' | 'brand' | `folder:${string}`;
+export type DashboardView = 'home' | 'projects' | 'templates' | 'starred' | `folder:${string}`;
 
 interface HomeSidebarProps {
   activeView: DashboardView;
@@ -37,7 +35,6 @@ const MAIN_NAV: {
   { view: 'projects', label: 'Projects', icon: Folder },
   { view: 'templates', label: 'Templates', icon: LayoutTemplate },
   { view: 'starred', label: 'Starred', icon: Star },
-  { view: 'brand', label: 'Brand', icon: BriefcaseBusiness },
 ];
 
 function NavButton({

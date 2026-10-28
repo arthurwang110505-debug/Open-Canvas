@@ -1,6 +1,6 @@
 import { createBlankDocument, type DesignElement } from '@opencanvas/document';
 import { TooltipProvider } from '@opencanvas/ui';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -104,6 +104,54 @@ describe('EditorPage', () => {
     expect(within(panel).getByLabelText('X')).toHaveValue('397');
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
     expect(within(panel).getByLabelText('Y')).toHaveValue('408');
+  });
+
+  it('copies, pastes repeatedly and cuts with keyboard shortcuts', async () => {
+    const { user } = renderEditor();
+    const panel = await insertRectangle(user);
+
+    await user.keyboard('{Control>}c{/Control}');
+    await user.keyboard('{Control>}v{/Control}');
+    expect(within(panel).getByLabelText('X')).toHaveValue('398');
+    await user.keyboard('{Control>}v{/Control}');
+    expect(within(panel).getByLabelText('X')).toHaveValue('418');
+
+    await user.keyboard('{Control>}x{/Control}');
+    expect(screen.getByText('Nothing selected')).toBeInTheDocument();
+    await user.keyboard('{Control>}v{/Control}');
+    expect(within(panel).getByLabelText('X')).toHaveValue('438');
+  });
+
+  it('copies and pastes appearance without changing geometry', async () => {
+    const { user } = renderEditor();
+    const panel = await insertRectangle(user);
+
+    fireEvent.keyDown(window, { key: 'c', code: 'KeyC', ctrlKey: true, altKey: true });
+    await user.keyboard('{Control>}d{/Control}');
+    const fill = within(panel).getByLabelText('Fill');
+    await user.clear(fill);
+    await user.type(fill, '#112233{Enter}');
+    expect(fill).toHaveValue('#112233');
+    fireEvent.keyDown(window, { key: 'v', code: 'KeyV', ctrlKey: true, altKey: true });
+
+    expect(fill).toHaveValue('#4f46e5');
+    expect(within(panel).getByLabelText('X')).toHaveValue('398');
+  });
+
+  it('discovers shortcuts with ? and does not edit behind the dialog', async () => {
+    const { user } = renderEditor();
+    await insertRectangle(user);
+    await user.keyboard('?');
+
+    expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+    expect(screen.getByText('Duplicate by dragging')).toBeInTheDocument();
+    await user.keyboard('{Delete}');
+    await user.click(screen.getByRole('button', { name: 'Close keyboard shortcuts' }));
+    expect(openPropertiesPanel()).toHaveTextContent('Rectangle');
+
+    await user.click(screen.getByRole('button', { name: 'File' }));
+    await user.click(screen.getByRole('menuitem', { name: /Keyboard shortcuts/ }));
+    expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
   });
 
   it('renames the design from the title field', async () => {
@@ -289,6 +337,69 @@ describe('EditorPage', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
   });
 
+  it('restores labeled history states without discarding redo', async () => {
+    const { user } = renderEditor();
+    await insertRectangle(user);
+    await user.click(screen.getByRole('button', { name: 'Open history' }));
+    const dialog = screen.getByRole('dialog', { name: 'History' });
+
+    await user.click(within(dialog).getByRole('button', { name: /Starting point/ }));
+    expect(within(dialog).getByRole('button', { name: /Added rectangle/ })).toHaveTextContent(
+      'Redo',
+    );
+    await user.click(within(dialog).getByRole('button', { name: /Added rectangle/ }));
+    expect(within(dialog).getByRole('button', { name: /Added rectangle/ })).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Done' }));
+
+    expect(within(openPropertiesPanel()).getByRole('heading', { name: 'Rectangle' })).toBeVisible();
+  });
+
+  it('creates, nudges, hides, and clears persistent page guides', async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole('button', { name: 'Toggle rulers and guides' }));
+    fireEvent.pointerMove(screen.getByLabelText('Design canvas'), { clientX: 0, clientY: 0 });
+    expect(screen.getByTestId('horizontal-pointer-tick')).toBeInTheDocument();
+    expect(screen.getByTestId('vertical-pointer-tick')).toBeInTheDocument();
+    const horizontal = screen.getByRole('button', { name: 'Create horizontal guide' });
+    horizontal.focus();
+    await user.keyboard('{Enter}');
+
+    const guide = screen.getByRole('button', {
+      name: 'Margin horizontal guide at 540 pixels',
+    });
+    guide.focus();
+    await user.keyboard('{ArrowDown}');
+    expect(
+      screen.getByRole('button', { name: 'Margin horizontal guide at 541 pixels' }),
+    ).toBeVisible();
+
+    await user.keyboard('{Shift>}r{/Shift}');
+    expect(screen.queryByRole('group', { name: 'Rulers and guides' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Toggle rulers and guides' }));
+    expect(
+      screen.getByRole('button', { name: 'Margin horizontal guide at 541 pixels' }),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Guide options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'New guides: bleed' }));
+    const vertical = screen.getByRole('button', { name: 'Create vertical guide' });
+    vertical.focus();
+    await user.keyboard('{Enter}');
+    const bleed = screen.getByRole('button', { name: 'Bleed vertical guide at 540 pixels' });
+    bleed.focus();
+    await user.keyboard('{Delete}');
+    expect(screen.queryByRole('button', { name: /Bleed vertical guide/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Guide options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Clear page guides' }));
+    expect(
+      screen.queryByRole('button', { name: /Margin horizontal guide/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it('opens a zoom menu with presets in the workspace corner', async () => {
     const { user } = renderEditor();
     await user.click(screen.getByRole('button', { name: /Zoom level/ }));
@@ -305,6 +416,16 @@ describe('EditorPage', () => {
     expect(
       within(selectionToolbar).getByRole('button', { name: 'Duplicate selection' }),
     ).toBeEnabled();
+    expect(
+      within(screen.getByRole('toolbar', { name: 'Contextual toolbar' })).queryByRole('button', {
+        name: 'Duplicate selection',
+      }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      within(selectionToolbar).getByRole('button', { name: 'More selection actions' }),
+    );
+    expect(screen.getByRole('menuitem', { name: /Copy style/ })).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: /Paste style/ })).toBeDisabled();
   });
 
   it('exposes zoom controls once the canvas is mounted', async () => {

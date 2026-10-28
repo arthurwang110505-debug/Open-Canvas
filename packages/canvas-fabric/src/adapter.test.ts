@@ -14,7 +14,7 @@ import { FabricCanvasAdapter, type CanvasAdapterCallbacks } from './adapter';
 import { DocumentTextbox } from './textbox';
 
 function makePage(elements: DesignElement[]): Page {
-  return { id: 'page_1', background: { type: 'solid', color: '#fafafa' }, elements };
+  return { id: 'page_1', background: { type: 'solid', color: '#fafafa' }, elements, guides: [] };
 }
 
 const size = { width: 1080, height: 1080 };
@@ -176,6 +176,38 @@ describe('FabricCanvasAdapter', () => {
     expect(callbacks.onElementsModified).toHaveBeenCalledWith([
       { elementId: 'a', patch: { x: 250, y: 175, width: 100, height: 50, rotation: 0 } },
     ]);
+  });
+
+  it('snaps a moving object to a custom page guide', () => {
+    const a = createRectElement({ id: 'a', width: 100, height: 100 });
+    const page = {
+      ...makePage([a]),
+      guides: [{ id: 'guide', axis: 'vertical' as const, position: 100, kind: 'margin' as const }],
+    };
+    adapter.render({ page, size, selectedIds: [], assets: {} });
+    const object = elementObjects()[0];
+    if (!object) throw new Error('missing object');
+
+    object.set({ left: 147 }); // Left edge 97, three pixels from the guide at 100.
+    object.setCoords();
+    adapter.getFabricCanvas().fire('object:moving', { target: object } as never);
+
+    expect(object.left).toBe(150);
+  });
+
+  it('snaps a moving object to equal gaps with its neighbors', () => {
+    const a = createRectElement({ id: 'a', x: 0, width: 100, height: 100 });
+    const b = createRectElement({ id: 'b', x: 190, width: 100, height: 100 });
+    const c = createRectElement({ id: 'c', x: 400, width: 100, height: 100 });
+    adapter.render({ page: makePage([a, b, c]), size, selectedIds: ['b'], assets: {} });
+    const object = elementObjects()[1];
+    if (!object) throw new Error('missing object');
+
+    object.set({ left: 245 }); // Left edge 195; x=200 gives equal 100px gaps.
+    object.setCoords();
+    adapter.getFabricCanvas().fire('object:moving', { target: object } as never);
+
+    expect(object.left).toBe(250);
   });
 
   it('bakes scaling into width/height and normalizes rotation', () => {
@@ -342,6 +374,7 @@ describe('FabricCanvasAdapter', () => {
       id: 'page_1',
       background: radialFill(['#ffffff', '#c7d2fe']),
       elements: [createRectElement({ id: 'r1' })],
+      guides: [],
     };
     adapter.render({ page, size, selectedIds: [], assets: {} });
 
@@ -351,7 +384,12 @@ describe('FabricCanvasAdapter', () => {
   });
 
   it('keeps the page white rather than transparent when the background is none', () => {
-    const page: Page = { id: 'page_1', background: { type: 'none' }, elements: [] };
+    const page: Page = {
+      id: 'page_1',
+      background: { type: 'none' },
+      elements: [],
+      guides: [],
+    };
     adapter.render({ page, size, selectedIds: [], assets: {} });
     expect(adapter.getFabricCanvas().getObjects()[0]?.fill).toBe('#ffffff');
   });

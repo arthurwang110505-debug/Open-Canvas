@@ -39,7 +39,7 @@ its acceptance tests pass in CI.
 
 ## Canva-parity pass (tracked in [canva-parity-improvement-plan.md](canva-parity-improvement-plan.md))
 
-Delivered in Phase A/B and C1:
+Delivered in Phase A/B and Phase C editing workflows:
 
 - [x] Element library: 372-icon vector catalogue, shapes, and reorderable tabs
 - [x] 60-design template gallery generated from layout blueprints
@@ -50,8 +50,14 @@ Delivered in Phase A/B and C1:
 - [x] Adjust-photo mode: drag (or arrow-nudge) the photo inside a frame, one undo step per gesture
 - [x] Replace an image from the panel (bundled photo or upload) and by dropping a photo on it
 - [x] On-canvas crop: eight handles, aspect presets, Enter/Escape/click-away, one undo step
+- [x] Clipboard workflows: nested copy/cut/paste, repeated paste, Alt/Option-drag duplication,
+      compatible style copy/paste, and shortcut discovery
+- [x] Rulers and non-printing page guides: margin/bleed, drag/keyboard editing, custom and
+      equal-gap snapping, excluded from exports
+- [x] Labeled history panel: scrub or click any retained state without immediately losing redo
 
-Next in Phase C: quick gestures (C4), the local brand kit (C7) and the remaining items in the plan.
+Next in Phase C: the remaining quick gestures (C4), the local brand kit (C7), Magic Resize (C8),
+and the remaining items in the plan.
 
 ## Milestone 4 — AI assistant
 

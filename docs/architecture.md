@@ -39,7 +39,7 @@ Node consumer (`apps/api`) needs it.
 
 - **Schema version** `10` (`CURRENT_SCHEMA_VERSION`). Every document carries `schemaVersion`.
 - **Structure**: `DesignDocument { id, name, size, pages[], assets, metadata }` →
-  `Page { id, background, elements[] }` → `DesignElement` (discriminated union on `type`:
+  `Page { id, background, elements[], guides[] }` → `DesignElement` (discriminated union on `type`:
   `rect`, `ellipse`, `text`, `image`, `path`, `icon`, `frame`, `group`). Z-order is array order
   (index 0 = back).
 - **Fills** are a discriminated union: `solid`, `none`, `linear` (an angle plus 2–8 ordered
@@ -59,6 +59,10 @@ byteSize?, source, createdAt }`. It carries **metadata only** — bytes live in 
 - **Geometry convention**: `x`/`y` is the top-left corner of the un-rotated element; `rotation`
   (degrees, clockwise) is applied around that corner. This equals SVG
   `translate(x y) rotate(r)` and is what exporters will implement.
+- **Page guides**: `guides[]` contains `{ id, axis: 'horizontal' | 'vertical', position, kind:
+'margin' | 'bleed' }`. These are additive, non-printing editor data: old documents default to an
+  empty array without a schema-version bump, page duplication copies the guides, and SVG/PNG/PDF
+  exporters ignore them. The overlay's visibility is editor state, not document content.
 - **Frames** are a mask with an optional photo: `{ shape: 'rect' | 'ellipse', cornerRadius,
 assetId?, fit, crop?, fill }`. The mask is the element's own shape, so a frame can sit empty as
   a placeholder and be filled later by a drop, and resizing it re-masks the photo instead of
@@ -102,14 +106,16 @@ add a fixture test.
 
 All document mutations are `EditorCommand`s:
 
-| Command                                | Notes                                                                                             |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `document.rename`, `document.resize`   | Resize validates against `DocumentSizeSchema`.                                                    |
-| `page.setBackground`                   |                                                                                                   |
-| `element.add`                          | Optional index; rejects duplicate ids.                                                            |
-| `element.update`, `element.updateMany` | Patch merged then **re-validated** with `ElementSchema`; invalid patches are rejected as a whole. |
-| `element.delete`, `element.duplicate`  | Duplicate offsets copies and accepts explicit ids for tests.                                      |
-| `element.reorder`                      | `front` / `back` / `forward` / `backward` / `{ index }`.                                          |
+| Command                                                                     | Notes                                                                                             |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `document.rename`, `document.resize`                                        | Resize validates against `DocumentSizeSchema`.                                                    |
+| `page.setBackground`                                                        |                                                                                                   |
+| `page.addGuide`, `page.updateGuide`, `page.removeGuide`, `page.clearGuides` | Validated, page-scoped, undoable non-printing guides.                                             |
+| `element.add`                                                               | Optional index; rejects duplicate ids.                                                            |
+| `element.update`, `element.updateMany`                                      | Patch merged then **re-validated** with `ElementSchema`; invalid patches are rejected as a whole. |
+| `element.delete`                                                            | Deletes selected roots; selection is pruned.                                                      |
+| `element.duplicate`, `element.paste`                                        | Recursively clone ids and preserve nested layout/assets; paste supports successive offsets.       |
+| `element.reorder`                                                           | `front` / `back` / `forward` / `backward` / `{ index }`.                                          |
 
 `applyCommand(doc, command)` is a pure function returning `Result<DesignDocument, CommandError>`
 with structural sharing (untouched pages/elements keep identity; no-ops return the same object).
@@ -117,7 +123,12 @@ with structural sharing (untouched pages/elements keep identity; no-ops return t
 `createEditorStore(document)` (Zustand vanilla) adds:
 
 - **History** as document snapshots (`past` / `future`, capped by `historyLimit`). Snapshots are
-  cheap because documents are immutable and share structure.
+  cheap because documents are immutable and share structure. Parallel `pastLabels` / `futureLabels`
+  describe command transitions; `jumpToHistory(index)` restores any retained state without
+  discarding the redo branch. A later edit replaces that branch as usual.
+- **Transient clipboards**: copied element trees and one compatible-style source live in memory,
+  never in the document, autosave or history. Paste and style application still dispatch canonical
+  commands, so they are undoable and validated.
 - **Merge keys**: `dispatch(cmd, { mergeKey })` coalesces consecutive edits with the same key
   inside `mergeWindowMs` into one undo step (typing in a field, nudging with arrows).
 - **Derived updates**: `dispatch(cmd, { recordHistory: false })` for measurements (auto-sized
@@ -188,8 +199,12 @@ Fabric.js 7 positions objects by **center** (`left`/`top`, `originX/Y` are depre
   points at a different asset.
 - **Snapping**: `setSnapping(enabled)` installs Fabric's `AligningGuidelines` extension
   (alignment to other objects and to the page rect, which is a regular Fabric object at index 0).
-  `fabric/extensions` imports `westures` without declaring it, so `canvas-fabric` lists it as a
-  dependency explicitly.
+  A pure `snapping.ts` helper adds page-guide and equal-gap corrections during `object:moving`;
+  standard Fabric alignment remains intact. `fabric/extensions` imports `westures` without
+  declaring it, so `canvas-fabric` lists it as a dependency explicitly.
+- **Alt/Option duplication**: `mouse:down:before` requests zero-offset copies through a callback,
+  then resets Fabric's cached transform target so the same pointer gesture moves the copies. The
+  host gives the duplicate and final move one history merge key, including multi-selections.
 - `clientToPage(clientX, clientY)` inverts the viewport transform for drag-and-drop placement.
 
 Unit tests run real Fabric classes in jsdom with a stubbed 2D context
@@ -301,8 +316,10 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
   text, download) come from `ExportProvider` and are injectable in tests.
 - `actions.ts` (`useEditorActions`) is the single place UI code turns intents into commands;
   `assets/useImageImport.ts` owns the upload flow (validate → store bytes → register → add).
-- `TopBar` (rename, undo/redo, change status, snapping toggle, zoom/fit), `Sidebar` (Design,
-  Shapes, Icons, Text, Draw, Uploads, Background, Layers), `PropertiesPanel` (layout, fill &
+- `TopBar` (rename, undo/redo, history timeline, change status, ruler/snapping toggles, zoom/fit),
+  `Sidebar` (Design, Shapes, Icons, Text, Draw, Uploads, Background, Layers),
+  `canvas/Rulers` (workspace tick marks plus draggable page-owned margin/bleed guides),
+  `panels/HistoryPanel` (labeled scrub/list navigation), `PropertiesPanel` (layout, fill &
   stroke, typography, icon colour/stroke/replace, crop & fit for images, align/distribute,
   arrange; page size when nothing is selected),
   `useKeyboardShortcuts`, `ErrorToast` for rejected commands and application failures (import,
@@ -326,12 +343,12 @@ because jsdom never fires `<img>` load events. Pixel output is left to browser E
 | Layer         | Tool                           | What is covered                                                                                                                                                                          |
 | ------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | document      | Vitest (node)                  | Schema limits, defaults, round-trips, cloning, migration pipeline, failures.                                                                                                             |
-| editor-core   | Vitest (node)                  | Reducer semantics, immutability, history/merge/limit, selection, arrange helpers.                                                                                                        |
-| canvas-fabric | Vitest (jsdom + context stub)  | Mapping math, reconciliation, ordering, selection sync, events.                                                                                                                          |
+| editor-core   | Vitest (node)                  | Reducer semantics, immutability, clipboard/style compatibility, labeled history navigation, guide commands, selection, arrange helpers.                                                  |
+| canvas-fabric | Vitest (jsdom + context stub)  | Mapping math, reconciliation, ordering, selection sync, Alt-drag gestures, custom-guide/equal-gap snapping, events.                                                                      |
 | storage       | Vitest (node + fake-indexeddb) | Project-store contract against **both** backends, corrupted/mismatched records, quota mapping, blob scoping, autosave timing, project-file container guards.                             |
 | export        | Vitest (node)                  | SVG markup/geometry/escaping/failure modes, rasterizer with fakes, PDF bytes and page count.                                                                                             |
 | web           | Vitest + Testing Library       | Real store + real adapter: insert, edit, undo/redo, shortcuts, dashboard CRUD, autosave end to end (edit → saved → reopen), routing, PNG/SVG/PDF downloads, `.opencanvas` import/export. |
-| E2E (planned) | Playwright                     | Pointer interactions, rendering, persistence, export.                                                                                                                                    |
+| E2E           | Playwright                     | Browser smoke coverage for create, edit, copy/paste, SVG export, and reload persistence; broader pointer and visual suites remain planned.                                               |
 
 ## 7. Decisions and constraints
 

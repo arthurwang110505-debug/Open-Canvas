@@ -9,6 +9,7 @@ import {
   type DesignDocument,
   type DesignElement,
   type Fill,
+  type PageGuide,
 } from '@opencanvas/document';
 import {
   alignElements,
@@ -50,6 +51,11 @@ export interface EditorActions {
   addIcon: (iconId: string, at?: { x: number; y: number }) => void;
   deleteSelection: () => void;
   duplicateSelection: () => void;
+  copySelection: () => void;
+  cutSelection: () => void;
+  pasteClipboard: () => void;
+  copyStyle: () => void;
+  pasteStyle: () => void;
   nudgeSelection: (dx: number, dy: number) => void;
   /** Moves the photo inside the frame being adjusted; no-op outside adjust-photo mode. */
   nudgePhoto: (dx: number, dy: number) => void;
@@ -70,6 +76,17 @@ export interface EditorActions {
   renameDocument: (name: string) => void;
   resizeDocument: (width: number, height: number) => void;
   setPageBackground: (fill: Fill, mergeKey?: string) => void;
+  addGuide: (
+    axis: PageGuide['axis'],
+    kind: PageGuide['kind'],
+    position: number,
+    guideId?: string,
+    mergeKey?: string,
+  ) => void;
+  updateGuide: (guideId: string, position: number, mergeKey?: string) => void;
+  removeGuide: (guideId: string) => void;
+  clearGuides: () => void;
+  toggleRulers: () => void;
   /** Replaces the current page with a template, fitted to this canvas (one undo step). */
   applyTemplate: (template: DesignDocument) => void;
   /** Inserts a template as a new page after the current one (one undo step). */
@@ -324,6 +341,12 @@ export function useEditorActions(): EditorActions {
         }
       },
 
+      copySelection: () => store.getState().copySelection(),
+      cutSelection: () => store.getState().cutSelection(),
+      pasteClipboard: () => store.getState().pasteClipboard(),
+      copyStyle: () => store.getState().copyStyle(),
+      pasteStyle: () => store.getState().pasteStyle(),
+
       nudgeSelection: (dx, dy) => {
         const state = store.getState();
         const ids = new Set(state.selectedIds);
@@ -448,6 +471,37 @@ export function useEditorActions(): EditorActions {
           { type: 'page.setBackground', pageId: pageId(), background: fill },
           mergeKey ? { mergeKey } : undefined,
         );
+      },
+
+      addGuide: (axis, kind, position, guideId, mergeKey) => {
+        dispatch(
+          {
+            type: 'page.addGuide',
+            pageId: pageId(),
+            guide: { id: guideId ?? generateId('guide'), axis, kind, position },
+          },
+          mergeKey ? { mergeKey, mergeWindowMs: Number.POSITIVE_INFINITY } : undefined,
+        );
+      },
+
+      updateGuide: (guideId, position, mergeKey) => {
+        dispatch(
+          { type: 'page.updateGuide', pageId: pageId(), guideId, position },
+          mergeKey ? { mergeKey, mergeWindowMs: Number.POSITIVE_INFINITY } : undefined,
+        );
+      },
+
+      removeGuide: (guideId) => {
+        dispatch({ type: 'page.removeGuide', pageId: pageId(), guideId });
+      },
+
+      clearGuides: () => {
+        dispatch({ type: 'page.clearGuides', pageId: pageId() });
+      },
+
+      toggleRulers: () => {
+        const state = store.getState();
+        state.setRulersVisible(!state.rulersVisible);
       },
 
       applyTemplate: (template) => {

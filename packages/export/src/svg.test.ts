@@ -49,6 +49,18 @@ describe('renderPageToSvg', () => {
     expect(svg).toContain('width="2160" height="2160" viewBox="0 0 1080 1080"');
   });
 
+  it('never emits editor-only page guides', async () => {
+    const document = makeDocument();
+    firstPage(document).guides.push(
+      { id: 'do-not-export', axis: 'vertical', position: 100, kind: 'margin' },
+      { id: 'bleed-guide', axis: 'horizontal', position: 200, kind: 'bleed' },
+    );
+    const svg = await render(document);
+    expect(svg).not.toContain('do-not-export');
+    expect(svg).not.toContain('bleed-guide');
+    expect(svg).not.toContain('<line');
+  });
+
   it('embeds the supplied fonts as @font-face rules inside a <defs> block', async () => {
     const svg = await render(makeDocument(), {
       fontFaces: [{ family: 'Playfair Display', weight: '400 900', style: 'normal', data: 'AAAA' }],

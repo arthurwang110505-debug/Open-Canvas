@@ -13,6 +13,7 @@ export const LIMITS = {
   maxElementDimension: 100_000,
   minElementDimension: 1,
   maxElementsPerPage: 2_000,
+  maxGuidesPerPage: 64,
   maxPages: 100,
   maxTextLength: 20_000,
   maxNameLength: 200,

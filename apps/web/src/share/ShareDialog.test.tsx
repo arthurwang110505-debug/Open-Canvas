@@ -21,6 +21,7 @@ function renderDialog(onPresent = vi.fn()) {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   window.localStorage.clear();
 });
 
@@ -46,6 +47,21 @@ describe('ShareDialog', () => {
     expect(shareId).toBeTruthy();
     const stored = window.localStorage.getItem(`opencanvas:share:${shareId}`);
     expect(stored).toContain('"schemaVersion"');
+  });
+
+  it('reports storage failure instead of offering a link that cannot open', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage is full', 'QuotaExceededError');
+    });
+    const { user } = renderDialog();
+
+    await user.click(screen.getByRole('button', { name: 'Create view link' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /could not save a view link.*download or export/i,
+    );
+    expect(screen.queryByLabelText('Share link')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create view link' })).toBeEnabled();
   });
 
   it('leaves presenting to the editor', async () => {

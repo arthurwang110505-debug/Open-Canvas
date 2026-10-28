@@ -30,7 +30,7 @@ const asset = createImageAsset({
 const assets: DesignDocument['assets'] = { [asset.id]: asset };
 
 function makePage(elements: DesignElement[]): Page {
-  return { id: 'page_1', background: { type: 'solid', color: '#ffffff' }, elements };
+  return { id: 'page_1', background: { type: 'solid', color: '#ffffff' }, elements, guides: [] };
 }
 
 function bitmap(width: number, height: number): HTMLCanvasElement {

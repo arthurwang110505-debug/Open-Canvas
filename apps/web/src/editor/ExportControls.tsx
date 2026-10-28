@@ -26,21 +26,21 @@ const FORMATS: readonly Format[] = [
     label: 'Export PNG',
     hint: `${RASTER_SCALE}×`,
     icon: <FileImage />,
-    description: 'Image · transparent background',
+    description: `Image · current page at ${RASTER_SCALE}×`,
   },
   {
     kind: 'svg',
     label: 'Export SVG',
     hint: 'vector',
     icon: <PenTool />,
-    description: 'Vector · text stays editable',
+    description: 'Vector · current page',
   },
   {
     kind: 'pdf',
     label: 'Export PDF',
     hint: 'print',
     icon: <FileText />,
-    description: 'Document · every page',
+    description: 'Document · all pages',
   },
 ];
 
@@ -86,8 +86,8 @@ export function ExportControls() {
         ))}
         <MenuSeparator />
         <p className="px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
-          Downloads use the full document at {RASTER_SCALE}× resolution. Each page of a multi-page
-          design is included.
+          PNG and SVG export the current page. PDF includes every page. Raster downloads use{' '}
+          {RASTER_SCALE}× resolution.
         </p>
       </MenuContent>
     </Menu>

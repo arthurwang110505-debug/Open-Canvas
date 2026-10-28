@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { CanvasStage } from './CanvasStage';
 import { ContextualToolbar } from './ContextualToolbar';
 import { ErrorToast } from './ErrorToast';
 import { FloatingToolbar } from './FloatingToolbar';
+import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { PagesStrip } from './PagesStrip';
 import { Sidebar, type SidebarTab } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -12,7 +13,9 @@ import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 
 export function EditorShell() {
   useAutosave();
-  useKeyboardShortcuts();
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const openShortcuts = useCallback(() => setShowShortcuts(true), []);
+  useKeyboardShortcuts(openShortcuts);
   const [activePanel, setActivePanel] = useState<SidebarTab>('design');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -23,7 +26,7 @@ export function EditorShell() {
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[52px_minmax(0,1fr)] bg-background text-foreground">
-      <TopBar onOpenPanel={openPanel} />
+      <TopBar onOpenPanel={openPanel} onOpenShortcuts={openShortcuts} />
       <div className="grid min-h-0 min-w-0 grid-cols-[auto_minmax(0,1fr)]">
         <Sidebar
           active={activePanel}
@@ -47,6 +50,7 @@ export function EditorShell() {
           </div>
         </main>
       </div>
+      {showShortcuts ? <KeyboardShortcutsDialog onClose={() => setShowShortcuts(false)} /> : null}
     </div>
   );
 }

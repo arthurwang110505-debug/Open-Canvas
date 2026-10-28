@@ -19,13 +19,20 @@ export function ShareDialog({ document, onClose, onPresent }: Props) {
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleCreate = async () => {
     setBusy(true);
-    const { url } = createShareLink(document);
-    setLink(url);
+    setError(null);
+    const created = createShareLink(document);
+    if (!created.ok) {
+      setError(created.error.message);
+      setBusy(false);
+      return;
+    }
+    setLink(created.value.url);
     setBusy(false);
-    const ok = await copyToClipboard(url);
+    const ok = await copyToClipboard(created.value.url);
     setCopied(ok);
     setTimeout(() => setCopied(false), 2500);
   };
@@ -70,6 +77,14 @@ export function ShareDialog({ document, onClose, onPresent }: Props) {
         </div>
 
         <div className="mt-5 flex flex-col gap-3">
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-xl border border-destructive/25 bg-destructive/10 px-3.5 py-3 text-xs leading-relaxed text-destructive"
+            >
+              {error}
+            </p>
+          ) : null}
           {!link ? (
             <Button onClick={() => void handleCreate()} disabled={busy} className="rounded-full">
               {busy ? 'Creating…' : 'Create view link'}

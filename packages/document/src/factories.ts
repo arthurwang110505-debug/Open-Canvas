@@ -12,6 +12,7 @@ import type {
   ImageAsset,
   ImageElement,
   Page,
+  PageGuide,
   PathElement,
   PathPoint,
   RectElement,
@@ -31,12 +32,15 @@ export interface CreateDocumentOptions {
   templateId?: string;
 }
 
-export function createPage(options: { id?: string; name?: string; background?: Fill } = {}): Page {
+export function createPage(
+  options: { id?: string; name?: string; background?: Fill; guides?: PageGuide[] } = {},
+): Page {
   return {
     id: options.id ?? generateId('page'),
     ...(options.name !== undefined ? { name: options.name } : {}),
     background: options.background ?? { type: 'solid', color: '#ffffff' },
     elements: [],
+    guides: options.guides ?? [],
   };
 }
 

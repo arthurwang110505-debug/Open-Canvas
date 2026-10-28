@@ -1,13 +1,16 @@
 import {
   collectElementIds,
   type DesignDocument,
+  type DesignElement,
   type ImageCrop,
   type Result,
 } from '@opencanvas/document';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import type { CommandError, EditorCommand } from './commands';
+import { describeCommand } from './history';
 import { applyCommand } from './reducer';
+import { compatibleStylePatch } from './style';
 import { clampZoom } from './zoom';
 
 export interface DispatchOptions {
@@ -16,6 +19,8 @@ export interface DispatchOptions {
    * single history entry, e.g. while typing a value into a numeric input.
    */
   mergeKey?: string;
+  /** Overrides the merge window for this dispatch (used to finish long-running gestures). */
+  mergeWindowMs?: number;
   /**
    * Set to `false` for derived mutations that must not create an undo step
    * (for example storing the measured height of an auto-sized text box).
@@ -29,15 +34,29 @@ export interface CropDraft {
   crop?: ImageCrop | undefined;
 }
 
+export interface ElementClipboard {
+  elements: readonly DesignElement[];
+  /** Number of pastes already made from this snapshot. */
+  pasteCount: number;
+}
+
 export interface EditorState {
   document: DesignDocument;
   activePageId: string;
   selectedIds: readonly string[];
+  /** In-memory element and style clipboards; never persisted or included in undo history. */
+  clipboard: ElementClipboard | null;
+  styleClipboard: DesignElement | null;
   past: readonly DesignDocument[];
   future: readonly DesignDocument[];
+  /** Labels align with `past`/`future` snapshots and describe each transition. */
+  pastLabels: readonly string[];
+  futureLabels: readonly string[];
   /** True when `document` differs from the last saved snapshot. */
   dirty: boolean;
   zoom: number;
+  /** Editor-only ruler and guide overlay; guide definitions themselves live on each page. */
+  rulersVisible: boolean;
   /** Last rejected command, surfaced to the UI; cleared with `clearError()`. */
   lastError: CommandError | null;
   /**
@@ -63,8 +82,15 @@ export interface EditorActions {
   redo: () => boolean;
   canUndo: () => boolean;
   canRedo: () => boolean;
+  /** Restores a state in the full `[...past, current, ...future]` timeline without trimming redo. */
+  jumpToHistory: (index: number) => boolean;
   setSelection: (ids: readonly string[]) => void;
   clearSelection: () => void;
+  copySelection: () => boolean;
+  cutSelection: () => boolean;
+  pasteClipboard: () => boolean;
+  copyStyle: () => boolean;
+  pasteStyle: () => boolean;
   /** Enters (`id`) or leaves (`null`) adjust-photo mode for a frame. */
   setPhotoPan: (elementId: string | null) => void;
   /** Starts cropping an image on the canvas; no-op for anything but an image on the active page. */
@@ -77,6 +103,7 @@ export interface EditorActions {
   cancelCrop: () => void;
   setActivePage: (pageId: string) => void;
   setZoom: (zoom: number) => void;
+  setRulersVisible: (visible: boolean) => void;
   /**
    * Records which document snapshot is persisted. Pass the snapshot that was actually written:
    * when the user kept editing while the save ran, the store stays dirty and undoing back to
@@ -160,10 +187,15 @@ export function createEditorStore(
     document: initialDocument,
     activePageId: firstPageId(initialDocument),
     selectedIds: [],
+    clipboard: null,
+    styleClipboard: null,
     past: [],
     future: [],
+    pastLabels: [],
+    futureLabels: [],
     dirty: false,
     zoom: clampZoom(options.initialZoom ?? 1),
+    rulersVisible: false,
     lastError: null,
     photoPanId: null,
     cropId: null,
@@ -187,15 +219,21 @@ export function createEditorStore(
         mergeKey !== undefined &&
         lastMerge !== null &&
         lastMerge.key === mergeKey &&
-        timestamp - lastMerge.at <= mergeWindowMs;
+        timestamp - lastMerge.at <= (dispatchOptions.mergeWindowMs ?? mergeWindowMs);
 
       let past = state.past;
       let future = state.future;
+      let pastLabels = state.pastLabels;
+      let futureLabels = state.futureLabels;
       if (recordHistory) {
         if (!canMerge) {
           past = [...state.past, state.document].slice(-historyLimit);
+          pastLabels = [...state.pastLabels, describeCommand(command, state.document)].slice(
+            -historyLimit,
+          );
         }
         future = [];
+        futureLabels = [];
         lastMerge = mergeKey !== undefined ? { key: mergeKey, at: timestamp } : null;
       }
 
@@ -203,10 +241,18 @@ export function createEditorStore(
       let activePageId = state.activePageId;
       if (command.type === 'element.add') {
         selectedIds = [command.element.id];
-      } else if (command.type === 'element.duplicate') {
-        const page = nextDocument.pages.find((p) => p.id === command.pageId);
-        const added = page ? page.elements.slice(-command.elementIds.length) : [];
-        selectedIds = added.map((element) => element.id);
+      } else if (command.type === 'element.duplicate' || command.type === 'element.paste') {
+        const previousIds = new Set(
+          state.document.pages
+            .find((page) => page.id === command.pageId)
+            ?.elements.map((element) => element.id) ?? [],
+        );
+        const page = nextDocument.pages.find((candidate) => candidate.id === command.pageId);
+        selectedIds = page
+          ? page.elements
+              .filter((element) => !previousIds.has(element.id))
+              .map((element) => element.id)
+          : [];
       } else if (command.type === 'element.delete') {
         selectedIds = pruneSelection(nextDocument, state.selectedIds);
       } else if (command.type === 'element.group') {
@@ -270,6 +316,8 @@ export function createEditorStore(
         activePageId,
         past,
         future,
+        pastLabels,
+        futureLabels,
         selectedIds,
         photoPanId: prunePhotoPan(nextDocument, activePageId, state.photoPanId),
         cropId: prunePhotoPan(nextDocument, activePageId, state.cropId),
@@ -284,6 +332,7 @@ export function createEditorStore(
       const state = get();
       const previous = state.past[state.past.length - 1];
       if (!previous) return false;
+      const transitionLabel = state.pastLabels[state.pastLabels.length - 1] ?? 'Edited design';
       lastMerge = null;
       let activePageId = state.activePageId;
       if (!previous.pages.some((p) => p.id === activePageId)) {
@@ -295,6 +344,8 @@ export function createEditorStore(
         activePageId,
         past: state.past.slice(0, -1),
         future: [state.document, ...state.future],
+        pastLabels: state.pastLabels.slice(0, -1),
+        futureLabels: [transitionLabel, ...state.futureLabels],
         selectedIds: selectionAfterHistoryStep(
           state.document,
           previous,
@@ -313,6 +364,7 @@ export function createEditorStore(
       const state = get();
       const [next, ...rest] = state.future;
       if (!next) return false;
+      const [transitionLabel = 'Edited design', ...restLabels] = state.futureLabels;
       lastMerge = null;
       let activePageId = state.activePageId;
       if (!next.pages.some((p) => p.id === activePageId)) {
@@ -324,6 +376,8 @@ export function createEditorStore(
         activePageId,
         past: [...state.past, state.document].slice(-historyLimit),
         future: rest,
+        pastLabels: [...state.pastLabels, transitionLabel].slice(-historyLimit),
+        futureLabels: restLabels,
         selectedIds: selectionAfterHistoryStep(
           state.document,
           next,
@@ -340,6 +394,41 @@ export function createEditorStore(
 
     canUndo: () => get().past.length > 0,
     canRedo: () => get().future.length > 0,
+
+    jumpToHistory: (index) => {
+      const state = get();
+      const documents = [...state.past, state.document, ...state.future];
+      if (!Number.isInteger(index) || index < 0 || index >= documents.length) return false;
+      if (index === state.past.length) return false;
+      const transitionLabels = [...state.pastLabels, ...state.futureLabels];
+      const next = documents[index];
+      if (!next) return false;
+      lastMerge = null;
+      let activePageId = state.activePageId;
+      if (!next.pages.some((page) => page.id === activePageId)) {
+        activePageId = next.pages[0]?.id ?? activePageId;
+      }
+      set({
+        document: next,
+        activePageId,
+        past: documents.slice(0, index),
+        future: documents.slice(index + 1),
+        pastLabels: transitionLabels.slice(0, index),
+        futureLabels: transitionLabels.slice(index),
+        selectedIds: selectionAfterHistoryStep(
+          state.document,
+          next,
+          activePageId,
+          state.selectedIds,
+        ),
+        photoPanId: prunePhotoPan(next, activePageId, state.photoPanId),
+        cropId: prunePhotoPan(next, activePageId, state.cropId),
+        cropDraft: prunePhotoPan(next, activePageId, state.cropId) ? state.cropDraft : null,
+        dirty: next !== savedDocument,
+        lastError: null,
+      });
+      return true;
+    },
 
     setSelection: (ids) => {
       const state = get();
@@ -362,6 +451,69 @@ export function createEditorStore(
         return;
       }
       set({ selectedIds: [], photoPanId: null, cropId: null, cropDraft: null });
+    },
+
+    copySelection: () => {
+      const state = get();
+      const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+      const ids = new Set(state.selectedIds);
+      const elements = page?.elements.filter((element) => ids.has(element.id)) ?? [];
+      if (elements.length === 0) return false;
+      set({ clipboard: { elements: structuredClone(elements), pasteCount: 0 } });
+      return true;
+    },
+
+    cutSelection: () => {
+      if (!get().copySelection()) return false;
+      const state = get();
+      const outcome = state.dispatch({
+        type: 'element.delete',
+        pageId: state.activePageId,
+        elementIds: state.selectedIds,
+      });
+      return outcome.ok;
+    },
+
+    pasteClipboard: () => {
+      const state = get();
+      const clipboard = state.clipboard;
+      if (!clipboard) return false;
+      const outcome = state.dispatch({
+        type: 'element.paste',
+        pageId: state.activePageId,
+        elements: clipboard.elements,
+        offset: (clipboard.pasteCount + 1) * 20,
+      });
+      if (!outcome.ok) return false;
+      set({ clipboard: { ...clipboard, pasteCount: clipboard.pasteCount + 1 } });
+      return true;
+    },
+
+    copyStyle: () => {
+      const state = get();
+      const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+      const selected = page?.elements.filter((element) => state.selectedIds.includes(element.id));
+      const source = selected?.length === 1 ? selected[0] : undefined;
+      if (!source) return false;
+      set({ styleClipboard: structuredClone(source) });
+      return true;
+    },
+
+    pasteStyle: () => {
+      const state = get();
+      const source = state.styleClipboard;
+      if (!source || state.selectedIds.length === 0) return false;
+      const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+      if (!page) return false;
+      const ids = new Set(state.selectedIds);
+      const updates = page.elements
+        .filter((element) => ids.has(element.id))
+        .map((element) => ({
+          elementId: element.id,
+          patch: compatibleStylePatch(source, element),
+        }));
+      if (updates.length === 0) return false;
+      return state.dispatch({ type: 'element.updateMany', pageId: page.id, updates }).ok;
     },
 
     setPhotoPan: (elementId) => {
@@ -446,6 +598,10 @@ export function createEditorStore(
       if (clamped !== get().zoom) set({ zoom: clamped });
     },
 
+    setRulersVisible: (visible) => {
+      if (get().rulersVisible !== visible) set({ rulersVisible: visible });
+    },
+
     markSaved: (saved = get().document) => {
       savedDocument = saved;
       const dirty = get().document !== savedDocument;
@@ -459,11 +615,15 @@ export function createEditorStore(
         document,
         activePageId: firstPageId(document),
         selectedIds: [],
+        clipboard: null,
+        styleClipboard: null,
         photoPanId: null,
         cropId: null,
         cropDraft: null,
         past: [],
         future: [],
+        pastLabels: [],
+        futureLabels: [],
         dirty: false,
         lastError: null,
       });

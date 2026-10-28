@@ -6,15 +6,11 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
-  Copy,
   Crop,
   ImageIcon,
   Italic,
-  Lock,
-  LockOpen,
   Palette,
   SlidersHorizontal,
-  Trash2,
   Underline,
 } from 'lucide-react';
 import { useId } from 'react';
@@ -190,10 +186,8 @@ export function ContextualToolbar({ onOpenPanel }: ContextualToolbarProps) {
   const documentSize = useEditor((state) => state.document.size);
   const pages = useEditor((state) => state.document.pages);
   const store = useEditorStore();
-  const { updateSelection, duplicateSelection, deleteSelection } = useEditorActions();
   const activeIndex = pages.findIndex((page) => page.id === activePageId);
   const single = selected.length === 1 ? selected[0] : undefined;
-  const allLocked = selected.length > 0 && selected.every((element) => element.locked);
 
   return (
     <div
@@ -270,48 +264,6 @@ export function ContextualToolbar({ onOpenPanel }: ContextualToolbarProps) {
                   : 'Appearance'}
             </span>
           ) : null}
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <Tooltip content="Duplicate selection">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Duplicate selection"
-                onClick={duplicateSelection}
-              >
-                <Copy />
-              </Button>
-            </Tooltip>
-            <Tooltip content={allLocked ? 'Unlock selection' : 'Lock selection'}>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={allLocked ? 'Unlock selection' : 'Lock selection'}
-                pressed={allLocked}
-                onClick={() => updateSelection({ locked: !allLocked })}
-              >
-                {allLocked ? <Lock /> : <LockOpen />}
-              </Button>
-            </Tooltip>
-            <Tooltip content="Edit selection details">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Edit selection details"
-                onClick={() => onOpenPanel('properties')}
-              >
-                <SlidersHorizontal />
-              </Button>
-            </Tooltip>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Delete selection"
-              onClick={deleteSelection}
-              className="text-muted-foreground hover:text-destructive"
-            >
-              <Trash2 />
-            </Button>
-          </div>
         </>
       )}
     </div>

@@ -762,31 +762,6 @@ export function Dashboard() {
                 ) : null}
               </section>
             ) : null}
-
-            {activeView === 'brand' ? (
-              <section className="mx-auto max-w-3xl rounded-3xl border border-border bg-white px-6 py-12 text-center shadow-sm sm:px-10">
-                <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 text-primary">
-                  <Sparkles className="size-6" />
-                </span>
-                <p className="mt-5 text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                  Brand space
-                </p>
-                <h1 className="mt-2 text-2xl font-bold tracking-tight">
-                  Your brand, ready to create
-                </h1>
-                <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                  Save your colors, logos, and fonts in a local Brand Kit. The Brand Kit editor is
-                  planned for a later sprint; your designs remain private and stored on this device.
-                </p>
-                <Button
-                  onClick={() => setActiveView('home')}
-                  variant="outline"
-                  className="mt-6 rounded-full"
-                >
-                  Back to Home
-                </Button>
-              </section>
-            ) : null}
           </div>
         </div>
       </main>

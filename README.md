@@ -9,7 +9,8 @@ posters, social media graphics, presentation covers and other visual content.
 > **PNG, SVG or PDF**, and designs move between browsers as native **`.opencanvas` project
 > files** (validated and migrated on import). The editor works end to end for shapes, text,
 > uploaded images and layers (drag-and-drop, cover/fill, snapping guides, align and distribute)
-> with undo/redo and keyboard shortcuts. The editor ships a 60-design template gallery (twelve
+> with undo/redo, nested copy/cut/paste, Alt-drag duplication, style copy/paste, non-printing
+> rulers and guides, and a navigable history timeline. The editor ships a 60-design template gallery (twelve
 > hand-tuned designs plus cuts generated from layout blueprints), a 372-icon vector catalogue,
 > 15 bundled OFL typefaces that are embedded in every export, linear/radial gradient fills for shapes
 > and page backgrounds, text style presets with display casing and bullet/numbered lists, and a
@@ -51,6 +52,14 @@ pnpm build        # production build of apps/web
 pnpm check        # all of the above plus formatting
 ```
 
+The browser smoke suite covers create → edit → copy/paste → SVG export → reload persistence. Install Chromium
+once, then run it separately (it starts the Vite server automatically):
+
+```bash
+pnpm exec playwright install chromium
+pnpm test:e2e
+```
+
 ## Repository layout
 
 | Path                     | Purpose                                                                                            |
@@ -62,9 +71,10 @@ pnpm check        # all of the above plus formatting
 | `packages/storage`       | Project store (IndexedDB + memory), asset blobs, autosave, image import, `.opencanvas` files.      |
 | `packages/export`        | Export renderers from the document model: SVG, PNG (canvas rasterization) and PDF (jsPDF).         |
 | `packages/ui`            | Shared accessible UI primitives (shadcn/ui-style, Tailwind CSS v4 design tokens).                  |
+| `tests/e2e`              | Playwright browser smoke tests for the core design journey.                                        |
 | `docs`                   | Architecture notes and roadmap.                                                                    |
 
-Planned (not yet present): `apps/api`, `packages/ai-core`, `tests` (Playwright).
+Planned (not yet present): `apps/api`, `packages/ai-core`.
 
 ## Architecture in one paragraph
 
@@ -80,12 +90,17 @@ future autosave and AI edits all share one path. Details: [docs/architecture.md]
 | Action                      | Keys                                              |
 | --------------------------- | ------------------------------------------------- |
 | Save now                    | `Ctrl/⌘ S` (autosave runs on its own)             |
-| Export PNG / SVG / PDF      | Top bar **Export** buttons                        |
+| Export PNG / SVG / PDF      | Top bar **Download** menu                         |
 | Import / export design file | Dashboard **Import design** / **Export** buttons  |
 | Undo / Redo                 | `Ctrl/⌘ Z` · `Ctrl/⌘ Shift Z`, `Ctrl Y`           |
+| Browse history              | Top bar **History** button                        |
 | Delete selection            | `Delete` / `Backspace`                            |
-| Duplicate                   | `Ctrl/⌘ D`                                        |
+| Copy / cut / paste          | `Ctrl/⌘ C` · `Ctrl/⌘ X` · `Ctrl/⌘ V`              |
+| Duplicate                   | `Ctrl/⌘ D` · `Alt/Option + drag`                  |
+| Copy / paste style          | `Ctrl/⌘ Alt C` · `Ctrl/⌘ Alt V`                   |
 | Select all / clear          | `Ctrl/⌘ A` · `Esc`                                |
+| Rulers and guides           | `Shift R` or top bar **Rulers and guides** button |
+| Shortcut guide              | `?` or **File → Keyboard shortcuts**              |
 | Nudge (×10 with Shift)      | Arrow keys                                        |
 | Bring forward / send back   | `Ctrl/⌘ ]` · `Ctrl/⌘ [` (+ `Shift` = front/back)  |
 | Zoom in / out / fit / 100 % | `Ctrl/⌘ +` · `Ctrl/⌘ −` · `Ctrl/⌘ 0` · `Ctrl/⌘ 1` |
