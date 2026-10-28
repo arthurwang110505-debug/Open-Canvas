@@ -19,6 +19,7 @@ import { useAssetServices } from './assets/useAssetServices';
 import { useImageImport } from './assets/useImageImport';
 import { hasElementDrag, readElementDragPayload } from './elements/drag';
 import { CropOverlay } from './canvas/CropOverlay';
+import { Rulers } from './canvas/Rulers';
 import { ZoomControl } from './ZoomControl';
 import { useCanvasController, useEditor, useEditorStore, useNotificationStore } from './hooks';
 import { useDraw } from './draw/DrawContext';
@@ -91,6 +92,8 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
   const isEmpty = useEditor((state) => selectActivePage(state).elements.length === 0);
   const isDrawingRef = useRef(false);
   const pointsRef = useRef<{ x: number; y: number }[]>([]);
+  const altDragSequence = useRef(0);
+  const altDragMergeKey = useRef<string | null>(null);
 
   // Fabric adapter lifecycle
   useEffect(() => {
@@ -103,14 +106,19 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
       {
         onElementsModified: (changes) => {
           const { activePageId, dispatch } = store.getState();
-          dispatch({
-            type: 'element.updateMany',
-            pageId: activePageId,
-            updates: changes.map((change) => ({
-              elementId: change.elementId,
-              patch: change.patch,
-            })),
-          });
+          const mergeKey = altDragMergeKey.current;
+          altDragMergeKey.current = null;
+          dispatch(
+            {
+              type: 'element.updateMany',
+              pageId: activePageId,
+              updates: changes.map((change) => ({
+                elementId: change.elementId,
+                patch: change.patch,
+              })),
+            },
+            mergeKey ? { mergeKey, mergeWindowMs: Number.POSITIVE_INFINITY } : undefined,
+          );
         },
         onTextCommitted: (elementId, text, height) => {
           const { activePageId, dispatch } = store.getState();
@@ -129,6 +137,16 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
           );
         },
         onSelectionChanged: (ids) => store.getState().setSelection(ids),
+        onDuplicateRequested: (ids) => {
+          const { activePageId, dispatch } = store.getState();
+          const mergeKey = `alt-drag:${++altDragSequence.current}`;
+          const outcome = dispatch(
+            { type: 'element.duplicate', pageId: activePageId, elementIds: ids, offset: 0 },
+            { mergeKey },
+          );
+          if (outcome.ok) altDragMergeKey.current = mergeKey;
+          return outcome.ok;
+        },
         onPhotoPanChanged: (elementId) => store.getState().setPhotoPan(elementId),
         onCropRequested: (elementId) => store.getState().beginCrop(elementId),
         onPhotoPanned: (elementId, crop) => {
@@ -137,7 +155,10 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
         },
         onZoomChanged: (zoom) => store.getState().setZoom(zoom),
         onViewportChanged: () => controller.bumpViewport(),
-        onInteractionChanged: (interacting) => controller.setInteracting(interacting),
+        onInteractionChanged: (interacting) => {
+          if (!interacting) altDragMergeKey.current = null;
+          controller.setInteracting(interacting);
+        },
         onTextEditingChanged: (editing) => controller.setEditingText(editing),
         onAssetError: (elementId, assetId, error) => {
           const asset = store.getState().document.assets[assetId];
@@ -282,7 +303,7 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
       const rect = event.currentTarget.getBoundingClientRect();
       setContextMenu({
         x: Math.max(8, Math.min(event.clientX - rect.left, rect.width - 232)),
-        y: Math.max(8, Math.min(event.clientY - rect.top, rect.height - 330)),
+        y: Math.max(8, Math.min(event.clientY - rect.top, rect.height - 560)),
       });
     },
     [controller, drawEnabled, store],
@@ -487,6 +508,7 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
     >
       <canvas ref={canvasRef} aria-label="Design canvas" />
       <CropOverlay />
+      <Rulers />
       <ZoomControl />
       {contextMenu ? (
         <CanvasContextMenu

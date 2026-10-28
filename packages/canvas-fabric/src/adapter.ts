@@ -9,6 +9,7 @@ import type {
   ImageFit,
   ListStyle,
   Page,
+  PageGuide,
   TextTransform,
 } from '@opencanvas/document';
 import {
@@ -56,6 +57,7 @@ import {
   type PathFabricProps,
 } from './mapping';
 import { PLACEHOLDER_SIZE, createPlaceholderBitmap } from './placeholder';
+import { snapMovingBox } from './snapping';
 import { DocumentTextbox } from './textbox';
 
 export interface ElementGeometryChange {
@@ -71,6 +73,8 @@ export interface CanvasAdapterCallbacks {
   /** Fired when auto-sized text changes height because of a property change. */
   onTextMeasured: (elementId: string, measuredHeight: number) => void;
   onSelectionChanged: (elementIds: readonly string[]) => void;
+  /** Alt/Option-drag requests zero-offset copies before Fabric chooses its drag target. */
+  onDuplicateRequested?: (elementIds: readonly string[]) => boolean;
   onZoomChanged: (zoom: number) => void;
   /**
    * A double click asked to adjust the photo inside a frame, or a click elsewhere left that mode.
@@ -163,7 +167,14 @@ interface ImageEntry {
   status: 'loading' | 'ready' | 'error';
   /** Decoded bitmap size once the image is ready. */
   natural: { width: number; height: number } | null;
+  /** Cached source also lets regrouping reuse an already decoded bitmap. */
+  source: ImageSource | null;
   abort: AbortController | null;
+}
+
+interface ImageTarget {
+  object: FabricImage;
+  element: ImageElement | FrameElement;
 }
 
 class AssetLoadFailure extends Error {
@@ -251,6 +262,8 @@ export class FabricCanvasAdapter {
   private readonly iconSignatures = new WeakMap<FabricObject, string>();
   /** What a frame's object was built for; a change means the object must be rebuilt. */
   private readonly frameSignatures = new WeakMap<FabricObject, string>();
+  /** Group children are immutable; a changed array means their Fabric objects must be rebuilt. */
+  private readonly groupChildren = new WeakMap<Group, readonly DesignElement[]>();
   private readonly idsByObject = new WeakMap<FabricObject, string>();
   private readonly pageBackground: Rect;
   /** Cached gradients, keyed by element id (page background uses a reserved id). */
@@ -262,9 +275,13 @@ export class FabricCanvasAdapter {
   private readonly resolveAssetUrl: AssetUrlResolver | null;
   private readonly loadImage: ImageSourceLoader;
   private readonly images = new Map<string, ImageEntry>();
+  /** Unlike `objects`, this also includes images and filled frames nested inside groups. */
+  private readonly imageTargets = new Map<string, ImageTarget>();
   private readonly loadingBitmap = createPlaceholderBitmap('loading');
   private readonly errorBitmap = createPlaceholderBitmap('error');
   private guidelines: AligningGuidelines | null = null;
+  private snapping = true;
+  private pageGuides: readonly PageGuide[] = [];
   private elements = new Map<string, DesignElement>();
   private assets: DesignDocument['assets'] = {};
   private pageSize: DocumentSize = { width: 1, height: 1 };
@@ -428,6 +445,7 @@ export class FabricCanvasAdapter {
     this.applying = true;
     try {
       this.assets = scene.assets;
+      this.pageGuides = scene.page.guides;
       this.syncPage(scene);
       this.syncElements(scene.page.elements);
       this.syncOrder(scene.page.elements);
@@ -478,6 +496,7 @@ export class FabricCanvasAdapter {
   /** Toggles alignment guides and snapping to other objects and the page edges/center. */
   setSnapping(enabled: boolean): void {
     if (this.disposed) return;
+    this.snapping = enabled;
     if (enabled && !this.guidelines) {
       this.guidelines = new AligningGuidelines(this.canvas, {
         margin: SNAP_MARGIN,
@@ -587,6 +606,7 @@ export class FabricCanvasAdapter {
     }
     for (const entry of this.images.values()) entry.abort?.abort();
     this.images.clear();
+    this.imageTargets.clear();
     this.guidelines?.dispose();
     this.guidelines = null;
     this.objects.clear();
@@ -687,11 +707,27 @@ export class FabricCanvasAdapter {
       if (!seen.has(id)) {
         this.canvas.remove(object);
         this.objects.delete(id);
-        this.forgetImage(id);
         this.gradients.delete(id);
       }
     }
     this.elements = nextElements;
+
+    // Grouping and ungrouping keeps element ids but moves them between `objects` and a Group's
+    // children. Clean up only images that left the page entirely; deleting by top-level id here
+    // would abort the newly regrouped object's load.
+    const retainedImageIds = new Set<string>();
+    const collectImageIds = (list: readonly DesignElement[]) => {
+      for (const element of list) {
+        if (element.type === 'image' || (element.type === 'frame' && element.assetId)) {
+          retainedImageIds.add(element.id);
+        }
+        if (element.type === 'group') collectImageIds(element.children);
+      }
+    };
+    collectImageIds(elements);
+    for (const id of this.imageTargets.keys()) {
+      if (!retainedImageIds.has(id)) this.forgetImage(id);
+    }
   }
 
   /**
@@ -705,6 +741,14 @@ export class FabricCanvasAdapter {
     const frame = this.frameSignatures.get(object);
     // A frame switches between a shape and an image object when a photo is added or removed.
     if (element.type === 'frame') return frame === frameSignature(element);
+    if (element.type === 'group') {
+      return (
+        icon === undefined &&
+        frame === undefined &&
+        object instanceof Group &&
+        this.groupChildren.get(object) === element.children
+      );
+    }
     return icon === undefined && frame === undefined;
   }
 
@@ -712,10 +756,7 @@ export class FabricCanvasAdapter {
     element: DesignElement,
     existing: ElementObject | undefined,
   ): ElementObject {
-    if (existing) {
-      this.canvas.remove(existing);
-      this.forgetImage(element.id);
-    }
+    if (existing) this.canvas.remove(existing);
     const object = this.createObject(element);
     this.objects.set(element.id, object);
     this.idsByObject.set(object, element.id);
@@ -1106,99 +1147,38 @@ export class FabricCanvasAdapter {
   private createGroupObject(group: DesignElement & { type: 'group' }): Group {
     const groupCenter = topLeftToCenter(group);
     const childObjects: FabricObject[] = group.children.map((child) => {
-      // Image inside group not yet fully supported (placeholder)
-      if (child.type === 'group') {
-        // Nested group: recursively create
-        const nested = this.createGroupObject(child);
-        // nested is already a Group with absolute positioning? Need to offset to parent group center
-        // For nested, its center absolute is topLeftToCenter(child absolute) -> compute relative
-        const childAbsCenter = topLeftToCenter({
-          x: group.x + child.x,
-          y: group.y + child.y,
-          width: child.width,
-          height: child.height,
-          rotation: child.rotation,
-        });
-        // Reposition nested group to be relative to parent
-        nested.set({
-          left: childAbsCenter.x - groupCenter.x,
-          top: childAbsCenter.y - groupCenter.y,
-        });
-        return nested;
-      }
-      if (child.type === 'image') {
-        // For v1, render image as rect placeholder inside group
-        const mapped = elementToFabricProps(child, this.fabricContext);
-        let obj: FabricObject;
-        if (mapped.kind === 'image') obj = new FabricImage(this.loadingBitmap, mapped.props);
-        else obj = new Rect({ width: child.width, height: child.height, fill: '#e5e7eb' });
-        const childAbsCenter = topLeftToCenter({
-          x: group.x + child.x,
-          y: group.y + child.y,
-          width: child.width,
-          height: child.height,
-          rotation: child.rotation,
-        });
-        obj.set({ left: childAbsCenter.x - groupCenter.x, top: childAbsCenter.y - groupCenter.y });
-        return obj;
-      }
-      const mapped = elementToFabricProps(child, this.fabricContext);
-      let fabricObj: FabricObject;
-      switch (mapped.kind) {
-        case 'rect':
-          fabricObj = new Rect({ ...mapped.props, fill: this.paint(child.id, mapped.props.fill) });
-          break;
-        case 'ellipse':
-          fabricObj = new Ellipse({
-            ...mapped.props,
-            fill: this.paint(child.id, mapped.props.fill),
-          });
-          break;
-        case 'text':
-          fabricObj = new DocumentTextbox(mapped.props.text, {
-            ...mapped.props,
-            splitByGrapheme: false,
-          });
-          break;
-        case 'image':
-          fabricObj = new FabricImage(this.loadingBitmap, mapped.props);
-          break;
-        case 'path': {
-          const { path, fill, ...rest } = mapped.props;
-          fabricObj = new Path(path, { ...rest, fill: this.paint(child.id, fill) });
-          break;
-        }
-        case 'icon':
-          if (child.type !== 'icon') throw new Error('Icon props require an icon element.');
-          fabricObj = this.createIconObject(child);
-          break;
-        case 'frame':
-          if (child.type !== 'frame') throw new Error('Frame props require a frame element.');
-          // Inside a group only the mask is drawn; grouped photos load lazily like grouped images.
-          fabricObj = this.buildFrame(mapped.props, child);
-          break;
-      }
-      const childAbsCenter = topLeftToCenter({
+      // Use the same recursive factory as top-level elements. In particular, grouped images and
+      // filled frames are real FabricImage objects with the same crop, mask and filters.
+      const object = this.createObject(child);
+      const childCenter = topLeftToCenter({
         x: group.x + child.x,
         y: group.y + child.y,
         width: child.width,
         height: child.height,
         rotation: child.rotation,
       });
-      // Override to group-relative coordinates (Fabric Group expects children relative to group center)
-      fabricObj.set({
-        left: childAbsCenter.x - groupCenter.x,
-        top: childAbsCenter.y - groupCenter.y,
+      object.set({
+        // Fabric Group positions children relative to the group's centre.
+        left: childCenter.x - groupCenter.x,
+        top: childCenter.y - groupCenter.y,
+        // Children are manipulated through the group, never as independent canvas objects.
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
       });
-      // Individual children inside a group should not be interactive
-      fabricObj.set({ selectable: false, evented: false, hasControls: false, hasBorders: false });
-      return fabricObj;
+      if (
+        object instanceof FabricImage &&
+        (child.type === 'image' || (child.type === 'frame' && child.assetId))
+      ) {
+        this.ensureImageLoading(object, child);
+      }
+      return object;
     });
 
-    const commonCenter = topLeftToCenter(group);
-    return new Group(childObjects, {
-      left: commonCenter.x,
-      top: commonCenter.y,
+    const object = new Group(childObjects, {
+      left: groupCenter.x,
+      top: groupCenter.y,
       angle: group.rotation,
       opacity: group.opacity,
       visible: group.visible,
@@ -1210,7 +1190,10 @@ export class FabricCanvasAdapter {
       lockRotation: group.locked,
       lockScalingX: group.locked,
       lockScalingY: group.locked,
+      subTargetCheck: false,
     });
+    this.groupChildren.set(object, group.children);
+    return object;
   }
 
   private readonly fabricContext = {
@@ -1398,9 +1381,9 @@ export class FabricCanvasAdapter {
 
   private forgetImage(elementId: string): void {
     const entry = this.images.get(elementId);
-    if (!entry) return;
-    entry.abort?.abort();
+    entry?.abort?.abort();
     this.images.delete(elementId);
+    this.imageTargets.delete(elementId);
   }
 
   /**
@@ -1408,12 +1391,17 @@ export class FabricCanvasAdapter {
    * A failed load is not retried until the element points at a different asset, so a
    * broken file does not trigger a request on every render.
    */
-  private ensureImageLoading(
-    object: FabricImage,
-    element: { id: string; assetId?: string | undefined },
-  ): void {
+  private ensureImageLoading(object: FabricImage, element: ImageElement | FrameElement): void {
+    this.imageTargets.set(element.id, { object, element });
     const current = this.images.get(element.id);
-    if (current?.assetId === element.assetId) return;
+    if (current && current.assetId === element.assetId) {
+      // Regrouping creates a new Fabric object for the same document element. Reuse the decoded
+      // source instead of leaving that object on the loading placeholder or fetching it again.
+      if (current.source && object.getElement() !== current.source) {
+        object.setElement(current.source);
+      }
+      return;
+    }
     current?.abort?.abort();
 
     const asset = element.assetId === undefined ? undefined : this.assets[element.assetId];
@@ -1422,6 +1410,7 @@ export class FabricCanvasAdapter {
         assetId: element.assetId ?? '',
         status: 'error',
         natural: null,
+        source: this.errorBitmap,
         abort: null,
       });
       object.setElement(this.errorBitmap);
@@ -1438,6 +1427,7 @@ export class FabricCanvasAdapter {
       assetId: asset.id,
       status: 'loading',
       natural: null,
+      source: null,
       abort: controller,
     });
     if (object.getElement() !== this.loadingBitmap) object.setElement(this.loadingBitmap);
@@ -1503,16 +1493,24 @@ export class FabricCanvasAdapter {
     if (!entry) return;
     entry.status = outcome.status;
     entry.natural = outcome.natural;
+    entry.source = source;
     entry.abort = null;
-    const object = this.objects.get(elementId);
-    const element = this.elements.get(elementId);
-    const loadsImage = element?.type === 'image' || element?.type === 'frame';
-    if (!(object instanceof FabricImage) || !loadsImage) return;
+    const target = this.imageTargets.get(elementId);
+    if (!target) return;
+    const { object, element } = target;
     this.applying = true;
     try {
+      // Applying image fit updates crop and scale, but a nested object must keep its position
+      // relative to the parent Group rather than adopting page-level coordinates.
+      const { left, top } = object;
       object.setElement(source);
       this.applyElement(object, element);
+      object.set({ left, top });
       object.setCoords();
+      if (object.group) {
+        object.group.set('dirty', true);
+        object.group.setCoords();
+      }
     } finally {
       this.applying = false;
     }
@@ -1523,7 +1521,70 @@ export class FabricCanvasAdapter {
   // Fabric events -> callbacks
   // ---------------------------------------------------------------------------
 
+  private snapMovingTarget(target: FabricObject | undefined): void {
+    if (this.applying || !this.snapping || !target || this.photoPanId || this.cropEdit) return;
+    const targets = target instanceof ActiveSelection ? target.getObjects() : [target];
+    const movingIds = new Set(
+      targets
+        .map((object) => this.idsByObject.get(object))
+        .filter((id): id is string => id !== undefined),
+    );
+    const moving = target.getBoundingRect();
+    const others = [];
+    for (const [id, object] of this.objects) {
+      if (movingIds.has(id) || !object.visible) continue;
+      others.push(object.getBoundingRect());
+    }
+    const { dx, dy } = snapMovingBox(
+      moving,
+      others,
+      this.pageGuides,
+      SNAP_MARGIN / this.canvas.getZoom(),
+    );
+    if (dx === 0 && dy === 0) return;
+    target.set({ left: target.left + dx, top: target.top + dy });
+    target.setCoords();
+    this.canvas.requestRenderAll();
+  }
+
+  private startDuplicateDrag(event: {
+    e: { altKey: boolean; button?: number };
+    target?: FabricObject | undefined;
+    viewportPoint: Point;
+  }): void {
+    if (
+      this.applying ||
+      !event.e.altKey ||
+      (event.e.button ?? 0) !== 0 ||
+      this.photoPanId ||
+      this.cropEdit ||
+      this.isEditingText() ||
+      !this.callbacks.onDuplicateRequested
+    ) {
+      return;
+    }
+    const target = event.target;
+    // Alt on a handle keeps Fabric's usual centred-transform meaning; only body drags duplicate.
+    if (!target || target.findControl(event.viewportPoint, false)) return;
+    const targets = target instanceof ActiveSelection ? target.getObjects() : [target];
+    const ids: string[] = [];
+    for (const object of targets) {
+      const id = this.idsByObject.get(object);
+      const element = id === undefined ? undefined : this.elements.get(id);
+      if (!id || !element || element.locked) return;
+      ids.push(id);
+    }
+    if (ids.length > 0 && this.callbacks.onDuplicateRequested(ids)) {
+      // Fabric cached the original target before `mouse:down:before`. Re-resolve it so the new
+      // zero-offset copy, now selected and on top, becomes the object transformed by this drag.
+      this.canvas._resetTransformEventData();
+    }
+  }
+
   private bindEvents(): void {
+    this.canvas.on('mouse:down:before', (event) => this.startDuplicateDrag(event));
+    this.canvas.on('object:moving', (event) => this.snapMovingTarget(event.target));
+
     this.canvas.on('object:modified', (event) => {
       if (this.applying) return;
       const target = event.target;

@@ -6,6 +6,7 @@ import type {
   Fill,
   IconElement,
   ImageElement,
+  PageGuide,
   PathElement,
   RectElement,
   TextElement,
@@ -38,6 +39,10 @@ export type EditorCommand =
   | { type: 'document.rename'; name: string }
   | { type: 'document.resize'; width: number; height: number }
   | { type: 'page.setBackground'; pageId: string; background: Fill }
+  | { type: 'page.addGuide'; pageId: string; guide: PageGuide }
+  | { type: 'page.updateGuide'; pageId: string; guideId: string; position: number }
+  | { type: 'page.removeGuide'; pageId: string; guideId: string }
+  | { type: 'page.clearGuides'; pageId: string }
   /** Adds a page, optionally seeded with template content (background and elements). */
   | {
       type: 'page.add';
@@ -79,6 +84,14 @@ export type EditorCommand =
       offset?: number;
       /** Optional ids for the copies (same order as `elementIds`); generated when omitted. */
       newIds?: readonly string[];
+    }
+  /** Clones copied elements onto a page with fresh ids, including every nested group child. */
+  | {
+      type: 'element.paste';
+      pageId: string;
+      elements: readonly DesignElement[];
+      /** Offset from the copied roots. Increase it for successive pastes. Defaults to 20px. */
+      offset?: number;
     }
   | { type: 'element.reorder'; pageId: string; elementId: string; to: ReorderTarget }
   | { type: 'element.group'; pageId: string; elementIds: readonly string[]; groupId?: string }

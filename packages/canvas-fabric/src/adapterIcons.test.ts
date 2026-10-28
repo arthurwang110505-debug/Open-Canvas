@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { FabricCanvasAdapter, type CanvasAdapterCallbacks } from './adapter';
 
 function makePage(elements: DesignElement[]): Page {
-  return { id: 'page_1', background: { type: 'solid', color: '#ffffff' }, elements };
+  return { id: 'page_1', background: { type: 'solid', color: '#ffffff' }, elements, guides: [] };
 }
 
 const size = { width: 1080, height: 1080 };

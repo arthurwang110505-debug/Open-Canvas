@@ -370,13 +370,37 @@ export const AssetSchema = ImageAssetSchema;
 // Pages & document
 // ---------------------------------------------------------------------------
 
-export const PageSchema = z.object({
+export const PageGuideSchema = z.object({
   id: IdSchema,
-  name: z.string().max(LIMITS.maxNameLength).optional(),
-  background: FillSchema.default({ type: 'solid', color: '#ffffff' }),
-  /** Z-order is the array order: index 0 is the back-most element. */
-  elements: z.array(ElementSchema).max(LIMITS.maxElementsPerPage),
+  /** Horizontal guides use a page Y position; vertical guides use X. */
+  axis: z.enum(['horizontal', 'vertical']),
+  position: CoordinateSchema,
+  kind: z.enum(['margin', 'bleed']).default('margin'),
 });
+
+export const PageSchema = z
+  .object({
+    id: IdSchema,
+    name: z.string().max(LIMITS.maxNameLength).optional(),
+    background: FillSchema.default({ type: 'solid', color: '#ffffff' }),
+    /** Z-order is the array order: index 0 is the back-most element. */
+    elements: z.array(ElementSchema).max(LIMITS.maxElementsPerPage),
+    /** Editor-only overlays. Exporters deliberately ignore these non-printing guides. */
+    guides: z.array(PageGuideSchema).max(LIMITS.maxGuidesPerPage).default([]),
+  })
+  .superRefine((page, ctx) => {
+    const ids = new Set<string>();
+    page.guides.forEach((guide, index) => {
+      if (ids.has(guide.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['guides', index, 'id'],
+          message: `Duplicate guide id "${guide.id}"`,
+        });
+      }
+      ids.add(guide.id);
+    });
+  });
 
 export const DocumentSizeSchema = z.object({
   width: CanvasDimensionSchema,
@@ -477,6 +501,7 @@ export type AssetSource = z.infer<typeof AssetSourceSchema>;
 export type ImageAsset = z.infer<typeof ImageAssetSchema>;
 export type Asset = z.infer<typeof AssetSchema>;
 
+export type PageGuide = z.infer<typeof PageGuideSchema>;
 export type Page = z.infer<typeof PageSchema>;
 export type DocumentSize = z.infer<typeof DocumentSizeSchema>;
 export type DocumentMetadata = z.infer<typeof DocumentMetadataSchema>;

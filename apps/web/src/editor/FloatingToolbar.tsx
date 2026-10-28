@@ -16,6 +16,7 @@ import {
   ArrowDownToLine,
   ArrowUp,
   ArrowUpToLine,
+  ClipboardPaste,
   Copy,
   Eye,
   EyeOff,
@@ -23,6 +24,8 @@ import {
   Lock,
   LockOpen,
   MoreHorizontal,
+  Paintbrush,
+  Scissors,
   SlidersHorizontal,
   Trash2,
   Ungroup,
@@ -49,6 +52,11 @@ interface FloatingToolbarProps {
 export function FloatingToolbar({ onOpenProperties }: FloatingToolbarProps) {
   const selected = useEditor(useShallow(selectSelectedElements));
   const {
+    copySelection,
+    cutSelection,
+    pasteClipboard,
+    copyStyle,
+    pasteStyle,
     duplicateSelection,
     deleteSelection,
     updateSelection,
@@ -56,6 +64,8 @@ export function FloatingToolbar({ onOpenProperties }: FloatingToolbarProps) {
     groupSelection,
     ungroupSelection,
   } = useEditorActions();
+  const canPaste = useEditor((state) => state.clipboard !== null);
+  const canPasteStyle = useEditor((state) => state.styleClipboard !== null);
   const canvas = useCanvasController();
   const interacting = useCanvasState((state) => state.interacting);
   const editingText = useCanvasState((state) => state.editingText);
@@ -170,6 +180,33 @@ export function FloatingToolbar({ onOpenProperties }: FloatingToolbarProps) {
           </Button>
         </MenuTrigger>
         <MenuContent align="end" aria-label="Selection actions menu">
+          <MenuLabel>Edit</MenuLabel>
+          <MenuItem icon={<Copy />} hint="Ctrl C" onSelect={copySelection}>
+            Copy
+          </MenuItem>
+          <MenuItem icon={<Scissors />} hint="Ctrl X" onSelect={cutSelection}>
+            Cut
+          </MenuItem>
+          <MenuItem
+            icon={<ClipboardPaste />}
+            hint="Ctrl V"
+            disabled={!canPaste}
+            onSelect={pasteClipboard}
+          >
+            Paste
+          </MenuItem>
+          <MenuItem icon={<Paintbrush />} hint="Ctrl Alt C" disabled={!single} onSelect={copyStyle}>
+            Copy style
+          </MenuItem>
+          <MenuItem
+            icon={<Paintbrush />}
+            hint="Ctrl Alt V"
+            disabled={!canPasteStyle}
+            onSelect={pasteStyle}
+          >
+            Paste style
+          </MenuItem>
+          <MenuSeparator />
           <MenuLabel>Arrange</MenuLabel>
           <MenuItem icon={<ArrowUpToLine />} onSelect={() => reorderSelection('front')}>
             Bring to front

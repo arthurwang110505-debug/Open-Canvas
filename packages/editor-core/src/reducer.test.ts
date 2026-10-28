@@ -1,7 +1,10 @@
 import {
   createBlankDocument,
+  createFrameElement,
+  createGroupElement,
   createRectElement,
   createTextElement,
+  DocumentSchema,
   type DesignDocument,
 } from '@opencanvas/document';
 import { describe, expect, it } from 'vitest';
@@ -31,6 +34,17 @@ function elementIds(doc: DesignDocument): string[] {
 function expectOk<T, E>(result: { ok: true; value: T } | { ok: false; error: E }): T {
   if (!result.ok) throw new Error(`Expected ok result, got ${JSON.stringify(result.error)}`);
   return result.value;
+}
+
+function nestedGroup() {
+  const inner = createGroupElement(
+    [createRectElement({ id: 'inner-child', width: 80, height: 80 })],
+    { id: 'inner-group' },
+  );
+  return createGroupElement(
+    [inner, createRectElement({ id: 'outer-child', x: 120, width: 60, height: 60 })],
+    { id: 'outer-group' },
+  );
 }
 
 describe('applyCommand', () => {
@@ -191,6 +205,75 @@ describe('applyCommand', () => {
     );
     expect(elementIds(duplicated)).toEqual(['a', 'b', 't', 'a2']);
     expect(duplicated.pages[0]?.elements[3]).toMatchObject({ id: 'a2', x: 15, y: 15 });
+  });
+
+  it('duplicates complete group trees with document-wide unique ids', () => {
+    const { doc, pageId } = fixture();
+    const withGroup = expectOk(
+      applyCommand(doc, { type: 'element.add', pageId, element: nestedGroup() }),
+    );
+    const duplicated = expectOk(
+      applyCommand(withGroup, {
+        type: 'element.duplicate',
+        pageId,
+        elementIds: ['outer-group'],
+        newIds: ['outer-copy'],
+        offset: 0,
+      }),
+    );
+
+    const copy = duplicated.pages[0]?.elements.at(-1);
+    expect(copy).toMatchObject({ id: 'outer-copy', type: 'group', x: 0, y: 0 });
+    if (copy?.type !== 'group') throw new Error('expected copied group');
+    expect(copy.children.map((child) => child.id)).not.toEqual(['inner-group', 'outer-child']);
+    expect(DocumentSchema.safeParse(duplicated).success).toBe(true);
+  });
+
+  it('pastes copied elements as new validated element trees', () => {
+    const { doc, pageId } = fixture();
+    const pasted = expectOk(
+      applyCommand(doc, {
+        type: 'element.paste',
+        pageId,
+        elements: [
+          nestedGroup(),
+          createTextElement({ id: 'copied-text', text: 'Hi', x: 200, y: 40 }),
+        ],
+        offset: 25,
+      }),
+    );
+
+    expect(pasted.pages[0]?.elements).toHaveLength(5);
+    expect(pasted.pages[0]?.elements.at(-1)).toMatchObject({
+      type: 'text',
+      text: 'Hi',
+      x: 225,
+      y: 65,
+    });
+    expect(DocumentSchema.safeParse(pasted).success).toBe(true);
+  });
+
+  it('rejects pasted groups that reference missing assets', () => {
+    const { doc, pageId } = fixture();
+    const group = createGroupElement(
+      [createFrameElement({ id: 'filled-frame', assetId: 'missing-asset' })],
+      { id: 'asset-group' },
+    );
+    const result = applyCommand(doc, { type: 'element.paste', pageId, elements: [group] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('asset-not-found');
+  });
+
+  it('regenerates nested ids when duplicating a page', () => {
+    const { doc, pageId } = fixture();
+    const withGroup = expectOk(
+      applyCommand(doc, { type: 'element.add', pageId, element: nestedGroup() }),
+    );
+    const duplicated = expectOk(
+      applyCommand(withGroup, { type: 'page.duplicate', pageId, newPageId: 'page-copy' }),
+    );
+    expect(duplicated.pages).toHaveLength(2);
+    expect(DocumentSchema.safeParse(duplicated).success).toBe(true);
   });
 
   it('reorders elements within the page', () => {

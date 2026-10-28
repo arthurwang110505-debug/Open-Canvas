@@ -4,7 +4,9 @@ import {
   ElementSchema,
   GroupElementSchema,
   LIMITS,
+  PageGuideSchema,
   PageSchema,
+  collectElementIds,
   collectReferencedAssetIds,
   err,
   findElementIndex,
@@ -31,6 +33,8 @@ type Outcome = Result<DesignDocument, CommandError>;
 /** Read-only view of the document that page-level commands may consult. */
 interface PageContext {
   assets: DesignDocument['assets'];
+  /** Lazily collected because only cloning commands need document-wide id allocation. */
+  elementIds: () => Set<string>;
 }
 
 function withPage(
@@ -48,7 +52,14 @@ function withPage(
       command: commandType,
     });
   }
-  const updated = update(page, { assets: document.assets });
+  let elementIds: Set<string> | undefined;
+  const updated = update(page, {
+    assets: document.assets,
+    elementIds: () => {
+      elementIds ??= collectElementIds(document);
+      return elementIds;
+    },
+  });
   if (!updated.ok) return updated;
   // No-op page updates must not produce a new document (and thus a new history entry).
   if (updated.value === page) return ok(document);
@@ -57,18 +68,55 @@ function withPage(
   return ok({ ...document, pages });
 }
 
-/** Image elements may only point at registered assets; other types never carry `assetId`. */
+/** Images, filled frames and every nested group child may only point at registered assets. */
 function checkAssetReference(
   element: DesignElement,
   context: PageContext,
   commandType: EditorCommand['type'],
 ): CommandError | null {
-  if (element.type !== 'image' || element.assetId in context.assets) return null;
-  return {
-    code: 'asset-not-found',
-    message: `Asset "${element.assetId}" is not registered in this document.`,
-    command: commandType,
-  };
+  const assetId =
+    element.type === 'image' || element.type === 'frame' ? element.assetId : undefined;
+  if (assetId !== undefined && !(assetId in context.assets)) {
+    return {
+      code: 'asset-not-found',
+      message: `Asset "${assetId}" is not registered in this document.`,
+      command: commandType,
+    };
+  }
+  if (element.type === 'group') {
+    for (const child of element.children) {
+      const error = checkAssetReference(child, context, commandType);
+      if (error) return error;
+    }
+  }
+  return null;
+}
+
+function freshElementId(usedIds: Set<string>): string {
+  let id = generateId('el');
+  while (usedIds.has(id)) id = generateId('el');
+  return id;
+}
+
+/** Clones a complete element tree. Only roots receive a positional offset, never group children. */
+function cloneElementWithNewIds(
+  element: DesignElement,
+  usedIds: Set<string>,
+  rootId?: string,
+  offset = 0,
+): DesignElement {
+  const id = rootId ?? freshElementId(usedIds);
+  usedIds.add(id);
+  if (element.type === 'group') {
+    return {
+      ...element,
+      id,
+      x: element.x + offset,
+      y: element.y + offset,
+      children: element.children.map((child) => cloneElementWithNewIds(child, usedIds)),
+    };
+  }
+  return { ...element, id, x: element.x + offset, y: element.y + offset };
 }
 
 function patchElement(
@@ -112,6 +160,71 @@ function applyToPage(
   switch (command.type) {
     case 'page.setBackground':
       return ok({ ...page, background: command.background });
+
+    case 'page.addGuide': {
+      if (page.guides.length >= LIMITS.maxGuidesPerPage) {
+        return err({
+          code: 'invalid-command',
+          message: `A page may hold at most ${LIMITS.maxGuidesPerPage} guides.`,
+          command: command.type,
+        });
+      }
+      if (page.guides.some((guide) => guide.id === command.guide.id)) {
+        return err({
+          code: 'invalid-command',
+          message: `Guide id "${command.guide.id}" already exists on this page.`,
+          command: command.type,
+        });
+      }
+      const parsed = PageGuideSchema.safeParse(command.guide);
+      if (!parsed.success) {
+        return err({
+          code: 'invalid-command',
+          message: 'The guide is invalid.',
+          command: command.type,
+        });
+      }
+      return ok({ ...page, guides: [...page.guides, parsed.data] });
+    }
+
+    case 'page.updateGuide': {
+      const index = page.guides.findIndex((guide) => guide.id === command.guideId);
+      const guide = page.guides[index];
+      if (!guide) {
+        return err({
+          code: 'invalid-command',
+          message: `Guide "${command.guideId}" does not exist on this page.`,
+          command: command.type,
+        });
+      }
+      const position = PageGuideSchema.shape.position.safeParse(command.position);
+      if (!position.success) {
+        return err({
+          code: 'invalid-command',
+          message: 'The guide position is invalid.',
+          command: command.type,
+        });
+      }
+      if (guide.position === position.data) return ok(page);
+      const guides = page.guides.slice();
+      guides[index] = { ...guide, position: position.data };
+      return ok({ ...page, guides });
+    }
+
+    case 'page.removeGuide': {
+      const guides = page.guides.filter((guide) => guide.id !== command.guideId);
+      if (guides.length === page.guides.length) {
+        return err({
+          code: 'invalid-command',
+          message: `Guide "${command.guideId}" does not exist on this page.`,
+          command: command.type,
+        });
+      }
+      return ok({ ...page, guides });
+    }
+
+    case 'page.clearGuides':
+      return page.guides.length === 0 ? ok(page) : ok({ ...page, guides: [] });
 
     case 'page.replaceContent': {
       const parsed = PageSchema.safeParse({
@@ -221,24 +334,80 @@ function applyToPage(
 
     case 'element.duplicate': {
       const offset = command.offset ?? 20;
-      const copies: DesignElement[] = [];
-      command.elementIds.forEach((elementId, i) => {
-        const source = page.elements.find((element) => element.id === elementId);
-        if (!source) return;
-        copies.push({
-          ...source,
-          id: command.newIds?.[i] ?? generateId('el'),
-          x: source.x + offset,
-          y: source.y + offset,
-        });
-      });
-      if (copies.length === 0) {
+      const selectedIds = new Set(command.elementIds);
+      const sources = page.elements.filter((element) => selectedIds.has(element.id));
+      if (sources.length === 0) {
         return err({
           code: 'element-not-found',
           message: 'None of the requested elements exist on this page.',
           command: command.type,
         });
       }
+      if (page.elements.length + sources.length > LIMITS.maxElementsPerPage) {
+        return err({
+          code: 'invalid-command',
+          message: `A page may hold at most ${LIMITS.maxElementsPerPage} elements.`,
+          command: command.type,
+        });
+      }
+      const usedIds = context.elementIds();
+      const requestedIds = new Set<string>();
+      for (const id of command.newIds ?? []) {
+        if (usedIds.has(id) || requestedIds.has(id)) {
+          return err({
+            code: 'invalid-command',
+            message: `Element id "${id}" already exists or is repeated.`,
+            command: command.type,
+          });
+        }
+        requestedIds.add(id);
+      }
+      const rootIds = new Map(
+        command.elementIds.map((id, index) => [id, command.newIds?.[index]] as const),
+      );
+      const copies = sources.map((source) =>
+        cloneElementWithNewIds(source, usedIds, rootIds.get(source.id), offset),
+      );
+      return ok({ ...page, elements: [...page.elements, ...copies] });
+    }
+
+    case 'element.paste': {
+      if (command.elements.length === 0) {
+        return err({
+          code: 'invalid-command',
+          message: 'There are no copied elements to paste.',
+          command: command.type,
+        });
+      }
+      if (page.elements.length + command.elements.length > LIMITS.maxElementsPerPage) {
+        return err({
+          code: 'invalid-command',
+          message: `A page may hold at most ${LIMITS.maxElementsPerPage} elements.`,
+          command: command.type,
+        });
+      }
+      const sources: DesignElement[] = [];
+      for (const source of command.elements) {
+        const parsed = ElementSchema.safeParse(source);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          return err({
+            code: 'invalid-command',
+            message: issue
+              ? `Invalid copied element "${issue.path.map(String).join('.')}": ${issue.message}`
+              : 'A copied element is invalid.',
+            command: command.type,
+          });
+        }
+        const assetError = checkAssetReference(parsed.data, context, command.type);
+        if (assetError) return err(assetError);
+        sources.push(parsed.data);
+      }
+      const usedIds = context.elementIds();
+      const offset = command.offset ?? 20;
+      const copies = sources.map((source) =>
+        cloneElementWithNewIds(source, usedIds, undefined, offset),
+      );
       return ok({ ...page, elements: [...page.elements, ...copies] });
     }
 
@@ -491,6 +660,7 @@ export function applyCommand(
         id: newPageId,
         background: command.background ?? { type: 'solid', color: '#ffffff' },
         elements: command.elements ? [...command.elements] : [],
+        guides: [],
       };
       const parsed = PageSchema.safeParse(candidate);
       if (!parsed.success) {
@@ -553,13 +723,17 @@ export function applyCommand(
           command: command.type,
         });
       }
-      // Clone elements with new ids
-      const clonedElements = source.elements.map((el) => ({ ...el, id: generateId('el') }));
+      // Clone complete element trees so nested children cannot collide with the source page.
+      const usedIds = collectElementIds(document);
+      const clonedElements = source.elements.map((element) =>
+        cloneElementWithNewIds(element, usedIds),
+      );
       const newPage: Page = {
         id: newPageId,
         ...(source.name ? { name: source.name } : {}),
         background: source.background,
         elements: clonedElements,
+        guides: source.guides.map((guide) => ({ ...guide })),
       };
       const pages = document.pages.slice();
       pages.splice(idx + 1, 0, newPage);
@@ -606,12 +780,17 @@ export function applyCommand(
       break;
     }
     case 'page.setBackground':
+    case 'page.addGuide':
+    case 'page.updateGuide':
+    case 'page.removeGuide':
+    case 'page.clearGuides':
     case 'page.replaceContent':
     case 'element.add':
     case 'element.update':
     case 'element.updateMany':
     case 'element.delete':
     case 'element.duplicate':
+    case 'element.paste':
     case 'element.reorder':
     case 'element.group':
     case 'element.ungroup':

@@ -2,6 +2,7 @@ import { selectSelectedElements } from '@opencanvas/editor-core';
 import {
   ArrowDownToLine,
   ArrowUpToLine,
+  ClipboardPaste,
   Copy,
   Eye,
   EyeOff,
@@ -9,6 +10,8 @@ import {
   Group,
   Lock,
   LockOpen,
+  Paintbrush,
+  Scissors,
   SlidersHorizontal,
   Trash2,
   Type,
@@ -36,6 +39,9 @@ interface MenuAction {
   label: string;
   icon: React.ReactNode;
   run: () => void;
+  hint?: string;
+  disabled?: boolean;
+  separatorBefore?: boolean;
   destructive?: boolean;
 }
 
@@ -49,10 +55,17 @@ export function CanvasContextMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const selected = useEditor(useShallow(selectSelectedElements));
   const activePageId = useEditor((state) => state.activePageId);
+  const canPaste = useEditor((state) => state.clipboard !== null);
+  const canPasteStyle = useEditor((state) => state.styleClipboard !== null);
   const store = useEditorStore();
   const {
     addText,
     addShape,
+    copySelection,
+    cutSelection,
+    pasteClipboard,
+    copyStyle,
+    pasteStyle,
     duplicateSelection,
     deleteSelection,
     updateSelection,
@@ -62,7 +75,7 @@ export function CanvasContextMenu({
   } = useEditorActions();
 
   useEffect(() => {
-    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])')?.focus();
     const onPointerDown = (event: PointerEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) onClose();
     };
@@ -87,6 +100,13 @@ export function CanvasContextMenu({
   const actions: MenuAction[] =
     selected.length === 0
       ? [
+          {
+            label: 'Paste',
+            icon: <ClipboardPaste />,
+            hint: 'Ctrl V',
+            run: pasteClipboard,
+            disabled: !canPaste,
+          },
           { label: 'Add heading', icon: <Type />, run: () => addText('heading') },
           {
             label: 'Add rectangle',
@@ -101,11 +121,41 @@ export function CanvasContextMenu({
           { label: 'Page settings', icon: <SlidersHorizontal />, run: onOpenPageSettings },
         ]
       : [
-          { label: 'Duplicate', icon: <Copy />, run: duplicateSelection },
+          { label: 'Copy', icon: <Copy />, hint: 'Ctrl C', run: copySelection },
+          { label: 'Cut', icon: <Scissors />, hint: 'Ctrl X', run: cutSelection },
+          {
+            label: 'Paste',
+            icon: <ClipboardPaste />,
+            hint: 'Ctrl V',
+            run: pasteClipboard,
+            disabled: !canPaste,
+          },
+          {
+            label: 'Duplicate',
+            icon: <Copy />,
+            hint: 'Ctrl D',
+            run: duplicateSelection,
+            separatorBefore: true,
+          },
+          {
+            label: 'Copy style',
+            icon: <Paintbrush />,
+            hint: 'Ctrl Alt C',
+            run: copyStyle,
+            disabled: !single,
+          },
+          {
+            label: 'Paste style',
+            icon: <Paintbrush />,
+            hint: 'Ctrl Alt V',
+            run: pasteStyle,
+            disabled: !canPasteStyle,
+          },
           {
             label: allLocked ? 'Unlock' : 'Lock',
             icon: allLocked ? <LockOpen /> : <Lock />,
             run: () => updateSelection({ locked: !allLocked }),
+            separatorBefore: true,
           },
           {
             label: allHidden ? 'Show' : 'Hide',
@@ -121,10 +171,17 @@ export function CanvasContextMenu({
             label: 'Bring to front',
             icon: <ArrowUpToLine />,
             run: () => reorderSelection('front'),
+            separatorBefore: true,
           },
           { label: 'Send to back', icon: <ArrowDownToLine />, run: () => reorderSelection('back') },
           { label: 'Edit details', icon: <SlidersHorizontal />, run: onOpenProperties },
-          { label: 'Delete', icon: <Trash2 />, run: deleteSelection, destructive: true },
+          {
+            label: 'Delete',
+            icon: <Trash2 />,
+            run: deleteSelection,
+            destructive: true,
+            separatorBefore: true,
+          },
         ];
 
   return (
@@ -134,26 +191,32 @@ export function CanvasContextMenu({
       aria-label={selected.length === 0 ? 'Page context menu' : 'Selection context menu'}
       onContextMenu={(event) => event.preventDefault()}
       style={{ left: position.x, top: position.y }}
-      className="absolute z-50 min-w-48 rounded-xl border border-border bg-white p-1.5 shadow-[0_12px_32px_rgba(16,24,40,0.18)]"
+      className="absolute z-50 min-w-60 rounded-xl border border-border bg-white p-1.5 shadow-[0_12px_32px_rgba(16,24,40,0.18)]"
     >
-      {actions.map((action, index) => (
+      {actions.map((action) => (
         <div key={action.label}>
-          {selected.length > 0 && (index === 4 || index === 6) ? (
+          {action.separatorBefore ? (
             <div role="separator" className="mx-1 my-1 h-px bg-border" />
           ) : null}
           <button
             type="button"
             role="menuitem"
+            disabled={action.disabled}
             onClick={() => {
               action.run();
               onClose();
             }}
-            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium outline-none transition-colors hover:bg-muted focus-visible:bg-muted ${action.destructive ? 'text-destructive' : 'text-foreground'}`}
+            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium outline-none transition-colors hover:bg-muted focus-visible:bg-muted disabled:pointer-events-none disabled:opacity-45 ${action.destructive ? 'text-destructive' : 'text-foreground'}`}
           >
             <span className="flex size-4 items-center justify-center text-muted-foreground [&_svg]:size-4">
               {action.icon}
             </span>
             <span className="flex-1">{action.label}</span>
+            {action.hint ? (
+              <span className="text-[10px] font-normal whitespace-nowrap text-muted-foreground">
+                {action.hint}
+              </span>
+            ) : null}
           </button>
         </div>
       ))}

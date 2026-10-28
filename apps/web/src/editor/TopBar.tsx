@@ -11,11 +11,23 @@ import {
   Separator,
   Tooltip,
 } from '@opencanvas/ui';
-import { FileText, Magnet, MonitorPlay, Redo2, Ruler, Save, Share2, Undo2 } from 'lucide-react';
+import {
+  FileText,
+  History,
+  Keyboard,
+  Magnet,
+  MonitorPlay,
+  Redo2,
+  Ruler,
+  Save,
+  Share2,
+  Undo2,
+} from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 
 import { useEditorActions } from './actions';
 import { ExportControls } from './ExportControls';
+import { HistoryPanel } from './panels/HistoryPanel';
 import { useCanvasController, useEditor, usePersistenceState, useSnappingEnabled } from './hooks';
 import { ShareDialog } from '../share/ShareDialog';
 import { PresentMode } from '../share/PresentMode';
@@ -89,6 +101,26 @@ function SnapToggle() {
   );
 }
 
+function RulerToggle() {
+  const visible = useEditor((state) => state.rulersVisible);
+  const { toggleRulers } = useEditorActions();
+  return (
+    <Tooltip
+      content={visible ? 'Hide rulers and guides (Shift R)' : 'Show rulers and guides (Shift R)'}
+    >
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Toggle rulers and guides"
+        pressed={visible}
+        onClick={toggleRulers}
+      >
+        <Ruler />
+      </Button>
+    </Tooltip>
+  );
+}
+
 function SaveStatus() {
   const dirty = useEditor((state) => state.dirty);
   const status = usePersistenceState((state) => state.status);
@@ -139,16 +171,18 @@ function SaveStatus() {
 
 interface TopBarProps {
   onOpenPanel: (panel: SidebarTab) => void;
+  onOpenShortcuts: () => void;
 }
 
-export function TopBar({ onOpenPanel }: TopBarProps) {
+export function TopBar({ onOpenPanel, onOpenShortcuts }: TopBarProps) {
   const canUndo = useEditor(selectCanUndo);
   const canRedo = useEditor(selectCanRedo);
-  const { undo, redo } = useEditorActions();
+  const { undo, redo, toggleRulers } = useEditorActions();
   const document = useEditor((s) => s.document);
   const saveNow = usePersistenceState((state) => state.saveNow);
   const [showShare, setShowShare] = useState(false);
   const [showPresent, setShowPresent] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   return (
     <>
@@ -188,6 +222,13 @@ export function TopBar({ onOpenPanel }: TopBarProps) {
             <MenuItem icon={<Ruler />} onSelect={() => onOpenPanel('page')}>
               Page size & settings
             </MenuItem>
+            <MenuSeparator />
+            <MenuItem icon={<Ruler />} hint="Shift R" onSelect={toggleRulers}>
+              Rulers and guides
+            </MenuItem>
+            <MenuItem icon={<Keyboard />} hint="?" onSelect={onOpenShortcuts}>
+              Keyboard shortcuts
+            </MenuItem>
           </MenuContent>
         </Menu>
         <DocumentTitle />
@@ -212,6 +253,16 @@ export function TopBar({ onOpenPanel }: TopBarProps) {
               onClick={redo}
             >
               <Redo2 />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Browse document history">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Open history"
+              onClick={() => setShowHistory(true)}
+            >
+              <History />
             </Button>
           </Tooltip>
         </div>
@@ -240,9 +291,11 @@ export function TopBar({ onOpenPanel }: TopBarProps) {
           <Separator orientation="vertical" className="hidden h-6 sm:block" />
           <SaveStatus />
           <Separator orientation="vertical" className="h-6" />
+          <RulerToggle />
           <SnapToggle />
         </div>
       </header>
+      {showHistory ? <HistoryPanel onClose={() => setShowHistory(false)} /> : null}
       {showShare ? (
         <ShareDialog
           document={document}

@@ -95,6 +95,19 @@ function designWithRectangle(): DesignDocument {
 }
 
 describe('exporting a design', () => {
+  it('explains which pages each format includes', async () => {
+    const { user } = renderEditor(designWithRectangle());
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+
+    expect(screen.getByRole('menuitem', { name: 'Export PNG' })).toHaveTextContent(
+      'current page at 2×',
+    );
+    expect(screen.getByRole('menuitem', { name: 'Export SVG' })).toHaveTextContent('current page');
+    expect(screen.getByRole('menuitem', { name: 'Export PDF' })).toHaveTextContent('all pages');
+    expect(screen.getByText(/PNG and SVG export the current page/)).toBeInTheDocument();
+  });
+
   it('downloads an SVG rendered from the document model', async () => {
     const { user, downloads } = renderEditor(designWithRectangle());
 

@@ -15,7 +15,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * Global editor shortcuts. They are ignored while typing in form fields or editing text on
  * the canvas so native text editing keeps working.
  */
-export function useKeyboardShortcuts(): void {
+export function useKeyboardShortcuts(onOpenShortcuts?: () => void): void {
   const actions = useEditorActions();
   const canvas = useCanvasController();
   const canvasReady = useCanvasReady();
@@ -37,6 +37,8 @@ export function useKeyboardShortcuts(): void {
         return;
       }
 
+      // Dialogs own their keyboard interaction; never edit the document behind a modal.
+      if (document.querySelector('[aria-modal="true"]')) return;
       if (isTypingTarget(event.target) || canvas.isEditingText()) return;
 
       // Crop mode is modal: it owns Enter and Escape, and nothing else reaches the document.
@@ -50,6 +52,12 @@ export function useKeyboardShortcuts(): void {
         } else if (!modifier) {
           event.preventDefault();
         }
+        return;
+      }
+
+      if (!modifier && event.key === '?') {
+        event.preventDefault();
+        onOpenShortcuts?.();
         return;
       }
 
@@ -67,6 +75,31 @@ export function useKeyboardShortcuts(): void {
       if (modifier && key === 'd') {
         event.preventDefault();
         actions.duplicateSelection();
+        return;
+      }
+      if (modifier && event.altKey && key === 'c') {
+        event.preventDefault();
+        actions.copyStyle();
+        return;
+      }
+      if (modifier && event.altKey && key === 'v') {
+        event.preventDefault();
+        actions.pasteStyle();
+        return;
+      }
+      if (modifier && key === 'c') {
+        event.preventDefault();
+        actions.copySelection();
+        return;
+      }
+      if (modifier && key === 'x') {
+        event.preventDefault();
+        actions.cutSelection();
+        return;
+      }
+      if (modifier && key === 'v') {
+        event.preventDefault();
+        actions.pasteClipboard();
         return;
       }
       if (modifier && key === 'a') {
@@ -109,6 +142,12 @@ export function useKeyboardShortcuts(): void {
         return;
       }
       if (modifier) return;
+
+      if (!event.altKey && event.shiftKey && key === 'r') {
+        event.preventDefault();
+        actions.toggleRulers();
+        return;
+      }
 
       // Quick insert shortcuts like Canva: R=rect, O=ellipse, T=text, L=line, D=draw
       if (!event.altKey && !event.ctrlKey && !event.metaKey) {
@@ -178,5 +217,5 @@ export function useKeyboardShortcuts(): void {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [actions, canvas, canvasReady, persistence, draw, store]);
+  }, [actions, canvas, canvasReady, persistence, draw, store, onOpenShortcuts]);
 }
