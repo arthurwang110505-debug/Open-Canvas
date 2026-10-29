@@ -1,11 +1,21 @@
 import { CANVAS_PRESETS, type CanvasPreset } from '@opencanvas/document';
-import { Button } from '@opencanvas/ui';
-import { ArrowRight, Camera, MonitorPlay, Plus, Presentation, Sparkles } from 'lucide-react';
+import { Button, SearchField } from '@opencanvas/ui';
+import {
+  ArrowRight,
+  Camera,
+  MonitorPlay,
+  Plus,
+  Presentation,
+  Search,
+  Sparkles,
+} from 'lucide-react';
+import { useState, type FormEvent } from 'react';
 
 interface HomeHeroProps {
   onCreateDesign: () => void;
   onCreatePreset: (preset: CanvasPreset) => void;
   onBrowseTemplates: () => void;
+  onSearch: (query: string) => void;
 }
 
 const QUICK_STARTS = [
@@ -15,7 +25,19 @@ const QUICK_STARTS = [
   { presetId: 'poster-a4', label: 'Poster', icon: MonitorPlay, color: 'bg-emerald-500' },
 ] as const;
 
-export function HomeHero({ onCreateDesign, onCreatePreset, onBrowseTemplates }: HomeHeroProps) {
+export function HomeHero({
+  onCreateDesign,
+  onCreatePreset,
+  onBrowseTemplates,
+  onSearch,
+}: HomeHeroProps) {
+  const [query, setQuery] = useState('');
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = query.trim();
+    if (trimmed) onSearch(trimmed);
+  };
+
   return (
     <section aria-labelledby="home-hero-title" className="space-y-5">
       <div className="relative isolate overflow-hidden rounded-[28px] bg-gradient-to-br from-violet-700 via-[#6855ef] to-indigo-500 px-6 py-8 text-white shadow-[0_18px_50px_rgba(91,72,210,0.22)] sm:px-9 sm:py-10">
@@ -35,9 +57,36 @@ export function HomeHero({ onCreateDesign, onCreatePreset, onBrowseTemplates }: 
             What will you design today?
           </h1>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/80 sm:text-[15px]">
-            Start with a blank canvas, pick a format, or find a template that gets you moving.
+            Start something new, find an existing design, or explore a template that gets you
+            moving.
           </p>
-          <div className="mt-6 flex flex-wrap gap-2.5">
+          <form
+            role="search"
+            aria-label="Find your designs"
+            onSubmit={submitSearch}
+            className="mt-6 flex max-w-xl items-center gap-2 rounded-2xl bg-white p-1.5 shadow-[0_8px_24px_rgba(50,32,130,0.16)]"
+          >
+            <SearchField
+              aria-label="Search your designs"
+              placeholder="Search your designs"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onClear={() => setQuery('')}
+              clearLabel="Clear design search"
+              wrapperClassName="min-w-0 flex-1"
+              className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-1"
+            />
+            <Button
+              type="submit"
+              aria-label="Search designs"
+              disabled={!query.trim()}
+              className="h-10 rounded-xl bg-violet-700 px-3.5 text-white hover:bg-violet-800 sm:px-4"
+            >
+              <Search className="size-4" />
+              <span className="hidden min-[380px]:inline">Search</span>
+            </Button>
+          </form>
+          <div className="mt-4 flex flex-wrap gap-2.5">
             <Button
               onClick={onCreateDesign}
               className="h-10 rounded-full bg-white px-5 font-semibold text-violet-800 shadow-sm hover:bg-white/90"

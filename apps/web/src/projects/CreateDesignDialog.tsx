@@ -89,7 +89,7 @@ export function CreateDesignDialog({ error, onClose, onCreate }: CreateDesignDia
 
   return (
     <Modal labelledBy="create-design-title" onClose={onClose} className="max-w-[620px]">
-      <header className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
+      <header className="flex items-start justify-between gap-4 border-b border-border px-4 py-5 sm:px-6">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
             New canvas
@@ -106,7 +106,7 @@ export function CreateDesignDialog({ error, onClose, onCreate }: CreateDesignDia
         </Button>
       </header>
 
-      <form onSubmit={(event) => void submit(event)} className="space-y-5 px-6 py-5">
+      <form onSubmit={(event) => void submit(event)} className="space-y-5 px-4 py-5 sm:px-6">
         <label className="block space-y-1.5 text-sm font-medium">
           Design name
           <Input

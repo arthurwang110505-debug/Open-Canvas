@@ -13,27 +13,13 @@ import {
 } from '@opencanvas/document';
 import { canPanFramePhoto } from '@opencanvas/canvas-fabric';
 import { getIcon } from '@opencanvas/icons';
-import {
-  movableElements,
-  selectActivePage,
-  selectSelectedElements,
-  type AlignMode,
-  type DistributeAxis,
-} from '@opencanvas/editor-core';
+import { selectActivePage, selectSelectedElements } from '@opencanvas/editor-core';
 import { Button, Label, Select, Separator, Textarea, Tooltip } from '@opencanvas/ui';
 import {
   AlignCenter,
-  AlignCenterHorizontal,
-  AlignCenterVertical,
-  AlignEndHorizontal,
-  AlignEndVertical,
-  AlignHorizontalDistributeCenter,
   AlignJustify,
   AlignLeft,
   AlignRight,
-  AlignStartHorizontal,
-  AlignStartVertical,
-  AlignVerticalDistributeCenter,
   ArrowDown,
   ArrowDownToLine,
   ArrowUp,
@@ -55,6 +41,7 @@ import { useId, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { useEditorActions } from './actions';
+import { SelectionAlignmentControls } from './SelectionAlignmentControls';
 import { useImageImport } from './assets/useImageImport';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
 import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
@@ -89,24 +76,6 @@ const TEXT_CASES: { value: TextTransform; label: string }[] = [
   { value: 'uppercase', label: 'UPPERCASE' },
   { value: 'lowercase', label: 'lowercase' },
   { value: 'capitalize', label: 'Capitalize Each Word' },
-];
-
-const ALIGN_MODES: { mode: AlignMode; label: string; icon: React.ReactNode }[] = [
-  { mode: 'left', label: 'Align left', icon: <AlignStartVertical /> },
-  { mode: 'center', label: 'Align horizontal centers', icon: <AlignCenterVertical /> },
-  { mode: 'right', label: 'Align right', icon: <AlignEndVertical /> },
-  { mode: 'top', label: 'Align top', icon: <AlignStartHorizontal /> },
-  { mode: 'middle', label: 'Align vertical centers', icon: <AlignCenterHorizontal /> },
-  { mode: 'bottom', label: 'Align bottom', icon: <AlignEndHorizontal /> },
-];
-
-const DISTRIBUTE_AXES: { axis: DistributeAxis; label: string; icon: React.ReactNode }[] = [
-  {
-    axis: 'horizontal',
-    label: 'Distribute horizontally',
-    icon: <AlignHorizontalDistributeCenter />,
-  },
-  { axis: 'vertical', label: 'Distribute vertically', icon: <AlignVerticalDistributeCenter /> },
 ];
 
 const IMAGE_FITS: { value: ImageFit; label: string; description: string }[] = [
@@ -184,47 +153,9 @@ function PageProperties() {
 
 /** Align to the page (one element) or to the selection box (several); distribute needs three. */
 function AlignControls({ elements }: { elements: DesignElement[] }) {
-  const { alignSelection, distributeSelection } = useEditorActions();
-  const movable = movableElements(elements).length;
-  const single = elements.length === 1;
-  const target = single ? 'page' : 'selection';
-  const canDistribute = movable >= 3;
-
   return (
-    <FieldGroup title={single ? 'Align to page' : 'Align selection'}>
-      <div className="grid grid-cols-6 gap-1">
-        {ALIGN_MODES.map(({ mode, label, icon }) => (
-          <Tooltip key={mode} content={`${label} (${target})`}>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={label}
-              disabled={movable === 0}
-              onClick={() => alignSelection(mode)}
-            >
-              {icon}
-            </Button>
-          </Tooltip>
-        ))}
-      </div>
-      <div className="grid grid-cols-6 gap-1">
-        {DISTRIBUTE_AXES.map(({ axis, label, icon }) => (
-          <Tooltip
-            key={axis}
-            content={canDistribute ? label : `${label} (select at least 3 unlocked elements)`}
-          >
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={label}
-              disabled={!canDistribute}
-              onClick={() => distributeSelection(axis)}
-            >
-              {icon}
-            </Button>
-          </Tooltip>
-        ))}
-      </div>
+    <FieldGroup title={elements.length === 1 ? 'Align to page' : 'Align selection'}>
+      <SelectionAlignmentControls elements={elements} />
     </FieldGroup>
   );
 }

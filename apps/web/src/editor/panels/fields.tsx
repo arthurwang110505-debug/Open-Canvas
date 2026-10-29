@@ -14,6 +14,8 @@ export interface NumberFieldProps {
   unit?: string;
   disabled?: boolean;
   className?: string;
+  /** Horizontal, visually quiet label for toolbars; the accessible label is unchanged. */
+  compact?: boolean;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -35,6 +37,7 @@ export function NumberField({
   unit,
   disabled,
   className,
+  compact = false,
 }: NumberFieldProps) {
   const id = useId();
   const format = (n: number) => String(Number(n.toFixed(precision)));
@@ -77,12 +80,20 @@ export function NumberField({
   };
 
   return (
-    <div className={cn('flex flex-col gap-1', className)}>
-      <Label htmlFor={id}>{label}</Label>
+    <div
+      className={cn(
+        compact ? 'flex shrink-0 items-center gap-1.5' : 'flex flex-col gap-1',
+        className,
+      )}
+    >
+      <Label htmlFor={id} className={compact ? 'shrink-0 text-xs font-normal' : undefined}>
+        {label}
+      </Label>
       <div className="relative">
         <Input
           id={id}
           type="text"
+          aria-label={compact ? label : undefined}
           inputMode="decimal"
           value={draft}
           disabled={disabled}
@@ -93,7 +104,11 @@ export function NumberField({
             commit(event.target.value);
           }}
           onKeyDown={onKeyDown}
-          className={cn('tabular-nums', unit && 'pr-6')}
+          className={cn(
+            'tabular-nums',
+            compact && 'h-8 w-[4.5rem] rounded-lg px-2 text-xs',
+            unit && 'pr-6',
+          )}
         />
         {unit && (
           <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-muted-foreground">

@@ -5,6 +5,7 @@ import { useEditorActions } from '../actions';
 import { useEditor } from '../hooks';
 import { ColorField } from './fields';
 import { GradientPicker } from './GradientPicker';
+import { PanelSection } from './PanelSection';
 
 const SWATCHES = [
   '#ffffff',
@@ -36,8 +37,7 @@ export function BackgroundPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <p className="mb-2 text-xs text-muted-foreground">Solid colors</p>
+      <PanelSection title="Solid colors" description="Choose a quick color for this page.">
         <div className="grid grid-cols-5 gap-2" role="listbox" aria-label="Background colors">
           {SWATCHES.map((color) => {
             const selected =
@@ -60,14 +60,13 @@ export function BackgroundPanel() {
             );
           })}
         </div>
-      </div>
-      <div>
-        <p className="mb-2 text-xs text-muted-foreground">Gradients</p>
+      </PanelSection>
+      <PanelSection title="Gradients" description="Blend colors across the whole page.">
         <GradientPicker
           value={background}
           onPick={(fill, mergeKey) => setPageBackground(fill, mergeKey)}
         />
-      </div>
+      </PanelSection>
       <ColorField
         label="Custom color"
         value={current}

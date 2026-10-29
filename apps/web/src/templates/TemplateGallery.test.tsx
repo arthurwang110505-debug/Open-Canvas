@@ -38,6 +38,21 @@ describe('template gallery', () => {
     expect(onUse).toHaveBeenCalledWith('everyday-tote');
   });
 
+  it('clears a template keyword without disturbing the discovery controls', async () => {
+    const user = userEvent.setup();
+    render(<TemplateGallery onUse={() => undefined} />);
+    const search = screen.getByRole('searchbox', { name: 'Search templates' });
+    await user.type(search, 'tote');
+    expect(screen.getAllByTestId('template-card')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Clear template search' }));
+
+    expect(search).toHaveValue('');
+    expect(search).toHaveFocus();
+    expect(screen.getAllByTestId('template-card')).toHaveLength(TEMPLATES.length);
+    expect(screen.getByRole('combobox', { name: 'Template orientation' })).toHaveValue('all');
+  });
+
   it('offers a clear way out of an empty result', async () => {
     const user = userEvent.setup();
     render(<TemplateGallery onUse={() => undefined} />);

@@ -1,6 +1,6 @@
 import { IconPreview } from '../panels/IconPicker';
 import { popularIcons, searchIcons } from '@opencanvas/icons';
-import { Button, Input, cn } from '@opencanvas/ui';
+import { Button, EmptyState, SearchField, cn } from '@opencanvas/ui';
 import { Camera, LayoutGrid, Search } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
 
@@ -83,17 +83,15 @@ export function ElementsPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          placeholder="Search elements"
-          aria-label="Search elements"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          className="h-8 rounded-full bg-muted/60 pl-8 text-sm"
-        />
-      </div>
+      <SearchField
+        placeholder="Search elements"
+        aria-label="Search elements"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        onClear={() => setQuery('')}
+        clearLabel="Clear element search"
+        className="h-9 rounded-full bg-muted/60 text-sm"
+      />
 
       <div className="flex flex-wrap gap-1" role="group" aria-label="Element categories">
         {CATEGORIES.map((entry) => (
@@ -257,9 +255,26 @@ export function ElementsPanel() {
       )}
 
       {nothingMatches ? (
-        <p className="py-4 text-center text-xs text-muted-foreground">
-          No elements match “{query}”.
-        </p>
+        <EmptyState
+          icon={<Search />}
+          titleAs="h3"
+          title={`No elements match “${query}”.`}
+          description="Try a broader keyword or clear the search and category filters."
+          className="px-4 py-6"
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              onClick={() => {
+                setQuery('');
+                setCategory('all');
+              }}
+            >
+              Clear filters
+            </Button>
+          }
+        />
       ) : null}
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">

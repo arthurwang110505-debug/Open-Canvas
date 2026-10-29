@@ -17,7 +17,9 @@ import { useId } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { useEditorActions } from './actions';
+import { SelectionAlignmentControls } from './SelectionAlignmentControls';
 import { useEditor, useEditorStore } from './hooks';
+import { NumberField } from './panels/fields';
 import { FONT_CATEGORIES, fontWeightsFor } from '../fonts/catalog';
 import type { SidebarTab } from './Sidebar';
 
@@ -59,6 +61,28 @@ function SelectionColor({ element }: { element: DesignElement }) {
         />
       </label>
     </Tooltip>
+  );
+}
+
+function SelectionOpacity({ elements }: { elements: DesignElement[] }) {
+  const { updateSelection } = useEditorActions();
+  const averageOpacity =
+    elements.reduce((sum, element) => sum + element.opacity, 0) / elements.length;
+  const single = elements.length === 1 ? elements[0] : undefined;
+  const mergeKey = single ? `opacity:${single.id}` : 'multi-opacity';
+
+  return (
+    <NumberField
+      compact
+      label="Opacity"
+      value={Math.round(averageOpacity * 100)}
+      unit="%"
+      min={0}
+      max={100}
+      precision={0}
+      onCommit={(percent) => updateSelection({ opacity: percent / 100 }, mergeKey)}
+      className="rounded-lg border border-transparent px-1.5 hover:border-border"
+    />
   );
 }
 
@@ -233,6 +257,12 @@ export function ContextualToolbar({ onOpenPanel }: ContextualToolbarProps) {
             {selected.length > 1 ? `${selected.length} selected` : (single?.type ?? 'Selection')}
           </span>
           <Separator orientation="vertical" className="mx-1 h-6" />
+          {selected.length > 1 ? (
+            <>
+              <SelectionAlignmentControls elements={selected} compact />
+              <Separator orientation="vertical" className="mx-1 h-6" />
+            </>
+          ) : null}
           {single?.type === 'text' ? <TextControls element={single} /> : null}
           {single ? <SelectionColor element={single} /> : null}
           {single?.type === 'image' ? (
@@ -255,15 +285,21 @@ export function ContextualToolbar({ onOpenPanel }: ContextualToolbarProps) {
               <ImageIcon className="size-4" /> Adjust photo
             </Button>
           ) : null}
-          {single && single.type !== 'text' ? (
-            <span className="hidden text-[11px] text-muted-foreground md:inline">
-              {single.type === 'image'
-                ? 'Image tools'
-                : single.type === 'frame'
-                  ? 'Frame tools'
-                  : 'Appearance'}
-            </span>
-          ) : null}
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
+            <SelectionOpacity elements={selected} />
+            <Separator orientation="vertical" className="mx-1 h-6" />
+            <Tooltip content="Selection properties">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Open selection properties"
+                className="h-8 rounded-lg text-xs"
+                onClick={() => onOpenPanel('properties')}
+              >
+                <SlidersHorizontal className="size-4" /> Properties
+              </Button>
+            </Tooltip>
+          </div>
         </>
       )}
     </div>

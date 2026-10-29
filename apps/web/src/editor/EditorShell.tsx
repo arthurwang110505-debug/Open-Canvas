@@ -18,25 +18,29 @@ export function EditorShell() {
   useKeyboardShortcuts(openShortcuts);
   const [activePanel, setActivePanel] = useState<SidebarTab>('design');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
   const openPanel = (panel: SidebarTab) => {
     setActivePanel(panel);
     setSidebarCollapsed(false);
+    setMobilePanelOpen(true);
   };
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[52px_minmax(0,1fr)] bg-background text-foreground">
       <TopBar onOpenPanel={openPanel} onOpenShortcuts={openShortcuts} />
-      <div className="grid min-h-0 min-w-0 grid-cols-[auto_minmax(0,1fr)]">
+      <div className="relative min-h-0 min-w-0 lg:grid lg:grid-cols-[auto_minmax(0,1fr)]">
         <Sidebar
           active={activePanel}
           collapsed={sidebarCollapsed}
+          mobileOpen={mobilePanelOpen}
           onChange={setActivePanel}
           onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          onMobileOpenChange={setMobilePanelOpen}
         />
         <main
           aria-label="Workspace"
-          className="grid min-h-0 min-w-0 grid-rows-[44px_minmax(0,1fr)] overflow-hidden"
+          className="grid h-full min-h-0 min-w-0 grid-rows-[44px_minmax(0,1fr)] overflow-hidden pb-[calc(4rem_+_env(safe-area-inset-bottom))] lg:pb-0"
         >
           <ContextualToolbar onOpenPanel={openPanel} />
           <div className="relative min-h-0 min-w-0">

@@ -267,6 +267,29 @@ describe('Align and distribute', () => {
     expect(fieldValue('X')).toBe('756');
   });
 
+  it('puts multi-select alignment and shared opacity in the contextual toolbar', async () => {
+    const { user } = renderEditor();
+    await insert(user, 'Rectangle');
+    await setField(user, 'X', '0');
+    await insert(user, 'Ellipse');
+    await setField(user, 'X', '400');
+
+    await user.keyboard('{Escape}');
+    await user.keyboard('{Control>}a{/Control}');
+    const toolbar = screen.getByRole('toolbar', { name: 'Contextual toolbar' });
+    expect(within(toolbar).getByText('2 selected')).toBeInTheDocument();
+
+    await user.click(within(toolbar).getByRole('button', { name: 'Align right' }));
+    const opacity = within(toolbar).getByLabelText('Opacity');
+    await user.clear(opacity);
+    await user.type(opacity, '35{Enter}');
+
+    const list = await openLayers(user);
+    await user.click(within(list).getByRole('option', { name: 'Rectangle' }));
+    expect(fieldValue('X')).toBe('400');
+    expect(fieldValue('Opacity')).toBe('35');
+  });
+
   it('skips locked elements when aligning', async () => {
     const { user } = renderEditor();
     await insert(user, 'Rectangle');

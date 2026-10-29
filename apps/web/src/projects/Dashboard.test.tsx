@@ -20,8 +20,10 @@ import { Dashboard } from './Dashboard';
 import { formatTimestamp } from './format';
 import type { ProjectsServices } from './ProjectsContext';
 import { ProjectsProvider } from './ProjectsProvider';
+import { stubMatchMedia } from '../test/mockMatchMedia';
 
 const baseDate = new Date('2026-03-04T05:06:07.000Z');
+let restoreMatchMedia: (() => void) | undefined;
 const CUSTOM_DESIGN_SIZES = [
   { unit: 'px', width: '850', height: '1100', expected: { width: 850, height: 1100 } },
   { unit: 'in', width: '8.5', height: '11', expected: { width: 2550, height: 3300 } },
@@ -85,6 +87,8 @@ beforeEach(() => {
 
 afterEach(() => {
   window.location.hash = '';
+  restoreMatchMedia?.();
+  restoreMatchMedia = undefined;
 });
 
 describe('Dashboard', () => {
@@ -95,6 +99,42 @@ describe('Dashboard', () => {
       screen.getByRole('heading', { name: 'What will you design today?' }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Create a design' }).length).toBeGreaterThan(0);
+  });
+
+  it('opens mobile navigation as a drawer and closes it after choosing a view', async () => {
+    restoreMatchMedia = stubMatchMedia((query) => query.includes('max-width'));
+    const { user } = renderDashboard(servicesFor(createMemoryProjectStore()));
+    const trigger = screen.getByRole('button', { name: 'Open navigation' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('dialog', { name: 'Dashboard navigation' })).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    const drawer = await screen.findByRole('dialog', { name: 'Dashboard navigation' });
+    expect(drawer).toHaveAttribute('aria-modal', 'true');
+    expect(document.body).toHaveStyle({ overflow: 'hidden' });
+    await waitFor(() =>
+      expect(within(drawer).getByRole('button', { name: 'Close navigation' })).toHaveFocus(),
+    );
+
+    await user.click(within(drawer).getByRole('button', { name: 'Projects' }));
+    expect(await screen.findByRole('heading', { name: 'Projects' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Dashboard navigation' })).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  it('dismisses mobile navigation with Escape and restores focus', async () => {
+    restoreMatchMedia = stubMatchMedia((query) => query.includes('max-width'));
+    const { user } = renderDashboard(servicesFor(createMemoryProjectStore()));
+    const trigger = screen.getByRole('button', { name: 'Open navigation' });
+    await user.click(trigger);
+    expect(await screen.findByRole('dialog', { name: 'Dashboard navigation' })).toBeVisible();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Dashboard navigation' })).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('');
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it('lists saved designs newest first with their contents and timestamp', async () => {
@@ -179,6 +219,45 @@ describe('Dashboard', () => {
 
     await user.click(within(recents).getByRole('button', { name: /Spring poster/ }));
     await waitFor(() => expect(window.location.hash).toBe('#/design/doc_new'));
+  });
+
+  it('searches from home and opens an already-filtered project list', async () => {
+    const store = await seededStore([
+      makeDocument('doc_spring', 'Spring poster', '2026-03-03T09:00:00.000Z'),
+      makeDocument('doc_summer', 'Summer flyer', '2026-03-02T09:00:00.000Z'),
+    ]);
+    const { user } = renderDashboard(servicesFor(store));
+    await screen.findByRole('region', { name: 'Continue editing' });
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search your designs' }), 'Spring');
+    await user.click(screen.getByRole('button', { name: 'Search designs' }));
+
+    const results = await screen.findByRole('list', { name: 'Designs' });
+    expect(within(results).getByRole('heading', { name: 'Spring poster' })).toBeInTheDocument();
+    expect(
+      within(results).queryByRole('heading', { name: 'Summer flyer' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search your designs' })).toHaveValue('Spring');
+    expect(screen.getByText('1 result for “Spring”')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear design search' }));
+    expect(screen.getByRole('searchbox', { name: 'Search your designs' })).toHaveFocus();
+    expect(within(results).getByRole('heading', { name: 'Summer flyer' })).toBeInTheDocument();
+  });
+
+  it('offers a clear recovery action when a project search has no matches', async () => {
+    const store = await seededStore([makeDocument('doc_a', 'Poster', '2026-03-03T09:00:00.000Z')]);
+    const { user } = renderDashboard(servicesFor(store));
+    await openProjects(user);
+    const search = await screen.findByRole('searchbox', { name: 'Search your designs' });
+    await user.type(search, 'missing');
+
+    expect(await screen.findByRole('heading', { name: 'No matches' })).toBeInTheDocument();
+    expect(screen.getByText(/No designs match “missing”/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+
+    expect(search).toHaveValue('');
+    expect(await screen.findByRole('heading', { name: 'Poster' })).toBeInTheDocument();
   });
 
   it('sorts the design list by name when asked', async () => {
