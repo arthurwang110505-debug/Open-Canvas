@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Search, Sparkles } from 'lucide-react';
-import { Button, Select } from '@opencanvas/ui';
+import { Button, EmptyState, SearchField, Select } from '@opencanvas/ui';
 import { TEMPLATES, categoryLabel, type TemplateCategory } from './catalog';
 import { TemplateThumbnail } from './TemplateThumbnail';
 import {
@@ -116,17 +116,16 @@ export function TemplateGallery({
           </p>
         ) : null}
         {!home ? (
-          <div className={panel ? '' : 'relative max-w-xs flex-1 sm:max-w-[260px]'}>
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Search templates"
-              aria-label="Search templates"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="h-9 w-full rounded-full border border-input bg-white py-2 pr-4 pl-9 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/20"
-            />
-          </div>
+          <SearchField
+            placeholder="Search templates"
+            aria-label="Search templates"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onClear={() => setQuery('')}
+            clearLabel="Clear template search"
+            wrapperClassName={panel ? '' : 'max-w-xs flex-1 sm:max-w-[260px]'}
+            className="h-9 rounded-full bg-white text-[13px]"
+          />
         ) : null}
       </div>
 
@@ -254,23 +253,28 @@ export function TemplateGallery({
       ) : null}
 
       {filtered.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed bg-muted/30 px-6 py-8 text-center">
-          <p className="text-sm font-medium">No templates match “{query}”</p>
-          <p className="text-xs text-muted-foreground">Try a different keyword or category.</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3 rounded-full"
-            onClick={() => {
-              setQuery('');
-              setCategory('all');
-              setOrientation('all');
-              setColor('all');
-            }}
-          >
-            Clear filters
-          </Button>
-        </div>
+        <EmptyState
+          icon={<Search />}
+          titleAs="p"
+          title={query ? `No templates match “${query}”` : 'No templates match these filters'}
+          description="Try another keyword or clear the category and refinement filters."
+          className="mt-6 rounded-xl bg-muted/30"
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              onClick={() => {
+                setQuery('');
+                setCategory('all');
+                setOrientation('all');
+                setColor('all');
+              }}
+            >
+              Clear filters
+            </Button>
+          }
+        />
       ) : null}
     </section>
   );

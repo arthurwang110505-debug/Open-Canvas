@@ -59,11 +59,11 @@ export function ExportControls() {
           variant="outline"
           size="sm"
           disabled={busy !== null}
-          className="rounded-full"
+          className="rounded-full px-2.5 sm:px-3"
           aria-label="Download"
         >
           {busy ? <LoaderCircle className="animate-spin" /> : <Download aria-hidden="true" />}
-          {busy ? 'Preparing…' : 'Download'}
+          <span className="hidden sm:inline">{busy ? 'Preparing…' : 'Download'}</span>
         </Button>
       </MenuTrigger>
       <MenuContent align="end" aria-label="Download formats">

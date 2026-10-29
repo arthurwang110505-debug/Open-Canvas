@@ -33,7 +33,7 @@ export function ZoomControl() {
     <div
       role="group"
       aria-label="Zoom"
-      className="pointer-events-auto absolute right-3 bottom-3 z-30 flex items-center gap-0.5 rounded-full border border-border bg-white/95 px-1 py-1 shadow-[0_8px_24px_rgba(16,24,40,0.12)] backdrop-blur"
+      className="pointer-events-auto absolute right-2 bottom-2 z-30 flex items-center gap-0.5 rounded-full border border-border bg-white/95 px-1 py-1 shadow-[0_8px_24px_rgba(16,24,40,0.12)] backdrop-blur sm:right-3 sm:bottom-3"
     >
       <Tooltip content="Zoom out (Ctrl −)">
         <Button
@@ -42,7 +42,7 @@ export function ZoomControl() {
           aria-label="Zoom out"
           disabled={!ready}
           onClick={() => canvas.zoomTo(Math.max(0.05, Math.round((zoom - STEP) * 100) / 100))}
-          className="rounded-full"
+          className="size-10 rounded-full sm:size-8"
         >
           <Minus />
         </Button>
@@ -54,7 +54,7 @@ export function ZoomControl() {
             size="sm"
             aria-label={`Zoom level ${formatZoom(zoom)}. Choose a zoom level`}
             disabled={!ready}
-            className="w-14 rounded-full tabular-nums"
+            className="h-10 w-12 rounded-full px-1 text-xs tabular-nums sm:h-8 sm:w-14 sm:text-[13px]"
           >
             {formatZoom(zoom)}
           </Button>
@@ -80,7 +80,7 @@ export function ZoomControl() {
           aria-label="Zoom in"
           disabled={!ready}
           onClick={() => canvas.zoomTo(Math.min(8, Math.round((zoom + STEP) * 100) / 100))}
-          className="rounded-full"
+          className="size-10 rounded-full sm:size-8"
         >
           <Plus />
         </Button>
@@ -92,7 +92,7 @@ export function ZoomControl() {
           aria-label="Fit to screen"
           disabled={!ready}
           onClick={() => canvas.fitToScreen()}
-          className="rounded-full"
+          className="hidden rounded-full sm:inline-flex"
         >
           <Maximize />
         </Button>

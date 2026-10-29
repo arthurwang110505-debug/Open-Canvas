@@ -5,8 +5,17 @@ import type {
   ProjectStoreError,
   ProjectSummary,
 } from '@opencanvas/storage';
-import { Button, Input, Select } from '@opencanvas/ui';
-import { Clock, FileUp, Folder, LayoutTemplate, Search, Sparkles, Star } from 'lucide-react';
+import { Button, EmptyState, SearchField, Select } from '@opencanvas/ui';
+import {
+  Clock,
+  FileUp,
+  Folder,
+  LayoutTemplate,
+  Menu as MenuIcon,
+  Search,
+  Sparkles,
+  Star,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 
 import { navigate } from '../router';
@@ -71,6 +80,7 @@ function viewHeading(
 export function Dashboard() {
   const { store, organization, backend, download } = useProjects();
   const [activeView, setActiveView] = useState<DashboardView>('home');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [list, setList] = useState<ListState>({ status: 'loading' });
   const [organizationSnapshot, setOrganizationSnapshot] = useState(EMPTY_ORGANIZATION);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -133,6 +143,16 @@ export function Dashboard() {
     setActionError(null);
   }, []);
   const closeTemplatePreview = useCallback(() => setPreviewTemplateId(null), []);
+  const closeMobileNav = useCallback(() => setMobileNavOpen(false), []);
+  const changeView = useCallback((view: DashboardView) => {
+    setActiveView(view);
+    setMobileNavOpen(false);
+  }, []);
+  const openCreateDesign = useCallback(() => {
+    setActionError(null);
+    setShowCreateDesign(true);
+    setMobileNavOpen(false);
+  }, []);
 
   const onCreate = async (name: string, width: number, height: number): Promise<boolean> => {
     setBusy('create');
@@ -374,6 +394,7 @@ export function Dashboard() {
   const openCreateFolder = useCallback(() => {
     setActionError(null);
     setFolderDialog({});
+    setMobileNavOpen(false);
   }, []);
 
   const renderProjectGrid = (projects: readonly ProjectSummary[]) => (
@@ -413,25 +434,42 @@ export function Dashboard() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f7f8fc] text-foreground lg:flex-row">
       <HomeSidebar
         activeView={activeView}
+        mobileOpen={mobileNavOpen}
+        onClose={closeMobileNav}
         folders={organizationSnapshot.folders}
         projectCount={list.status === 'ready' ? list.projects.length : 0}
         starredCount={starredCount}
         folderCounts={folderCounts}
-        onChangeView={setActiveView}
-        onCreateDesign={() => {
-          setActionError(null);
-          setShowCreateDesign(true);
-        }}
+        onChangeView={changeView}
+        onCreateDesign={openCreateDesign}
         onCreateFolder={openCreateFolder}
         onRenameFolder={(folder) => {
           setActionError(null);
           setFolderDialog({ id: folder.id, name: folder.name });
+          setMobileNavOpen(false);
         }}
-        onDeleteFolder={(folder) => void onDeleteFolder(folder)}
+        onDeleteFolder={(folder) => {
+          setMobileNavOpen(false);
+          void onDeleteFolder(folder);
+        }}
       />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-white/90 px-4 backdrop-blur sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2 lg:hidden">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Open navigation"
+              aria-controls="home-sidebar"
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen(true)}
+              className="-ml-2 size-10 rounded-full"
+            >
+              <MenuIcon className="size-5" />
+            </Button>
+            <span className="text-sm font-bold tracking-tight">OpenCanvas</span>
+          </div>
           <p className="hidden text-xs text-muted-foreground sm:block">
             {backend === 'indexeddb'
               ? 'Your designs are saved on this device.'
@@ -441,11 +479,13 @@ export function Dashboard() {
             <Button
               variant="outline"
               size="sm"
-              className="rounded-full"
+              aria-label="Import design"
+              className="rounded-full px-2.5 min-[480px]:px-3"
               disabled={busy !== null}
               onClick={() => fileInput.current?.click()}
             >
-              <FileUp className="size-4" /> Import design
+              <FileUp className="size-4" />
+              <span className="hidden min-[480px]:inline">Import design</span>
             </Button>
             <input
               ref={fileInput}
@@ -489,6 +529,10 @@ export function Dashboard() {
                   onCreateDesign={() => setShowCreateDesign(true)}
                   onCreatePreset={(preset) => void onCreatePreset(preset.id)}
                   onBrowseTemplates={() => setActiveView('templates')}
+                  onSearch={(query) => {
+                    setSearchQuery(query);
+                    changeView('projects');
+                  }}
                 />
                 {list.status === 'ready' && list.projects.length > 0 ? (
                   <section aria-label="Continue editing">
@@ -544,23 +588,17 @@ export function Dashboard() {
                   </section>
                 ) : null}
                 {list.status === 'ready' && list.projects.length === 0 ? (
-                  <section className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-white px-5 py-8 text-center sm:flex-row sm:text-left">
-                    <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
-                      <Sparkles className="size-5" />
-                    </span>
-                    <div className="mt-3 flex-1 sm:mt-0 sm:ml-4">
-                      <h2 className="font-semibold">No designs yet</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Create a first canvas or explore a template. Your work stays on this device.
-                      </p>
-                    </div>
-                    <Button
-                      onClick={() => setShowCreateDesign(true)}
-                      className="mt-4 rounded-full sm:mt-0"
-                    >
-                      Create your first design
-                    </Button>
-                  </section>
+                  <EmptyState
+                    icon={<Sparkles />}
+                    title="No designs yet"
+                    description="Create a first canvas or explore a template. Your work stays on this device."
+                    layout="split"
+                    action={
+                      <Button onClick={() => setShowCreateDesign(true)} className="rounded-full">
+                        Create your first design
+                      </Button>
+                    }
+                  />
                 ) : null}
                 {list.status === 'loading' ? (
                   <div className="grid gap-3 sm:grid-cols-3">
@@ -657,20 +695,21 @@ export function Dashboard() {
 
                 {list.status === 'ready' && list.projects.length > 0 ? (
                   <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="relative max-w-sm flex-1">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        type="search"
-                        aria-label="Search your designs"
-                        placeholder="Search your designs"
-                        value={searchQuery}
-                        onChange={(event) => setSearchQuery(event.target.value)}
-                        className="h-10 rounded-full bg-white pl-9 pr-4 shadow-sm"
-                      />
-                    </div>
+                    <SearchField
+                      aria-label="Search your designs"
+                      placeholder="Search your designs"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      onClear={() => setSearchQuery('')}
+                      clearLabel="Clear design search"
+                      wrapperClassName="max-w-sm flex-1"
+                      className="h-10 rounded-full bg-white shadow-sm"
+                    />
                     <div className="flex items-center gap-3">
-                      <p className="text-xs text-muted-foreground">
-                        {filteredProjects.length} design{filteredProjects.length === 1 ? '' : 's'}
+                      <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+                        {searchQuery.trim()
+                          ? `${filteredProjects.length} result${filteredProjects.length === 1 ? '' : 's'} for “${searchQuery.trim()}”`
+                          : `${filteredProjects.length} design${filteredProjects.length === 1 ? '' : 's'}`}
                       </p>
                       <Select
                         aria-label="Sort designs"
@@ -711,21 +750,20 @@ export function Dashboard() {
                   </div>
                 ) : null}
                 {list.status === 'ready' && list.projects.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border bg-white px-6 py-12 text-center">
-                    <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-muted text-muted-foreground">
-                      <Folder className="size-5" />
-                    </span>
-                    <h2 className="mt-4 text-lg font-semibold">No designs yet</h2>
-                    <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                      Start with a custom canvas or explore an editable template.
-                    </p>
-                    <Button
-                      onClick={() => setShowCreateDesign(true)}
-                      className="mt-5 rounded-full px-5"
-                    >
-                      Create a design
-                    </Button>
-                  </div>
+                  <EmptyState
+                    icon={<Folder />}
+                    title="No designs yet"
+                    description="Start with a custom canvas or explore an editable template."
+                    className="px-6 py-12"
+                    action={
+                      <Button
+                        onClick={() => setShowCreateDesign(true)}
+                        className="rounded-full px-5"
+                      >
+                        Create a design
+                      </Button>
+                    }
+                  />
                 ) : null}
                 {list.status === 'ready' && list.projects.length > 0 && filteredProjects.length > 0
                   ? renderProjectGrid(filteredProjects)
@@ -733,32 +771,36 @@ export function Dashboard() {
                 {list.status === 'ready' &&
                 list.projects.length > 0 &&
                 filteredProjects.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border bg-white px-6 py-12 text-center">
-                    <h2 className="font-semibold">
-                      {activeView === 'starred'
+                  <EmptyState
+                    icon={activeView === 'starred' ? <Star /> : folderId ? <Folder /> : <Search />}
+                    title={
+                      activeView === 'starred'
                         ? 'No starred designs yet'
                         : folderId
                           ? 'This folder is empty'
-                          : 'No matches'}
-                    </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {activeView === 'starred'
+                          : 'No matches'
+                    }
+                    description={
+                      activeView === 'starred'
                         ? 'Use the star on a design card to save it here.'
                         : folderId
                           ? 'Move a design here from its card menu.'
-                          : `No designs match “${searchQuery}”.`}
-                    </p>
-                    {searchQuery ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSearchQuery('')}
-                        className="mt-4 rounded-full"
-                      >
-                        Clear search
-                      </Button>
-                    ) : null}
-                  </div>
+                          : `No designs match “${searchQuery}”. Try a different name or clear the search.`
+                    }
+                    className="px-6 py-12"
+                    action={
+                      searchQuery ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSearchQuery('')}
+                          className="rounded-full"
+                        >
+                          Clear search
+                        </Button>
+                      ) : undefined
+                    }
+                  />
                 ) : null}
               </section>
             ) : null}

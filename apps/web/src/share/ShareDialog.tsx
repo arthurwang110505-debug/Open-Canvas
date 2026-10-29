@@ -46,11 +46,11 @@ export function ShareDialog({ document, onClose, onPresent }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl ring-1 ring-border"
+        className="max-h-[94dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl bg-white p-4 shadow-xl ring-1 ring-border sm:p-6"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -95,7 +95,7 @@ export function ShareDialog({ document, onClose, onPresent }: Props) {
                 <Input
                   readOnly
                   value={link}
-                  className="flex-1 rounded-full bg-muted/50 text-xs"
+                  className="min-w-0 flex-1 rounded-full bg-muted/50 text-xs"
                   aria-label="Share link"
                 />
                 <Button

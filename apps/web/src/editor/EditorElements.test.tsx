@@ -105,14 +105,21 @@ describe('elements panel', () => {
     ).toBeInTheDocument();
   });
 
-  it('says so when nothing matches instead of showing unrelated tiles', async () => {
+  it('recovers from no matches by clearing the query and category together', async () => {
     const { user } = renderEditor();
     const { search } = await openElements(user);
 
+    await user.click(screen.getByRole('button', { name: 'Icons' }));
     await user.type(search, 'zzzz-nothing');
-    expect(screen.getByText(/No elements match/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /No elements match/ })).toBeInTheDocument();
     expect(screen.queryByRole('listbox', { name: 'Icons' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Shapes' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(search).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('region', { name: 'Shapes' })).toBeInTheDocument();
+    expect(screen.getByRole('listbox', { name: 'Icons' })).toBeInTheDocument();
   });
 
   it('inserts a click straight into the middle of the page', async () => {

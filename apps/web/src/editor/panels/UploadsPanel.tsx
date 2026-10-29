@@ -1,5 +1,5 @@
 import { LIMITS, SUPPORTED_IMAGE_MIME_TYPES, type ImageAsset } from '@opencanvas/document';
-import { Button, Tooltip, cn } from '@opencanvas/ui';
+import { Button, EmptyState, Tooltip, cn } from '@opencanvas/ui';
 import { ImagePlus, Loader2, Trash2 } from 'lucide-react';
 import { useId, useRef, useState, type DragEvent } from 'react';
 import { useShallow } from 'zustand/shallow';
@@ -115,9 +115,13 @@ export function UploadsPanel() {
       </div>
 
       {assets.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Uploaded images appear here so you can place them again.
-        </p>
+        <EmptyState
+          icon={<ImagePlus />}
+          titleAs="h3"
+          title="No uploads yet"
+          description="Uploaded images appear here so you can place them again."
+          className="px-4 py-5"
+        />
       ) : (
         <ul className="grid grid-cols-2 gap-2" aria-label="Uploaded images">
           {assets.map((asset) => (

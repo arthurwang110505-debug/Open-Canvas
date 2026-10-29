@@ -67,7 +67,7 @@ export function Modal({ labelledBy, onClose, children, className = '' }: ModalPr
     <div
       role="presentation"
       onMouseDown={closeFromBackdrop}
-      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-[3px]"
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-2 backdrop-blur-[3px] sm:p-4"
     >
       <div
         ref={dialogRef}
@@ -75,7 +75,7 @@ export function Modal({ labelledBy, onClose, children, className = '' }: ModalPr
         aria-modal="true"
         aria-labelledby={labelledBy}
         tabIndex={-1}
-        className={`my-auto max-h-[min(90vh,800px)] w-full overflow-y-auto rounded-3xl border border-white/50 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] ${className}`}
+        className={`my-auto max-h-[min(94dvh,800px)] w-full overflow-y-auto overscroll-contain rounded-2xl border border-white/50 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)] sm:rounded-3xl ${className}`}
       >
         {children}
       </div>

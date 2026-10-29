@@ -17,6 +17,7 @@ import {
   Keyboard,
   Magnet,
   MonitorPlay,
+  MoreHorizontal,
   Redo2,
   Ruler,
   Save,
@@ -76,7 +77,7 @@ function DocumentTitle() {
       onBlur={commit}
       onKeyDown={onKeyDown}
       maxLength={200}
-      className="h-8 w-56 border-transparent bg-transparent font-medium hover:border-input focus-visible:bg-background"
+      className="h-8 w-20 min-w-0 border-transparent bg-transparent px-2 text-xs font-medium hover:border-input focus-visible:bg-background sm:w-32 sm:text-sm md:w-44 lg:w-56"
     />
   );
 }
@@ -94,6 +95,7 @@ function SnapToggle() {
         aria-label="Snap to objects"
         pressed={snapping}
         onClick={() => canvas.setSnapping(!snapping)}
+        className="hidden xl:inline-flex"
       >
         <Magnet />
       </Button>
@@ -114,6 +116,7 @@ function RulerToggle() {
         aria-label="Toggle rulers and guides"
         pressed={visible}
         onClick={toggleRulers}
+        className="hidden xl:inline-flex"
       >
         <Ruler />
       </Button>
@@ -151,7 +154,7 @@ function SaveStatus() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="hidden items-center gap-2 xl:flex">
       <span
         role="status"
         aria-live="polite"
@@ -179,14 +182,19 @@ export function TopBar({ onOpenPanel, onOpenShortcuts }: TopBarProps) {
   const canRedo = useEditor(selectCanRedo);
   const { undo, redo, toggleRulers } = useEditorActions();
   const document = useEditor((s) => s.document);
+  const dirty = useEditor((s) => s.dirty);
+  const rulersVisible = useEditor((s) => s.rulersVisible);
+  const snapping = useSnappingEnabled();
+  const canvas = useCanvasController();
   const saveNow = usePersistenceState((state) => state.saveNow);
+  const saveStatus = usePersistenceState((state) => state.status);
   const [showShare, setShowShare] = useState(false);
   const [showPresent, setShowPresent] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
   return (
     <>
-      <header className="flex h-[52px] items-center gap-2 border-b border-border bg-panel px-3">
+      <header className="flex h-[52px] items-center gap-1 border-b border-border bg-panel px-2 sm:gap-2 sm:px-3">
         <a
           href="#/"
           aria-label="OpenCanvas: back to your designs"
@@ -203,7 +211,7 @@ export function TopBar({ onOpenPanel, onOpenShortcuts }: TopBarProps) {
           </span>
           <span className="hidden sm:inline">OpenCanvas</span>
         </a>
-        <Separator orientation="vertical" className="h-6" />
+        <Separator orientation="vertical" className="hidden h-6 md:block" />
         <Menu>
           <MenuTrigger asChild>
             <Button variant="ghost" size="sm" className="rounded-lg px-2.5">
@@ -232,45 +240,48 @@ export function TopBar({ onOpenPanel, onOpenShortcuts }: TopBarProps) {
           </MenuContent>
         </Menu>
         <DocumentTitle />
-        <div className="flex items-center gap-0.5" role="group" aria-label="History">
-          <Tooltip content="Undo (Ctrl Z)">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Undo"
-              disabled={!canUndo}
-              onClick={undo}
-            >
-              <Undo2 />
-            </Button>
-          </Tooltip>
-          <Tooltip content="Redo (Ctrl Shift Z)">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Redo"
-              disabled={!canRedo}
-              onClick={redo}
-            >
-              <Redo2 />
-            </Button>
-          </Tooltip>
+        <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="History">
+          <div className="hidden items-center gap-0.5 min-[480px]:flex">
+            <Tooltip content="Undo (Ctrl Z)">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Undo"
+                disabled={!canUndo}
+                onClick={undo}
+              >
+                <Undo2 />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Redo (Ctrl Shift Z)">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Redo"
+                disabled={!canRedo}
+                onClick={redo}
+              >
+                <Redo2 />
+              </Button>
+            </Tooltip>
+          </div>
           <Tooltip content="Browse document history">
             <Button
               variant="ghost"
               size="icon-sm"
               aria-label="Open history"
               onClick={() => setShowHistory(true)}
+              className="hidden xl:inline-flex"
             >
               <History />
             </Button>
           </Tooltip>
         </div>
-        <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2.5">
+        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1 sm:gap-1.5">
           <Button
             variant="ghost"
             size="sm"
-            className="hidden rounded-lg lg:inline-flex"
+            className="hidden rounded-lg xl:inline-flex"
             onClick={() => onOpenPanel('page')}
           >
             <Ruler className="size-4" /> Resize
@@ -278,21 +289,83 @@ export function TopBar({ onOpenPanel, onOpenShortcuts }: TopBarProps) {
           <Button
             variant="outline"
             size="sm"
-            className="hidden rounded-full sm:inline-flex"
+            className="hidden rounded-full xl:inline-flex"
             onClick={() => setShowPresent(true)}
           >
             <MonitorPlay className="size-4" /> Present
           </Button>
-          <Button size="sm" className="rounded-full shadow-sm" onClick={() => setShowShare(true)}>
-            <Share2 className="size-4" /> Share
+          <Button
+            size="sm"
+            aria-label="Share"
+            className="rounded-full px-2.5 shadow-sm sm:px-3"
+            onClick={() => setShowShare(true)}
+          >
+            <Share2 className="size-4" /> <span className="hidden sm:inline">Share</span>
           </Button>
-          <Separator orientation="vertical" className="hidden h-6 sm:block" />
           <ExportControls />
-          <Separator orientation="vertical" className="hidden h-6 sm:block" />
           <SaveStatus />
-          <Separator orientation="vertical" className="h-6" />
+          <Separator orientation="vertical" className="hidden h-6 xl:block" />
           <RulerToggle />
           <SnapToggle />
+          <Menu className="xl:hidden">
+            <MenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="More editor actions"
+                className="rounded-lg"
+              >
+                <MoreHorizontal />
+              </Button>
+            </MenuTrigger>
+            <MenuContent
+              align="end"
+              aria-label="Editor actions"
+              className="w-64 max-w-[calc(100vw-1rem)]"
+            >
+              <MenuLabel>Editor actions</MenuLabel>
+              <MenuItem icon={<Undo2 />} hint="Ctrl Z" disabled={!canUndo} onSelect={undo}>
+                Undo
+              </MenuItem>
+              <MenuItem icon={<Redo2 />} hint="Ctrl Shift Z" disabled={!canRedo} onSelect={redo}>
+                Redo
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem icon={<MonitorPlay />} onSelect={() => setShowPresent(true)}>
+                Present
+              </MenuItem>
+              <MenuItem icon={<History />} onSelect={() => setShowHistory(true)}>
+                Open history
+              </MenuItem>
+              <MenuItem icon={<Ruler />} onSelect={() => onOpenPanel('page')}>
+                Page size & settings
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem
+                icon={<Ruler />}
+                hint={rulersVisible ? 'On' : 'Off'}
+                onSelect={toggleRulers}
+              >
+                Rulers and guides
+              </MenuItem>
+              <MenuItem
+                icon={<Magnet />}
+                hint={snapping ? 'On' : 'Off'}
+                onSelect={() => canvas.setSnapping(!snapping)}
+              >
+                Snap to objects
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem
+                icon={<Save />}
+                hint={saveStatus === 'saving' ? 'Saving…' : dirty ? 'Unsaved' : 'Saved'}
+                disabled={saveStatus === 'saving'}
+                onSelect={() => void saveNow()}
+              >
+                Save now
+              </MenuItem>
+            </MenuContent>
+          </Menu>
         </div>
       </header>
       {showHistory ? <HistoryPanel onClose={() => setShowHistory(false)} /> : null}

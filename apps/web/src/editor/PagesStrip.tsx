@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEve
 import { PageGridView } from './PageGridView';
 import { PageThumbnail } from './PageThumbnail';
 import { useEditor } from './hooks';
+import { useMediaQuery } from '../useMediaQuery';
 
 interface PageContextMenuState {
   pageId: string;
@@ -27,6 +28,7 @@ export function PagesStrip() {
   const [dragOverPageId, setDragOverPageId] = useState<string | null>(null);
   const [pageContextMenu, setPageContextMenu] = useState<PageContextMenuState | null>(null);
   const [showGrid, setShowGrid] = useState(false);
+  const compact = useMediaQuery('(max-width: 639px)');
 
   const onAddPage = useCallback(() => {
     if (!canAdd) return;
@@ -117,6 +119,10 @@ export function PagesStrip() {
   const contextPageIndex = pageContextMenu
     ? pages.findIndex((page) => page.id === pageContextMenu.pageId)
     : -1;
+  const activePageIndex = Math.max(
+    0,
+    pages.findIndex((page) => page.id === activePageId),
+  );
 
   return (
     <>
@@ -124,7 +130,7 @@ export function PagesStrip() {
         ref={stripRef}
         role="group"
         aria-label="Pages"
-        className="pointer-events-auto absolute bottom-3 left-1/2 z-20 flex max-w-[min(86%,900px)] -translate-x-1/2 items-center gap-2 rounded-2xl border border-border bg-white px-2 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+        className="pointer-events-auto absolute bottom-2 left-2 z-20 flex max-w-none items-center gap-1.5 rounded-2xl border border-border bg-white px-1.5 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)] sm:bottom-3 sm:left-3 sm:right-40 sm:gap-2 sm:px-2 sm:py-2 lg:left-1/2 lg:right-auto lg:max-w-[calc(100%_-_22rem)] lg:-translate-x-1/2"
       >
         <Tooltip content="Grid view">
           <Button
@@ -132,98 +138,109 @@ export function PagesStrip() {
             size="icon-sm"
             aria-label="Open page grid"
             onClick={() => setShowGrid(true)}
-            className="shrink-0 rounded-xl"
+            className="size-10 shrink-0 rounded-xl sm:size-8"
           >
             <LayoutGrid />
           </Button>
         </Tooltip>
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto scrollbar-thin">
-          {pages.map((page, index) => {
-            const isActive = page.id === activePageId;
-            const isDropTarget = dragOverPageId === page.id;
-            return (
-              <div
-                key={page.id}
-                draggable
-                onDragStart={(event) => onDragStart(event, page.id)}
-                onDragOver={(event) => onDragOver(event, page.id)}
-                onDrop={(event) => onDrop(event, page.id)}
-                onDragEnd={clearDrag}
-                onContextMenu={(event) => openPageMenu(event, page.id)}
-                className={`group relative flex shrink-0 flex-col items-center gap-1 rounded-xl px-0.5 pt-0.5 ${isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''}`}
-              >
-                <button
-                  type="button"
-                  aria-label={`Go to page ${index + 1}${isActive ? ' (current)' : ''}`}
-                  aria-current={isActive ? 'page' : undefined}
-                  onClick={() => setActivePage(page.id)}
-                  className={[
-                    'relative overflow-hidden rounded-lg border-2 bg-white transition-all',
-                    isActive
-                      ? 'border-primary shadow-sm ring-2 ring-primary/20'
-                      : 'border-border hover:border-foreground/20 hover:shadow-sm',
-                  ].join(' ')}
+        {compact ? (
+          <button
+            type="button"
+            aria-label={`View all pages. Page ${activePageIndex + 1} of ${pages.length}`}
+            onClick={() => setShowGrid(true)}
+            className="flex h-10 shrink-0 items-center rounded-xl px-2 text-xs font-semibold whitespace-nowrap outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {activePageIndex + 1} / {pages.length}
+          </button>
+        ) : (
+          <div className="flex min-w-0 items-center gap-2 overflow-x-auto scrollbar-thin">
+            {pages.map((page, index) => {
+              const isActive = page.id === activePageId;
+              const isDropTarget = dragOverPageId === page.id;
+              return (
+                <div
+                  key={page.id}
+                  draggable
+                  onDragStart={(event) => onDragStart(event, page.id)}
+                  onDragOver={(event) => onDragOver(event, page.id)}
+                  onDrop={(event) => onDrop(event, page.id)}
+                  onDragEnd={clearDrag}
+                  onContextMenu={(event) => openPageMenu(event, page.id)}
+                  className={`group relative flex shrink-0 flex-col items-center gap-1 rounded-xl px-0.5 pt-0.5 ${isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                 >
-                  <PageThumbnail document={document} pageId={page.id} />
-                  <span className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/10 to-transparent px-1 py-0.5 text-center text-[10px] font-medium text-foreground/70">
-                    {index + 1}
-                  </span>
-                </button>
-                <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                  <Tooltip content="Move left">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Move page ${index + 1} left`}
-                      disabled={index === 0}
-                      onClick={() => onMove(page.id, -1)}
-                      className="size-6 rounded-full"
-                    >
-                      <ChevronLeft className="size-3.5" />
-                    </Button>
-                  </Tooltip>
-                  <Tooltip content="Move right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Move page ${index + 1} right`}
-                      disabled={index === pages.length - 1}
-                      onClick={() => onMove(page.id, 1)}
-                      className="size-6 rounded-full"
-                    >
-                      <ChevronRight className="size-3.5" />
-                    </Button>
-                  </Tooltip>
-                  <Tooltip content="Duplicate page">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Duplicate page ${index + 1}`}
-                      disabled={!canAdd}
-                      onClick={() => onDuplicate(page.id)}
-                      className="size-6 rounded-full"
-                    >
-                      <Copy className="size-3" />
-                    </Button>
-                  </Tooltip>
-                  <Tooltip content={canDelete ? 'Delete page' : 'At least one page required'}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Delete page ${index + 1}`}
-                      disabled={!canDelete}
-                      onClick={() => onDelete(page.id)}
-                      className="size-6 rounded-full hover:text-destructive"
-                    >
-                      <Trash2 className="size-3" />
-                    </Button>
-                  </Tooltip>
+                  <button
+                    type="button"
+                    aria-label={`Go to page ${index + 1}${isActive ? ' (current)' : ''}`}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => setActivePage(page.id)}
+                    className={[
+                      'relative overflow-hidden rounded-lg border-2 bg-white transition-all',
+                      isActive
+                        ? 'border-primary shadow-sm ring-2 ring-primary/20'
+                        : 'border-border hover:border-foreground/20 hover:shadow-sm',
+                    ].join(' ')}
+                  >
+                    <PageThumbnail document={document} pageId={page.id} />
+                    <span className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/10 to-transparent px-1 py-0.5 text-center text-[10px] font-medium text-foreground/70">
+                      {index + 1}
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                    <Tooltip content="Move left">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Move page ${index + 1} left`}
+                        disabled={index === 0}
+                        onClick={() => onMove(page.id, -1)}
+                        className="size-6 rounded-full"
+                      >
+                        <ChevronLeft className="size-3.5" />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip content="Move right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Move page ${index + 1} right`}
+                        disabled={index === pages.length - 1}
+                        onClick={() => onMove(page.id, 1)}
+                        className="size-6 rounded-full"
+                      >
+                        <ChevronRight className="size-3.5" />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip content="Duplicate page">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Duplicate page ${index + 1}`}
+                        disabled={!canAdd}
+                        onClick={() => onDuplicate(page.id)}
+                        className="size-6 rounded-full"
+                      >
+                        <Copy className="size-3" />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip content={canDelete ? 'Delete page' : 'At least one page required'}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Delete page ${index + 1}`}
+                        disabled={!canDelete}
+                        onClick={() => onDelete(page.id)}
+                        className="size-6 rounded-full hover:text-destructive"
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </Tooltip>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="ml-1 flex shrink-0 items-center border-l border-border pl-2">
+              );
+            })}
+          </div>
+        )}
+        <div className="ml-0.5 flex shrink-0 items-center border-l border-border pl-1.5 sm:ml-1 sm:pl-2">
           <Tooltip content={canAdd ? 'Add page' : `Maximum ${LIMITS.maxPages} pages`}>
             <Button
               variant="secondary"
@@ -231,9 +248,9 @@ export function PagesStrip() {
               aria-label="Add page"
               disabled={!canAdd}
               onClick={onAddPage}
-              className="rounded-full px-3"
+              className="size-10 rounded-full px-0 sm:h-8 sm:w-auto sm:px-3"
             >
-              <Plus className="size-4" /> Add page
+              <Plus className="size-4" /> <span className="hidden md:inline">Add page</span>
             </Button>
           </Tooltip>
         </div>
