@@ -25,6 +25,7 @@ import {
   ArrowUp,
   ArrowUpToLine,
   Copy,
+  Expand,
   Eye,
   EyeOff,
   Italic,
@@ -41,6 +42,7 @@ import { useId, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { useEditorActions } from './actions';
+import { ResizeDialog } from './ResizeDialog';
 import { SelectionAlignmentControls } from './SelectionAlignmentControls';
 import { useImageImport } from './assets/useImageImport';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
@@ -91,6 +93,7 @@ function PageProperties() {
   const size = useEditor((state) => state.document.size);
   const elementCount = useEditor((state) => selectActivePage(state).elements.length);
   const { resizeDocument } = useEditorActions();
+  const [resizeOpen, setResizeOpen] = useState(false);
   const presetId = useId();
   const matchingPreset = CANVAS_PRESETS.find(
     (preset) => preset.width === size.width && preset.height === size.height,
@@ -146,7 +149,18 @@ function PageProperties() {
             onCommit={(height) => resizeDocument(size.width, height)}
           />
         </div>
+        <Button
+          variant="outline"
+          className="h-9 rounded-xl text-xs"
+          onClick={() => setResizeOpen(true)}
+        >
+          <Expand aria-hidden="true" /> Resize design with preview…
+        </Button>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Adapts the content on every page to the new size instead of leaving it in the corner.
+        </p>
       </FieldGroup>
+      {resizeOpen ? <ResizeDialog onClose={() => setResizeOpen(false)} /> : null}
     </>
   );
 }

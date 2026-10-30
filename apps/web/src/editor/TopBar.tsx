@@ -12,7 +12,10 @@ import {
   Tooltip,
 } from '@opencanvas/ui';
 import {
+  CloudCheck,
+  CloudOff,
   FileText,
+  LoaderCircle,
   History,
   Keyboard,
   Magnet,
@@ -153,19 +156,29 @@ function SaveStatus() {
     title = 'Nothing to save yet.';
   }
 
+  const Icon =
+    status === 'saving'
+      ? LoaderCircle
+      : status === 'error' || (dirty && status === 'disabled')
+        ? CloudOff
+        : CloudCheck;
   return (
-    <div className="hidden items-center gap-2 xl:flex">
+    <div className="flex shrink-0 items-center gap-1.5" title={title}>
       <span
         role="status"
         aria-live="polite"
-        className="text-xs text-muted-foreground"
-        title={title}
+        aria-label={label}
+        className={`flex items-center gap-1.5 text-xs ${status === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}
       >
-        {label}
+        <Icon
+          aria-hidden="true"
+          className={`size-4 ${status === 'saving' ? 'animate-spin' : ''}`}
+        />
+        <span className="hidden min-[1400px]:inline">{label}</span>
       </span>
       {status === 'error' ? (
-        <Button variant="outline" size="sm" onClick={() => void saveNow()}>
-          Save now
+        <Button variant="outline" size="sm" aria-label="Save now" onClick={() => void saveNow()}>
+          Retry
         </Button>
       ) : null}
     </div>
@@ -278,14 +291,6 @@ export function TopBar({ onOpenPanel, onOpenShortcuts }: TopBarProps) {
           </Tooltip>
         </div>
         <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1 sm:gap-1.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hidden rounded-lg xl:inline-flex"
-            onClick={() => onOpenPanel('page')}
-          >
-            <Ruler className="size-4" /> Resize
-          </Button>
           <Button
             variant="outline"
             size="sm"

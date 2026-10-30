@@ -70,7 +70,7 @@ function renderDashboard(services: ProjectsServices) {
 }
 
 async function openProjects(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Projects' }));
+  await user.click(screen.getByRole('button', { name: /^Projects\s*\d+ designs$/ }));
 }
 
 function servicesFor(store: ProjectStore, downloads: Download[]): ProjectsServices {
@@ -149,6 +149,7 @@ describe('importing a project file', () => {
     const store = createMemoryProjectStore();
     const downloads: Download[] = [];
     const { user } = renderDashboard(servicesFor(store, downloads));
+    await openProjects(user);
     expect(await screen.findByText('No designs yet')).toBeInTheDocument();
 
     const input = screen.getByLabelText('OpenCanvas project file');
@@ -205,6 +206,7 @@ describe('importing a project file', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('"notes.opencanvas" could not be imported');
     expect(alert.textContent).toContain('not a readable ZIP archive');
+    await openProjects(user);
     expect(screen.getByText('No designs yet')).toBeInTheDocument();
   });
 });

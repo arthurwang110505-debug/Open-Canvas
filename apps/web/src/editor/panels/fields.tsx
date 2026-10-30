@@ -2,6 +2,8 @@ import { Button, Input, Label, Tooltip, cn } from '@opencanvas/ui';
 import { Pipette } from 'lucide-react';
 import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 
+import { useBrandKit } from '../../brand/brandStore';
+
 export interface NumberFieldProps {
   label: string;
   value: number;
@@ -146,6 +148,7 @@ function eyeDropperConstructor(): EyeDropperConstructor | undefined {
 /** Color input paired with an editable hex field; both commit validated hex colors only. */
 export function ColorField({ label, value, onCommit, disabled, className }: ColorFieldProps) {
   const id = useId();
+  const brandColors = useBrandKit((state) => state.kit.colors);
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   const [lastValue, setLastValue] = useState(value);
@@ -227,6 +230,31 @@ export function ColorField({ label, value, onCommit, disabled, className }: Colo
           </Tooltip>
         ) : null}
       </div>
+      {brandColors.length > 0 ? (
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Brand
+          </span>
+          <div
+            className="flex flex-wrap gap-1"
+            role="group"
+            aria-label={`Brand colors for ${label}`}
+          >
+            {brandColors.map((color) => (
+              <button
+                key={color}
+                type="button"
+                aria-label={`Use brand color ${color} for ${label}`}
+                title={color}
+                disabled={disabled}
+                onClick={() => onCommit(color)}
+                className="size-5 rounded-md border border-black/10 outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

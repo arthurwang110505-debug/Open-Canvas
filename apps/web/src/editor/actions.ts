@@ -12,6 +12,7 @@ import {
   type PageGuide,
 } from '@opencanvas/document';
 import {
+  adaptElementsToSize,
   alignElements,
   alignmentTarget,
   distributeElements,
@@ -24,6 +25,7 @@ import {
   type EditorCommand,
   type ElementPatch,
   type ReorderTarget,
+  type ResizeAdaptMode,
 } from '@opencanvas/editor-core';
 import { panFramePhoto } from '@opencanvas/canvas-fabric';
 import { useMemo } from 'react';
@@ -75,6 +77,12 @@ export interface EditorActions {
   ungroupSelection: () => void;
   renameDocument: (name: string) => void;
   resizeDocument: (width: number, height: number) => void;
+  /**
+   * Resizes the canvas and adapts every page's content to the new size (fit or stretch).
+   * The size change and all page updates share one history entry, so a single undo
+   * restores the entire design.
+   */
+  resizeDesign: (width: number, height: number, mode: ResizeAdaptMode) => void;
   setPageBackground: (fill: Fill, mergeKey?: string) => void;
   addGuide: (
     axis: PageGuide['axis'],
@@ -87,6 +95,11 @@ export interface EditorActions {
   removeGuide: (guideId: string) => void;
   clearGuides: () => void;
   toggleRulers: () => void;
+  /**
+   * Replaces the current page's elements with a transformed copy (e.g. brand fonts applied to
+   * every text element) while keeping the page background. One undo step.
+   */
+  replacePageElements: (elements: readonly DesignElement[]) => void;
   /** Replaces the current page with a template, fitted to this canvas (one undo step). */
   applyTemplate: (template: DesignDocument) => void;
   /** Inserts a template as a new page after the current one (one undo step). */
@@ -466,6 +479,27 @@ export function useEditorActions(): EditorActions {
         dispatch({ type: 'document.resize', width, height });
       },
 
+      resizeDesign: (width, height, mode) => {
+        const state = store.getState();
+        const { document } = state;
+        if (document.size.width === width && document.size.height === height) return;
+        // One shared merge key collapses the size change and every page update into a
+        // single history entry: one undo restores the whole design.
+        const options = { mergeKey: 'resize-design' };
+        dispatch({ type: 'document.resize', width, height }, options);
+        for (const page of document.pages) {
+          dispatch(
+            {
+              type: 'page.replaceContent',
+              pageId: page.id,
+              background: page.background,
+              elements: adaptElementsToSize(page.elements, document.size, { width, height }, mode),
+            },
+            options,
+          );
+        }
+      },
+
       setPageBackground: (fill, mergeKey) => {
         dispatch(
           { type: 'page.setBackground', pageId: pageId(), background: fill },
@@ -502,6 +536,18 @@ export function useEditorActions(): EditorActions {
       toggleRulers: () => {
         const state = store.getState();
         state.setRulersVisible(!state.rulersVisible);
+      },
+
+      replacePageElements: (elements) => {
+        const state = store.getState();
+        const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
+        if (!page) return;
+        dispatch({
+          type: 'page.replaceContent',
+          pageId: page.id,
+          background: page.background,
+          elements,
+        });
       },
 
       applyTemplate: (template) => {

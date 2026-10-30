@@ -1,6 +1,7 @@
 import type { DesignDocument } from '@opencanvas/document';
 
 import { AssetProvider, type AssetProviderProps } from './assets/AssetProvider';
+import type { EditorContextValue } from './EditorContext';
 import { EditorProvider } from './EditorProvider';
 import { EditorShell } from './EditorShell';
 import { DrawProvider } from './draw/DrawProvider';
@@ -16,6 +17,8 @@ export interface EditorPageProps {
   exportServices?: Partial<ExportServices>;
   /** Autosave bridge; omit to run without persistence. */
   persistence?: PersistenceController;
+  /** Saves a resized copy as a new design; omit when there is no project store. */
+  onCreateResizedCopy?: EditorContextValue['onCreateResizedCopy'];
 }
 
 export function EditorPage({
@@ -23,11 +26,16 @@ export function EditorPage({
   assetServices,
   exportServices,
   persistence,
+  onCreateResizedCopy,
 }: EditorPageProps) {
   return (
     <AssetProvider services={assetServices}>
       <ExportProvider services={exportServices}>
-        <EditorProvider document={document} persistence={persistence}>
+        <EditorProvider
+          document={document}
+          persistence={persistence}
+          onCreateResizedCopy={onCreateResizedCopy}
+        >
           <DrawProvider>
             <EditorShell />
           </DrawProvider>

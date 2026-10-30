@@ -39,6 +39,8 @@ its acceptance tests pass in CI.
 
 ## Canva-parity pass (tracked in [canva-parity-improvement-plan.md](canva-parity-improvement-plan.md))
 
+The current six-week UI/UX execution plan is in [ui-ux-canva-improvement-plan.md](ui-ux-canva-improvement-plan.md): template quality, discovery, editor clarity, accessibility, local brand styles, and confident export.
+
 Delivered in Phase A/B and Phase C editing workflows:
 
 - [x] Element library: 372-icon vector catalogue, shapes, and reorderable tabs

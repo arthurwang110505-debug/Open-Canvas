@@ -52,6 +52,45 @@ describe('responsive editor', () => {
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Text' })).toHaveFocus());
   });
 
+  it('moves through the tool rail with arrow keys and keeps utility buttons outside the tablist', async () => {
+    const { user } = renderMobileEditor();
+    // Five primary destinations, then the secondary tools in their own group.
+    const tablist = screen.getByRole('tablist', { name: 'Editor panels' });
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(5);
+    const moreTools = screen.getByRole('tablist', { name: 'More tools' });
+    expect(within(moreTools).getAllByRole('tab')).toHaveLength(5);
+    expect(
+      within(tablist).queryByRole('button', { name: 'Collapse panel' }),
+    ).not.toBeInTheDocument();
+    const design = screen.getByRole('tab', { name: 'Design' });
+    design.focus();
+    await user.keyboard('{ArrowRight}');
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Elements' })).toHaveFocus());
+    expect(screen.getByRole('tab', { name: 'Elements' })).toHaveAttribute('aria-selected', 'true');
+    expect(design).toHaveAttribute('tabindex', '-1');
+    // End stays inside the primary group.
+    await user.keyboard('{End}');
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Brand' })).toHaveFocus());
+    // The utility group navigates independently.
+    screen.getByRole('tab', { name: 'Draw' }).focus();
+    await user.keyboard('{ArrowRight}');
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Background' })).toHaveFocus());
+    await user.keyboard('{End}');
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Page' })).toHaveFocus());
+  });
+
+  it('keeps secondary text formatting reachable from the compact overflow menu', async () => {
+    const { user } = renderMobileEditor();
+    await user.click(screen.getByRole('tab', { name: 'Text' }));
+    await user.click(screen.getByRole('button', { name: 'Add a heading' }));
+    await user.click(screen.getByRole('button', { name: 'Close panel' }));
+    const toolbar = screen.getByRole('toolbar', { name: 'Contextual toolbar' });
+    await user.click(within(toolbar).getByRole('button', { name: 'More selection actions' }));
+    await user.click(screen.getByRole('menuitem', { name: /Italic/ }));
+    await user.click(within(toolbar).getByRole('button', { name: 'More selection actions' }));
+    expect(screen.getByRole('menuitem', { name: /Italic/ })).toHaveTextContent('On');
+  });
+
   it('opens selection properties from the contextual toolbar on a phone', async () => {
     const { user } = renderMobileEditor();
     await user.click(screen.getByRole('tab', { name: 'Elements' }));

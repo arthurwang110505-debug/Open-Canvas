@@ -38,7 +38,7 @@ export function ErrorToast() {
   return (
     <div
       role={shown.kind === 'error' ? 'alert' : 'status'}
-      className="absolute bottom-4 left-1/2 flex max-w-md -translate-x-1/2 items-start gap-2 rounded-md border border-destructive/30 bg-background px-3 py-2 text-sm shadow-lg"
+      className="absolute bottom-4 left-1/2 flex max-w-md -translate-x-1/2 animate-toast-in items-start gap-2 rounded-md border border-destructive/30 bg-background px-3 py-2 text-sm shadow-lg"
     >
       <div className="flex-1">
         <p className={shown.kind === 'error' ? 'font-medium text-destructive' : 'font-medium'}>

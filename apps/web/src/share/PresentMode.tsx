@@ -12,8 +12,28 @@ interface Props {
 
 const ignoreError = () => undefined;
 
+/** How one page gives way to the next while presenting. The choice is remembered. */
+type PresentTransition = 'none' | 'fade' | 'slide';
+const TRANSITION_KEY = 'opencanvas:present-transition';
+const TRANSITION_OPTIONS: readonly { id: PresentTransition; label: string }[] = [
+  { id: 'none', label: 'None' },
+  { id: 'fade', label: 'Fade' },
+  { id: 'slide', label: 'Slide' },
+];
+
+function loadTransition(): PresentTransition {
+  try {
+    const stored = localStorage.getItem(TRANSITION_KEY);
+    return stored === 'fade' || stored === 'slide' || stored === 'none' ? stored : 'fade';
+  } catch {
+    return 'fade';
+  }
+}
+
 export function PresentMode({ document: doc, initialPageIndex = 0, onClose }: Props) {
   const [idx, setIdx] = useState(initialPageIndex);
+  const [transition, setTransition] = useState<PresentTransition>(loadTransition);
+  const [direction, setDirection] = useState<'next' | 'prev'>('next');
   // Rendered SVG is tagged with the page it belongs to, so switching pages shows a blank frame
   // until the next render resolves instead of clearing state inside the effect.
   const [rendered, setRendered] = useState<{ pageId: string; svg: string } | null>(null);
@@ -34,8 +54,32 @@ export function PresentMode({ document: doc, initialPageIndex = 0, onClose }: Pr
     };
   }, [doc, page]);
 
-  const goPrev = useCallback(() => setIdx((i) => Math.max(0, i - 1)), []);
-  const goNext = useCallback(() => setIdx((i) => Math.min(total - 1, i + 1)), [total]);
+  const goPrev = useCallback(() => {
+    setDirection('prev');
+    setIdx((i) => Math.max(0, i - 1));
+  }, []);
+  const goNext = useCallback(() => {
+    setDirection('next');
+    setIdx((i) => Math.min(total - 1, i + 1));
+  }, [total]);
+
+  const chooseTransition = (next: PresentTransition) => {
+    setTransition(next);
+    try {
+      localStorage.setItem(TRANSITION_KEY, next);
+    } catch {
+      // Private mode: the choice simply lasts for this presentation.
+    }
+  };
+
+  const pageAnimation =
+    transition === 'fade'
+      ? 'animate-present-fade'
+      : transition === 'slide'
+        ? direction === 'next'
+          ? 'animate-present-next'
+          : 'animate-present-prev'
+        : '';
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -68,6 +112,26 @@ export function PresentMode({ document: doc, initialPageIndex = 0, onClose }: Pr
         <p className="text-sm font-medium">
           {doc.name} — {idx + 1} / {total}
         </p>
+        <div
+          role="radiogroup"
+          aria-label="Page transition"
+          className="flex items-center gap-0.5 rounded-full bg-white/10 p-0.5"
+        >
+          {TRANSITION_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={transition === option.id}
+              onClick={() => chooseTransition(option.id)}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-white/70 ${
+                transition === option.id ? 'bg-white text-black' : 'text-white/70 hover:text-white'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2">
           <span className="hidden text-xs text-white/60 sm:block">
             ← → to navigate · Esc to exit
@@ -94,7 +158,10 @@ export function PresentMode({ document: doc, initialPageIndex = 0, onClose }: Pr
           <ChevronLeft />
         </button>
 
-        <div className="flex max-h-full max-w-full items-center justify-center">
+        <div
+          key={page?.id ?? 'empty'}
+          className={`flex max-h-full max-w-full items-center justify-center ${pageAnimation}`}
+        >
           {svg ? (
             <div
               className="max-h-[calc(100vh-120px)] max-w-[90vw] overflow-hidden rounded-xl bg-white shadow-2xl [&_svg]:h-auto [&_svg]:max-h-[calc(100vh-120px)] [&_svg]:w-auto [&_svg]:max-w-[90vw] [&_svg]:object-contain"

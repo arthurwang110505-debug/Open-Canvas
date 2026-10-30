@@ -78,7 +78,7 @@ function renderDashboard(services: ProjectsServices) {
 }
 
 async function openProjects(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Projects' }));
+  await user.click(screen.getByRole('button', { name: /^Projects\s*\d+ designs$/ }));
 }
 
 beforeEach(() => {
@@ -94,7 +94,10 @@ afterEach(() => {
 describe('Dashboard', () => {
   it('shows an empty state when nothing has been saved yet', async () => {
     renderDashboard(servicesFor(createMemoryProjectStore()));
-    expect(await screen.findByText('No designs yet')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Ready to make your own' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No designs yet')).not.toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: 'What will you design today?' }),
     ).toBeInTheDocument();
@@ -116,7 +119,7 @@ describe('Dashboard', () => {
       expect(within(drawer).getByRole('button', { name: 'Close navigation' })).toHaveFocus(),
     );
 
-    await user.click(within(drawer).getByRole('button', { name: 'Projects' }));
+    await user.click(within(drawer).getByRole('button', { name: /^Projects\s*\d+ designs$/ }));
     expect(await screen.findByRole('heading', { name: 'Projects' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Dashboard navigation' })).not.toBeInTheDocument();
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -221,28 +224,19 @@ describe('Dashboard', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/design/doc_new'));
   });
 
-  it('searches from home and opens an already-filtered project list', async () => {
-    const store = await seededStore([
-      makeDocument('doc_spring', 'Spring poster', '2026-03-03T09:00:00.000Z'),
-      makeDocument('doc_summer', 'Summer flyer', '2026-03-02T09:00:00.000Z'),
-    ]);
-    const { user } = renderDashboard(servicesFor(store));
-    await screen.findByRole('region', { name: 'Continue editing' });
-
-    await user.type(screen.getByRole('searchbox', { name: 'Search your designs' }), 'Spring');
-    await user.click(screen.getByRole('button', { name: 'Search designs' }));
-
-    const results = await screen.findByRole('list', { name: 'Designs' });
-    expect(within(results).getByRole('heading', { name: 'Spring poster' })).toBeInTheDocument();
+  it('searches templates from home and carries the query into the gallery', async () => {
+    const { user } = renderDashboard(servicesFor(createMemoryProjectStore()));
+    await screen.findByRole('heading', { name: 'Ready to make your own' });
+    await user.type(screen.getByRole('searchbox', { name: 'Search templates' }), 'tote');
+    await user.click(screen.getByRole('button', { name: 'Search templates' }));
     expect(
-      within(results).queryByRole('heading', { name: 'Summer flyer' }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole('searchbox', { name: 'Search your designs' })).toHaveValue('Spring');
-    expect(screen.getByText('1 result for “Spring”')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Clear design search' }));
-    expect(screen.getByRole('searchbox', { name: 'Search your designs' })).toHaveFocus();
-    expect(within(results).getByRole('heading', { name: 'Summer flyer' })).toBeInTheDocument();
+      await screen.findByRole('heading', { name: 'Find your next favorite' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search templates' })).toHaveValue('tote');
+    expect(screen.getAllByTestId('template-card')).toHaveLength(1);
+    expect(
+      within(screen.getByTestId('template-card')).getByText('Everyday Tote', { selector: 'p' }),
+    ).toBeInTheDocument();
   });
 
   it('offers a clear recovery action when a project search has no matches', async () => {
@@ -394,7 +388,7 @@ describe('Dashboard', () => {
         'true',
       ),
     );
-    await user.click(screen.getByRole('button', { name: 'Starred' }));
+    await user.click(screen.getByRole('button', { name: /^Starred\s*\d+ designs$/ }));
     expect(
       within(await screen.findByRole('list', { name: 'Designs' })).getByRole('heading', {
         name: 'Poster',
@@ -424,8 +418,8 @@ describe('Dashboard', () => {
         name: 'Create folder',
       }),
     );
-    const folderButton = await screen.findByRole('button', { name: 'Campaigns' });
-    await user.click(screen.getByRole('button', { name: 'Projects' }));
+    const folderButton = await screen.findByRole('button', { name: /^Campaigns\s*0 designs$/ });
+    await user.click(screen.getByRole('button', { name: /^Projects\s*\d+ designs$/ }));
 
     await user.click(screen.getByRole('button', { name: 'Organize Poster' }));
     await user.click(screen.getByRole('menuitem', { name: 'Campaigns' }));
@@ -451,7 +445,7 @@ describe('Dashboard', () => {
     await user.clear(folderName);
     await user.type(folderName, 'Launches');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
-    await screen.findByRole('button', { name: 'Launches' });
+    await screen.findByRole('button', { name: /^Launches\s*\d+ designs$/ });
 
     await user.click(screen.getByRole('button', { name: 'Folder actions for Launches' }));
     await user.click(screen.getByRole('menuitem', { name: 'Delete folder' }));

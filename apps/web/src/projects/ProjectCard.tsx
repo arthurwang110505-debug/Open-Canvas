@@ -78,7 +78,7 @@ export function ProjectCard({
   };
 
   return (
-    <li className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md">
+    <li className="group flex min-w-0 animate-rise-in flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md">
       <div className="relative p-2">
         <button
           type="button"

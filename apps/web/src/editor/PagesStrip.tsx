@@ -130,7 +130,7 @@ export function PagesStrip() {
         ref={stripRef}
         role="group"
         aria-label="Pages"
-        className="pointer-events-auto absolute bottom-2 left-2 z-20 flex max-w-none items-center gap-1.5 rounded-2xl border border-border bg-white px-1.5 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)] sm:bottom-3 sm:left-3 sm:right-40 sm:gap-2 sm:px-2 sm:py-2 lg:left-1/2 lg:right-auto lg:max-w-[calc(100%_-_22rem)] lg:-translate-x-1/2"
+        className="relative flex h-full min-w-0 flex-1 items-center gap-1.5 py-1.5 sm:gap-2"
       >
         <Tooltip content="Grid view">
           <Button
@@ -168,11 +168,7 @@ export function PagesStrip() {
                   onContextMenu={(event) => openPageMenu(event, page.id)}
                   className={`group relative flex shrink-0 flex-col items-center gap-1 rounded-xl px-0.5 pt-0.5 ${isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                 >
-                  <button
-                    type="button"
-                    aria-label={`Go to page ${index + 1}${isActive ? ' (current)' : ''}`}
-                    aria-current={isActive ? 'page' : undefined}
-                    onClick={() => setActivePage(page.id)}
+                  <div
                     className={[
                       'relative overflow-hidden rounded-lg border-2 bg-white transition-all',
                       isActive
@@ -180,11 +176,21 @@ export function PagesStrip() {
                         : 'border-border hover:border-foreground/20 hover:shadow-sm',
                     ].join(' ')}
                   >
-                    <PageThumbnail document={document} pageId={page.id} />
-                    <span className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/10 to-transparent px-1 py-0.5 text-center text-[10px] font-medium text-foreground/70">
+                    <PageThumbnail document={document} pageId={page.id} targetWidth={72} />
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/10 to-transparent px-1 py-0.5 text-center text-[10px] font-medium text-foreground/70"
+                    >
                       {index + 1}
                     </span>
-                  </button>
+                    <button
+                      type="button"
+                      aria-label={`Go to page ${index + 1}${isActive ? ' (current)' : ''}`}
+                      aria-current={isActive ? 'page' : undefined}
+                      onClick={() => setActivePage(page.id)}
+                      className="absolute inset-0 rounded-md focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    />
+                  </div>
                   <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                     <Tooltip content="Move left">
                       <Button
@@ -258,7 +264,7 @@ export function PagesStrip() {
           <div
             role="menu"
             aria-label={`Page ${contextPageIndex + 1} actions`}
-            style={{ left: pageContextMenu.x, top: pageContextMenu.y }}
+            style={{ left: pageContextMenu.x, top: Math.max(0, pageContextMenu.y) }}
             className="absolute z-50 min-w-44 rounded-xl border border-border bg-white p-1.5 shadow-[0_12px_32px_rgba(16,24,40,0.18)]"
           >
             <button

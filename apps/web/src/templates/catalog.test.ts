@@ -1,5 +1,5 @@
 import { CANVAS_PRESETS, validateDocument } from '@opencanvas/document';
-import { renderPageToSvg } from '@opencanvas/export';
+import { renderPageToSvg, type TextMeasurer, wrapTextLines } from '@opencanvas/export';
 import { getIcon } from '@opencanvas/icons';
 import { describe, expect, it } from 'vitest';
 
@@ -89,6 +89,46 @@ describe('the template catalogue', () => {
         }
       }
     }
+  });
+
+  it('keeps the repaired signature headlines clear of their supporting text', () => {
+    // A deliberately generous half-em advance catches the original fixed-height collisions
+    // without depending on a platform's font rasterizer in the unit-test environment.
+    const measure: TextMeasurer = (text, style) => text.length * style.fontSize * 0.5;
+    for (const id of ['instagram-minimal', 'story-gradient', 'presentation-title']) {
+      const template = TEMPLATES.find((candidate) => candidate.id === id);
+      const document = template?.build();
+      expect(document, id).toBeDefined();
+      const texts = (document?.pages[0]?.elements ?? [])
+        .filter((element) => element.type === 'text')
+        .map((element) => {
+          const lines = wrapTextLines(element, measure);
+          return {
+            ...element,
+            bottom: element.y + element.fontSize * (element.lineHeight * (lines.length - 1) + 1.13),
+          };
+        });
+      for (let i = 0; i < texts.length; i += 1)
+        for (let j = i + 1; j < texts.length; j += 1) {
+          const a = texts[i]!;
+          const b = texts[j]!;
+          const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+          const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.y, b.y);
+          expect(overlapX <= 4 || overlapY <= 4, `${id}: ${a.text} / ${b.text}`).toBe(true);
+        }
+    }
+  });
+
+  it('uses a condensed display face for the long Launch Week headline', () => {
+    const document = getTemplate('launch-week')?.build();
+    const headline = document?.pages[0]?.elements.find(
+      (element) => element.type === 'text' && element.text.includes('workspace'),
+    );
+    expect(headline?.type).toBe('text');
+    if (headline?.type !== 'text') return;
+    expect(headline.fontFamily).toBe('Oswald');
+    // The browser font audit measured 416px against this 454px box; the old face was 508px.
+    expect(headline.width).toBeGreaterThanOrEqual(440);
   });
 
   it('uses gradient backgrounds where the design calls for one', async () => {

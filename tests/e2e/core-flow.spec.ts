@@ -23,7 +23,9 @@ test('create, edit, copy/paste, export, and restore a design', async ({ page }) 
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Export SVG', exact: true }).click();
+  const exportDialog = page.getByRole('dialog', { name: 'Download design' });
+  await exportDialog.getByRole('radio', { name: /SVG/ }).click();
+  await exportDialog.getByRole('button', { name: 'Download SVG' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe('Browser smoke.svg');
   const downloadPath = await download.path();

@@ -3,6 +3,7 @@ import {
   createImageAsset,
   createImageElement,
   createIconElement,
+  createPage,
   createRectElement,
   createTextElement,
   err,
@@ -26,13 +27,17 @@ const fixedDate = new Date('2026-05-06T07:08:09.000Z');
 const ONE_PIXEL_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-/** Opens the Download menu and picks a format, like a user would. */
+/** Opens the Download dialog, picks a format, and confirms, like a user would. */
 async function exportFormat(
   user: ReturnType<typeof userEvent.setup>,
   format: 'PNG' | 'SVG' | 'PDF',
 ) {
   await user.click(screen.getByRole('button', { name: 'Download' }));
-  await user.click(screen.getByRole('menuitem', { name: `Export ${format}` }));
+  const dialog = await screen.findByRole('dialog', { name: 'Download design' });
+  if (format !== 'PNG') {
+    await user.click(within(dialog).getByRole('radio', { name: new RegExp(format) }));
+  }
+  await user.click(within(dialog).getByRole('button', { name: `Download ${format}` }));
 }
 
 /** One fake face is enough: the embedder has its own tests, exports only pass it through. */
@@ -95,17 +100,69 @@ function designWithRectangle(): DesignDocument {
 }
 
 describe('exporting a design', () => {
-  it('explains which pages each format includes', async () => {
+  it('explains format, page scope, and output size before downloading', async () => {
     const { user } = renderEditor(designWithRectangle());
 
     await user.click(screen.getByRole('button', { name: 'Download' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Download design' });
 
-    expect(screen.getByRole('menuitem', { name: 'Export PNG' })).toHaveTextContent(
-      'current page at 2×',
+    // PNG is the default: the current page at 2× of the 1080px design.
+    expect(within(dialog).getByText('Poster.png')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('2160 × 2160 px · page 1 of 1 (current page only)'),
+    ).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('radio', { name: /SVG/ }));
+    expect(within(dialog).getByText(/vector · current page only/)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('radio', { name: /PDF/ }));
+    expect(within(dialog).getByRole('radio', { name: 'All pages (1)' })).toHaveAttribute(
+      'aria-checked',
+      'true',
     );
-    expect(screen.getByRole('menuitem', { name: 'Export SVG' })).toHaveTextContent('current page');
-    expect(screen.getByRole('menuitem', { name: 'Export PDF' })).toHaveTextContent('all pages');
-    expect(screen.getByText(/PNG and SVG export the current page/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/rendered as images at 2×/)).toBeInTheDocument();
+
+    // Choosing a larger size updates the stated output dimensions immediately.
+    await user.click(within(dialog).getByRole('radio', { name: /PNG/ }));
+    await user.click(within(dialog).getByRole('radio', { name: /3×/ }));
+    expect(
+      within(dialog).getByText('3240 × 3240 px · page 1 of 1 (current page only)'),
+    ).toBeInTheDocument();
+  });
+
+  it('rasterizes at the size chosen in the dialog', async () => {
+    const { user, downloads, rasterize } = renderEditor(designWithRectangle());
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Download design' });
+    await user.click(within(dialog).getByRole('radio', { name: /3×/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Download PNG' }));
+
+    expect(rasterize).toHaveBeenCalledTimes(1);
+    const [, , scale] = rasterize.mock.calls[0] as [
+      string,
+      { width: number; height: number },
+      number,
+    ];
+    expect(scale).toBe(3);
+    expect(downloads[0]?.filename).toBe('Poster.png');
+    // Success closes the dialog again.
+    expect(screen.queryByRole('dialog', { name: 'Download design' })).not.toBeInTheDocument();
+  });
+
+  it('can download a PDF with only the current page', async () => {
+    const document = designWithRectangle();
+    document.pages.push(createPage({ id: 'page_2' }));
+    const { user, downloads, rasterize } = renderEditor(document);
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Download design' });
+    await user.click(within(dialog).getByRole('radio', { name: /PDF/ }));
+    await user.click(within(dialog).getByRole('radio', { name: 'Current page only' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Download PDF' }));
+
+    expect(rasterize).toHaveBeenCalledTimes(1);
+    expect(downloads[0]?.filename).toBe('Poster.pdf');
   });
 
   it('downloads an SVG rendered from the document model', async () => {
@@ -164,7 +221,9 @@ describe('exporting a design', () => {
 
     await exportFormat(user, 'PNG');
 
-    expect(await screen.findByText('No 2D context in this browser.')).toBeInTheDocument();
+    // The dialog stays open with the reason, so the user can retry or change format.
+    const dialog = screen.getByRole('dialog', { name: 'Download design' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('No 2D context in this browser.');
     expect(screen.getByText('Export failed')).toBeInTheDocument();
     expect(downloads).toEqual([]);
   });
@@ -215,9 +274,11 @@ describe('exporting a design', () => {
 
     await exportFormat(user, 'SVG');
 
-    expect(
-      await screen.findByText('The font "Inter" could not be embedded: HTTP 404'),
-    ).toBeInTheDocument();
+    // The reason shows in the dialog (and in the notification toast behind it).
+    const dialog = screen.getByRole('dialog', { name: 'Download design' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'The font "Inter" could not be embedded: HTTP 404',
+    );
     expect(downloads).toEqual([]);
   });
 
@@ -303,12 +364,10 @@ describe('exporting a design', () => {
     const { user, downloads } = renderEditor(document);
     await exportFormat(user, 'SVG');
 
-    expect(
-      await screen.findByText(
-        'The image "Removed photo" could not be embedded: the photo it uses is not part of this version of OpenCanvas',
-        { exact: false },
-      ),
-    ).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Download design' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'The image "Removed photo" could not be embedded: the photo it uses is not part of this version of OpenCanvas',
+    );
     expect(downloads).toEqual([]);
   });
 
@@ -328,13 +387,11 @@ describe('exporting a design', () => {
     const { user, downloads } = renderEditor(document, { blobStore: new MemoryAssetBlobStore() });
     await exportFormat(user, 'SVG');
 
-    expect(
-      await screen.findByText('The image "logo.png" could not be embedded: its image data', {
-        exact: false,
-      }),
-    ).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Download design' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'The image "logo.png" could not be embedded: its image data',
+    );
     expect(screen.getByText('Export failed')).toBeInTheDocument();
-    expect(downloads).toEqual([]);
     expect(downloads).toEqual([]);
   });
 
