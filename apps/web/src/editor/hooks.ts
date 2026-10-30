@@ -4,6 +4,7 @@ import { useStore } from 'zustand';
 
 import type { CanvasController, CanvasControllerState } from './canvasController';
 import { EditorContext, type EditorContextValue } from './EditorContext';
+
 import type { NotificationState, NotificationStore } from './notifications';
 import type { PersistenceController, PersistenceState } from './persistence';
 
@@ -37,6 +38,11 @@ export function useCanvasState<T>(selector: (state: CanvasControllerState) => T)
 
 export function useNotificationStore(): NotificationStore {
   return useEditorContext().notifications;
+}
+
+/** The host's resized-copy saver, when the editor is embedded in the project app. */
+export function useCreateResizedCopy(): EditorContextValue['onCreateResizedCopy'] {
+  return useEditorContext().onCreateResizedCopy;
 }
 
 export function useNotification<T>(selector: (state: NotificationState) => T): T {

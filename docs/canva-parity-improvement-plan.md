@@ -1,5 +1,7 @@
 # OpenCanvas → Canva: a working plan
 
+> **Current UI/UX priorities:** see the [2026-10-29 UI/UX improvement plan](ui-ux-canva-improvement-plan.md), based on the current schema-v10 app. This document retains the broader feature backlog and implementation history; its original baseline below is historical.
+
 **Version:** 2.0 · **Date:** 2026-10-21 · **Baseline:** `ec56b00` (schema v4, 334 tests)
 **Supersedes:** v1 draft dated 2026-10-19 (still in git history). v1 planned work that has since
 shipped and under-counted how much of the "Canva feel" is content, not controls.

@@ -87,6 +87,7 @@ export function Dashboard() {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [templateQuery, setTemplateQuery] = useState('');
   const [sortBy, setSortBy] = useState<'recent' | 'name'>('recent');
   const [showCreateDesign, setShowCreateDesign] = useState(false);
   const [folderDialog, setFolderDialog] = useState<{ id?: string; name?: string } | null>(null);
@@ -476,6 +477,11 @@ export function Dashboard() {
               : 'This browser has no IndexedDB: designs are kept in memory only and are lost on reload.'}
           </p>
           <div className="flex items-center gap-2 sm:ml-auto">
+            <Button size="sm" onClick={openCreateDesign} className="rounded-lg">
+              <Sparkles className="size-4" />
+              <span className="hidden min-[480px]:inline">Create a design</span>
+              <span className="sr-only min-[480px]:hidden">Create a design</span>
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -524,14 +530,17 @@ export function Dashboard() {
             ) : null}
 
             {activeView === 'home' ? (
-              <div className="space-y-9">
+              <div className="space-y-7">
                 <HomeHero
                   onCreateDesign={() => setShowCreateDesign(true)}
                   onCreatePreset={(preset) => void onCreatePreset(preset.id)}
-                  onBrowseTemplates={() => setActiveView('templates')}
+                  onBrowseTemplates={() => {
+                    setTemplateQuery('');
+                    changeView('templates');
+                  }}
                   onSearch={(query) => {
-                    setSearchQuery(query);
-                    changeView('projects');
+                    setTemplateQuery(query);
+                    changeView('templates');
                   }}
                 />
                 {list.status === 'ready' && list.projects.length > 0 ? (
@@ -587,19 +596,6 @@ export function Dashboard() {
                     </div>
                   </section>
                 ) : null}
-                {list.status === 'ready' && list.projects.length === 0 ? (
-                  <EmptyState
-                    icon={<Sparkles />}
-                    title="No designs yet"
-                    description="Create a first canvas or explore a template. Your work stays on this device."
-                    layout="split"
-                    action={
-                      <Button onClick={() => setShowCreateDesign(true)} className="rounded-full">
-                        Create your first design
-                      </Button>
-                    }
-                  />
-                ) : null}
                 {list.status === 'loading' ? (
                   <div className="grid gap-3 sm:grid-cols-3">
                     {[1, 2, 3].map((index) => (
@@ -617,10 +613,10 @@ export function Dashboard() {
                         id="home-template-heading"
                         className="flex items-center gap-2 text-base font-semibold"
                       >
-                        <LayoutTemplate className="size-4 text-primary" /> Templates for every idea
+                        <LayoutTemplate className="size-4 text-primary" /> Ready to make your own
                       </h2>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        A few starting points from the template collection.
+                        Editable starting points for your next idea.
                       </p>
                     </div>
                     <button
@@ -655,11 +651,11 @@ export function Dashboard() {
                       Search, filter, preview, and make any layout your own.
                     </p>
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    60+ editable starting points
-                  </span>
+                  <span className="text-xs text-muted-foreground">60 editable starting points</span>
                 </div>
                 <TemplateGallery
+                  key={templateQuery}
+                  initialQuery={templateQuery}
                   onUse={(id) => void onUseTemplate(id)}
                   onPreview={setPreviewTemplateId}
                 />

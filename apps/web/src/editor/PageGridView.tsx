@@ -1,5 +1,5 @@
 import { LIMITS, type DesignDocument } from '@opencanvas/document';
-import { Button, Tooltip } from '@opencanvas/ui';
+import { Button, Dialog, Tooltip } from '@opencanvas/ui';
 import { Copy, Plus, Trash2, X } from 'lucide-react';
 
 import { PageThumbnail } from './PageThumbnail';
@@ -28,11 +28,10 @@ export function PageGridView({
   const canDelete = document.pages.length > 1;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="page-grid-title"
-      className="absolute inset-3 z-30 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-[#f8f8fa] shadow-[0_16px_48px_rgba(15,23,42,0.2)]"
+    <Dialog
+      labelledBy="page-grid-title"
+      onClose={onClose}
+      className="flex h-[85dvh] max-w-6xl flex-col overflow-hidden bg-[#f8f8fa]"
     >
       <header className="flex shrink-0 items-center gap-3 border-b border-border bg-white px-5 py-3">
         <div className="min-w-0 flex-1">
@@ -124,6 +123,6 @@ export function PageGridView({
           })}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

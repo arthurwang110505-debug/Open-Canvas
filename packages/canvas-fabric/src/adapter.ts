@@ -187,6 +187,19 @@ class AssetLoadFailure extends Error {
   }
 }
 
+/**
+ * Fabric proxies text editing through a visually hidden <textarea> that has no accessible
+ * name. Label it when editing starts so assistive technology (and automated accessibility
+ * checks) can identify the field instead of reporting an unlabeled form control.
+ */
+function labelTextEditingField(target: unknown): void {
+  const textarea = (target as { hiddenTextarea?: HTMLTextAreaElement | null } | null)
+    ?.hiddenTextarea;
+  if (textarea && !textarea.getAttribute('aria-label')) {
+    textarea.setAttribute('aria-label', 'Edit text');
+  }
+}
+
 const defaultImageLoader: ImageSourceLoader = (url, { signal }) =>
   util.loadImage(url, { signal, crossOrigin: 'anonymous' });
 
@@ -1615,7 +1628,8 @@ export class FabricCanvasAdapter {
     this.canvas.on('selection:updated', emitSelection);
     this.canvas.on('selection:cleared', emitSelection);
 
-    this.canvas.on('text:editing:entered', () => {
+    this.canvas.on('text:editing:entered', (event) => {
+      labelTextEditingField(event.target);
       this.callbacks.onTextEditingChanged?.(true);
     });
 

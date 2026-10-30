@@ -8,6 +8,7 @@ import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { PagesStrip } from './PagesStrip';
 import { Sidebar, type SidebarTab } from './Sidebar';
 import { TopBar } from './TopBar';
+import { ZoomControl } from './ZoomControl';
 import { useAutosave } from './useAutosave';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 
@@ -40,7 +41,7 @@ export function EditorShell() {
         />
         <main
           aria-label="Workspace"
-          className="grid h-full min-h-0 min-w-0 grid-rows-[44px_minmax(0,1fr)] overflow-hidden pb-[calc(4rem_+_env(safe-area-inset-bottom))] lg:pb-0"
+          className="grid h-full min-h-0 min-w-0 grid-rows-[44px_minmax(0,1fr)_64px] lg:grid-rows-[44px_minmax(0,1fr)_108px] overflow-hidden pb-[calc(4rem_+_env(safe-area-inset-bottom))] lg:pb-0"
         >
           <ContextualToolbar onOpenPanel={openPanel} />
           <div className="relative min-h-0 min-w-0">
@@ -49,9 +50,15 @@ export function EditorShell() {
               onOpenProperties={() => openPanel('properties')}
             />
             <FloatingToolbar onOpenProperties={() => openPanel('properties')} />
-            <PagesStrip />
             <ErrorToast />
           </div>
+          <footer
+            aria-label="Page navigation and zoom"
+            className="relative z-20 flex min-w-0 items-center gap-2 border-t border-border bg-panel px-2 sm:px-3"
+          >
+            <PagesStrip />
+            <ZoomControl />
+          </footer>
         </main>
       </div>
       {showShortcuts ? <KeyboardShortcutsDialog onClose={() => setShowShortcuts(false)} /> : null}

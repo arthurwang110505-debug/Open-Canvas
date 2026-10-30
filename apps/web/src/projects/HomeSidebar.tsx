@@ -59,7 +59,6 @@ function NavButton({
   return (
     <button
       type="button"
-      aria-label={label}
       aria-current={selected ? 'page' : undefined}
       onClick={onClick}
       className={`flex min-w-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium transition-colors ${
@@ -69,9 +68,14 @@ function NavButton({
       }`}
     >
       <Icon className="size-[18px] shrink-0" />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="min-w-0 flex-1 truncate">
+        {label}
+        {count !== undefined ? <span className="sr-only">{` ${count} designs`}</span> : null}
+      </span>{' '}
       {count !== undefined ? (
-        <span className="text-[11px] tabular-nums text-muted-foreground">{count}</span>
+        <span aria-hidden="true" className="text-[11px] tabular-nums text-muted-foreground">
+          {count}
+        </span>
       ) : null}
     </button>
   );
@@ -188,7 +192,7 @@ export function HomeSidebar({
         <div className="px-3 pb-3">
           <Button
             onClick={onCreateDesign}
-            className="h-11 w-full justify-start rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-3.5 text-white shadow-sm hover:from-violet-700 hover:to-indigo-700"
+            className="h-11 w-full justify-start rounded-lg px-3.5 shadow-sm"
           >
             <Plus className="size-4" />
             Create a design
@@ -242,7 +246,6 @@ export function HomeSidebar({
                   <div key={folder.id} className="group flex items-center gap-1">
                     <button
                       type="button"
-                      aria-label={folder.name}
                       aria-current={selected ? 'page' : undefined}
                       onClick={() => onChangeView(`folder:${folder.id}`)}
                       className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] transition-colors ${
@@ -252,8 +255,14 @@ export function HomeSidebar({
                       }`}
                     >
                       <Folder className="size-[17px] shrink-0" />
-                      <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-                      <span className="text-[11px] tabular-nums text-muted-foreground">
+                      <span className="min-w-0 flex-1 truncate">
+                        {folder.name}
+                        <span className="sr-only">{` ${folderCounts.get(folder.id) ?? 0} designs`}</span>
+                      </span>{' '}
+                      <span
+                        aria-hidden="true"
+                        className="text-[11px] tabular-nums text-muted-foreground"
+                      >
                         {folderCounts.get(folder.id) ?? 0}
                       </span>
                     </button>

@@ -34,7 +34,9 @@ describe('template gallery', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Search templates' }), 'tote');
     const cards = screen.getAllByTestId('template-card');
     expect(cards).toHaveLength(1);
-    await user.click(within(cards[0]!).getByRole('button', { name: /Use .* template/ }));
+    await user.click(
+      within(cards[0]!).getByRole('button', { name: 'Use template: Everyday Tote' }),
+    );
     expect(onUse).toHaveBeenCalledWith('everyday-tote');
   });
 

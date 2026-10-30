@@ -23,6 +23,8 @@ export interface TemplateGalleryProps {
   onUse: (templateId: string) => void;
   onPreview?: (templateId: string) => void;
   maxItems?: number;
+  /** Initial discovery query, shared by the home search and template browser. */
+  initialQuery?: string;
   /**
    * `page` is the full discovery view, `home` is a short featured row, and `panel` is the
    * compact two-column browser used inside the editor sidebar.
@@ -50,12 +52,13 @@ export function TemplateGallery({
   onUse,
   onPreview,
   maxItems,
+  initialQuery = '',
   variant = 'page',
 }: TemplateGalleryProps) {
   const panel = variant === 'panel';
   const home = variant === 'home';
   const [category, setCategory] = useState<TemplateCategory>('all');
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [limit, setLimit] = useState(PANEL_PAGE);
   const [orientation, setOrientation] = useState<TemplateOrientation | 'all'>('all');
   const [color, setColor] = useState<TemplateColorMood | 'all'>('all');
@@ -197,30 +200,32 @@ export function TemplateGallery({
       <div
         className={
           panel
-            ? 'mt-3 grid grid-cols-2 gap-2'
+            ? 'mt-3 columns-2 gap-2'
             : home
-              ? 'mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3'
-              : 'mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+              ? 'mt-3 columns-1 gap-4 sm:columns-2 xl:columns-3'
+              : 'mt-5 columns-1 gap-4 sm:columns-2 lg:columns-3 xl:columns-4'
         }
       >
-        {visible.map((tpl) => (
+        {visible.map((tpl, index) => (
           <div
             key={tpl.id}
             data-testid="template-card"
-            className="group flex flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-all hover:border-primary/20 hover:shadow-md"
+            style={{ animationDelay: `${Math.min(index, 11) * 45}ms` }}
+            className="group mb-4 inline-flex w-full animate-rise-in break-inside-avoid flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-colors hover:border-primary/30 hover:shadow-card-hover"
           >
-            <button
-              type="button"
-              onClick={() => (onPreview ? onPreview(tpl.id) : onUse(tpl.id))}
-              className="p-1.5 text-left transition-colors hover:bg-muted/30"
-              aria-label={`${onPreview ? 'Preview' : 'Use'} ${tpl.label} template`}
-            >
+            <div className="relative w-full p-2">
               <TemplateThumbnail document={documents.get(tpl.id) ?? tpl.build()} />
-            </button>
+              <button
+                type="button"
+                onClick={() => (onPreview ? onPreview(tpl.id) : onUse(tpl.id))}
+                className="absolute inset-0 rounded-lg transition-colors hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                aria-label={`${onPreview ? 'Preview' : 'Use'} ${tpl.label} template`}
+              />
+            </div>
             {panel ? (
               <p className="truncate px-2 pb-2 text-[11px] font-medium">{tpl.label}</p>
             ) : (
-              <div className="flex flex-1 flex-col gap-1 px-3 pt-1 pb-3">
+              <div className="flex w-full flex-col gap-1 px-3 pt-1 pb-3">
                 <p className="truncate text-sm leading-tight font-semibold">{tpl.label}</p>
                 <p className="line-clamp-1 text-xs text-muted-foreground">{tpl.description}</p>
                 <div className="mt-2 flex items-center justify-between">
@@ -229,10 +234,11 @@ export function TemplateGallery({
                   </span>
                   <Button
                     size="sm"
-                    className="h-7 rounded-full px-3 text-xs"
+                    className="h-8 rounded-lg px-3 text-xs"
+                    aria-label={`Use template: ${tpl.label}`}
                     onClick={() => onUse(tpl.id)}
                   >
-                    Use template
+                    Use
                   </Button>
                 </div>
               </div>

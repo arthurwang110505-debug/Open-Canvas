@@ -102,7 +102,7 @@ function tplInstagramMinimal(): DesignDocument {
   page.elements.push(
     createTextElement({
       x: 80,
-      y: 420,
+      y: 550,
       width: 680,
       height: 60,
       text: 'Up to 50% off — this weekend only',
@@ -115,7 +115,7 @@ function tplInstagramMinimal(): DesignDocument {
   page.elements.push(
     createRectElement({
       x: 80,
-      y: 520,
+      y: 650,
       width: 220,
       height: 56,
       fill: { type: 'solid', color: '#111827' },
@@ -125,7 +125,7 @@ function tplInstagramMinimal(): DesignDocument {
   page.elements.push(
     createTextElement({
       x: 80,
-      y: 534,
+      y: 664,
       width: 220,
       height: 28,
       text: 'Shop now →',
@@ -139,8 +139,8 @@ function tplInstagramMinimal(): DesignDocument {
   page.elements.push(
     createPathElement(
       [
-        { x: 80, y: 640 },
-        { x: 1000, y: 640 },
+        { x: 80, y: 760 },
+        { x: 1000, y: 760 },
       ],
       { stroke: { color: '#fdba74', width: 3 }, fill: { type: 'none' } },
     ),
@@ -274,7 +274,7 @@ function tplStoryGradient(): DesignDocument {
   page.elements.push(
     createTextElement({
       x: 80,
-      y: 940,
+      y: 980,
       width: 920,
       height: 60,
       text: 'Your daily dose of inspiration',
@@ -287,7 +287,7 @@ function tplStoryGradient(): DesignDocument {
   page.elements.push(
     createRectElement({
       x: 80,
-      y: 1040,
+      y: 1080,
       width: 920,
       height: 3,
       fill: { type: 'solid', color: '#ffffff' },
@@ -296,7 +296,7 @@ function tplStoryGradient(): DesignDocument {
   page.elements.push(
     createTextElement({
       x: 80,
-      y: 1080,
+      y: 1120,
       width: 920,
       height: 40,
       text: 'SWIPE UP  →',
@@ -349,7 +349,7 @@ function tplPresentationTitle(): DesignDocument {
   page.elements.push(
     createTextElement({
       x: 120,
-      y: 380,
+      y: 460,
       width: 900,
       height: 80,
       text: 'Growth, learnings, and the road ahead.',

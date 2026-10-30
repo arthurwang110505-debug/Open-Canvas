@@ -180,7 +180,7 @@ export function MenuContent({ children, align = 'start', className, ...props }: 
       tabIndex={-1}
       onKeyDown={onKeyDown}
       className={cn(
-        'absolute top-full z-50 mt-1.5 max-h-[min(70dvh,480px)] min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain rounded-xl border border-border bg-white p-1.5 shadow-[0_12px_32px_rgba(16,24,40,0.16)] outline-none',
+        'absolute top-full z-50 mt-1.5 max-h-[min(70dvh,480px)] min-w-52 max-w-[calc(100vw-1rem)] animate-menu-in overflow-y-auto overscroll-contain rounded-xl border border-border bg-white p-1.5 shadow-[0_12px_32px_rgba(16,24,40,0.16)] outline-none',
         align === 'end' ? 'right-0' : 'left-0',
         className,
       )}

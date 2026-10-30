@@ -93,7 +93,9 @@ describe('gradient backgrounds', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Download' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Export SVG' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Download design' });
+    await user.click(within(dialog).getByRole('radio', { name: /SVG/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Download SVG' }));
 
     const svg = await downloads[0]?.blob.text();
     expect(svg).toContain('<defs>');

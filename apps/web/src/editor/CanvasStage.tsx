@@ -20,7 +20,6 @@ import { useImageImport } from './assets/useImageImport';
 import { hasElementDrag, readElementDragPayload } from './elements/drag';
 import { CropOverlay } from './canvas/CropOverlay';
 import { Rulers } from './canvas/Rulers';
-import { ZoomControl } from './ZoomControl';
 import { useCanvasController, useEditor, useEditorStore, useNotificationStore } from './hooks';
 import { useDraw } from './draw/DrawContext';
 
@@ -509,7 +508,6 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
       <canvas ref={canvasRef} aria-label="Design canvas" />
       <CropOverlay />
       <Rulers />
-      <ZoomControl />
       {contextMenu ? (
         <CanvasContextMenu
           position={contextMenu}

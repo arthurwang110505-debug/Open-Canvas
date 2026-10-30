@@ -3,6 +3,7 @@ import { Button } from '@opencanvas/ui';
 import { useEffect, useState } from 'react';
 
 import { EditorPage } from '../editor/EditorPage';
+import type { ResizedCopyRequest } from '../editor/EditorContext';
 import { createPersistence, type PersistenceController } from '../editor/persistence';
 import { navigate } from '../router';
 import { useProjects } from './useProjects';
@@ -69,6 +70,27 @@ export function ProjectEditor({ projectId }: ProjectEditorProps) {
     setAttempt((current) => current + 1);
   };
 
+  /**
+   * Saves a resized copy as a new design and opens it. Duplicating first means the copy
+   * gets a fresh id and its own copies of the image bytes; the original design and the
+   * live editor session are never touched.
+   */
+  const handleCreateResizedCopy = async (copy: ResizedCopyRequest): Promise<boolean> => {
+    const duplicated = await store.duplicate(projectId);
+    if (!duplicated.ok) return false;
+    const loaded = await store.load(duplicated.value.id);
+    if (!loaded.ok) return false;
+    const saved = await store.save({
+      ...loaded.value,
+      name: copy.name,
+      size: copy.size,
+      pages: copy.pages.map((page) => ({ ...page, elements: [...page.elements] })),
+    });
+    if (!saved.ok) return false;
+    navigate({ name: 'editor', projectId: duplicated.value.id });
+    return true;
+  };
+
   if (state.status === 'loading') {
     return (
       <div className="grid h-full place-items-center bg-background">
@@ -102,6 +124,7 @@ export function ProjectEditor({ projectId }: ProjectEditorProps) {
     <EditorPage
       document={state.document}
       persistence={persistence}
+      onCreateResizedCopy={handleCreateResizedCopy}
       assetServices={{ blobStore: store.assetBlobStore(projectId) }}
     />
   );

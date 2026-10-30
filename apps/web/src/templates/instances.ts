@@ -101,7 +101,7 @@ export const INSTANCES: readonly TemplateInstance[] = [
       soft: '#dbeafe',
       onAccent: '#f8fafc',
     },
-    type: { display: 'Space Grotesk', body: 'Inter' },
+    type: { display: 'Oswald', body: 'Inter' },
     content: {
       eyebrow: 'Day one',
       title: 'The new\nworkspace\nis live',

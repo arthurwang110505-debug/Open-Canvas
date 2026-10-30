@@ -152,6 +152,19 @@ describe('FabricCanvasAdapter', () => {
     expect(callbacks.onTextEditingChanged).toHaveBeenLastCalledWith(true);
   });
 
+  it('labels Fabric’s hidden text-editing field when editing starts', () => {
+    const element = createTextElement({ id: 't1', text: 'Hello' });
+    adapter.render({ page: makePage([element]), size, selectedIds: ['t1'], assets: {} });
+    const object = elementObjects()[0];
+    if (!(object instanceof Textbox)) throw new Error('expected a textbox');
+    const textarea = document.createElement('textarea');
+    (object as unknown as { hiddenTextarea: HTMLTextAreaElement }).hiddenTextarea = textarea;
+
+    adapter.getFabricCanvas().fire('text:editing:entered', { target: object as never });
+
+    expect(textarea.getAttribute('aria-label')).toBe('Edit text');
+  });
+
   it('reports user selection changes', () => {
     const a = createRectElement({ id: 'a' });
     adapter.render({ page: makePage([a]), size, selectedIds: [], assets: {} });

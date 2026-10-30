@@ -21,6 +21,19 @@ export type ExportKind = ExportExtension;
 /** Raster resolution multiplier: 2× keeps text and edges crisp without huge files. */
 export const RASTER_SCALE = 2;
 
+/** Which pages an export includes. PNG/SVG are always the current page; PDF can be either. */
+export type ExportPageScope = 'current' | 'all';
+
+export interface ExportRequestOptions {
+  /** Raster multiplier for PNG (and the pages inside a PDF). Defaults to `RASTER_SCALE`. */
+  scale?: number;
+  /** PDF only: every page, or just the page currently on screen. */
+  pageScope?: ExportPageScope;
+}
+
+/** Lets callers (the download dialog) close on success and show the error inline on failure. */
+export type ExportOutcome = { ok: true; filename: string } | { ok: false; error: string };
+
 interface ExportedFile {
   blob: Blob;
   filename: string;
@@ -29,9 +42,10 @@ interface ExportedFile {
 export interface DesignExportApi {
   /** Which format is currently being produced, if any. */
   busy: ExportKind | null;
-  exportPng: () => Promise<void>;
-  exportSvg: () => Promise<void>;
-  exportPdf: () => Promise<void>;
+  exportDesign: (kind: ExportKind, options?: ExportRequestOptions) => Promise<ExportOutcome>;
+  exportPng: () => Promise<ExportOutcome>;
+  exportSvg: () => Promise<ExportOutcome>;
+  exportPdf: () => Promise<ExportOutcome>;
 }
 
 /**
@@ -70,13 +84,22 @@ export function useDesignExport(): DesignExportApi {
   );
 
   const produce = useCallback(
-    async (kind: ExportKind): Promise<Result<ExportedFile, string>> => {
+    async (
+      kind: ExportKind,
+      options: ExportRequestOptions = {},
+    ): Promise<Result<ExportedFile, string>> => {
       const state = editor.getState();
       const document: DesignDocument = state.document;
-      // PNG/SVG export the active page, PDF exports every page, so collect the fonts each one
-      // actually needs before rendering (hidden elements are not rendered, so they are skipped).
+      const scale =
+        options.scale !== undefined && Number.isFinite(options.scale) && options.scale > 0
+          ? options.scale
+          : RASTER_SCALE;
+      const pageScope: ExportPageScope = kind === 'pdf' ? (options.pageScope ?? 'all') : 'current';
+      // PNG/SVG export the active page; PDF exports every page unless told otherwise. Collect
+      // the fonts each included page actually needs before rendering (hidden elements are not
+      // rendered, so they are skipped).
       const pages =
-        kind === 'pdf'
+        pageScope === 'all'
           ? document.pages
           : document.pages.filter((page) => page.id === state.activePageId);
       const usages = collectFontUsages(
@@ -108,7 +131,7 @@ export function useDesignExport(): DesignExportApi {
         const raster = await services.rasterize(
           svg.value,
           { width: document.size.width, height: document.size.height },
-          RASTER_SCALE,
+          scale,
         );
         if (!raster.ok) return err(raster.error.message);
         const blob = dataUrlToBlob(raster.value);
@@ -118,8 +141,9 @@ export function useDesignExport(): DesignExportApi {
 
       const pdf = await renderDocumentToPdf(document, {
         rasterize: services.rasterize,
-        scale: RASTER_SCALE,
+        scale,
         svgOptions,
+        ...(pageScope === 'current' ? { pageIds: [state.activePageId] } : {}),
       });
       if (!pdf.ok) return err(pdf.error.message);
       return ok({ blob: new Blob([pdf.value], { type: 'application/pdf' }), filename });
@@ -128,17 +152,17 @@ export function useDesignExport(): DesignExportApi {
   );
 
   const run = useCallback(
-    async (kind: ExportKind) => {
-      if (running.current) return;
+    async (kind: ExportKind, options?: ExportRequestOptions): Promise<ExportOutcome> => {
+      if (running.current) return { ok: false, error: 'Another export is already in progress.' };
       running.current = true;
       setBusy(kind);
       try {
-        const produced = await produce(kind);
+        const produced = await produce(kind, options);
         if (!produced.ok) {
           notifications
             .getState()
             .show({ kind: 'error', title: 'Export failed', message: produced.error });
-          return;
+          return { ok: false, error: produced.error };
         }
         services.download(produced.value.blob, produced.value.filename);
         notifications.getState().show({
@@ -146,12 +170,11 @@ export function useDesignExport(): DesignExportApi {
           title: 'Export ready',
           message: `${produced.value.filename} was downloaded.`,
         });
+        return { ok: true, filename: produced.value.filename };
       } catch (cause) {
-        notifications.getState().show({
-          kind: 'error',
-          title: 'Export failed',
-          message: cause instanceof Error ? cause.message : String(cause),
-        });
+        const message = cause instanceof Error ? cause.message : String(cause);
+        notifications.getState().show({ kind: 'error', title: 'Export failed', message });
+        return { ok: false, error: message };
       } finally {
         running.current = false;
         setBusy(null);
@@ -162,6 +185,7 @@ export function useDesignExport(): DesignExportApi {
 
   return {
     busy,
+    exportDesign: run,
     exportPng: useCallback(() => run('png'), [run]),
     exportSvg: useCallback(() => run('svg'), [run]),
     exportPdf: useCallback(() => run('pdf'), [run]),

@@ -1,5 +1,5 @@
-import { Button, Input } from '@opencanvas/ui';
-import { Check, Copy, ExternalLink, FileDown, MonitorPlay, Share2 } from 'lucide-react';
+import { Button, Dialog, Input } from '@opencanvas/ui';
+import { Check, Copy, ExternalLink, FileDown, MonitorPlay, Share2, X } from 'lucide-react';
 import { useState } from 'react';
 import type { DesignDocument } from '@opencanvas/document';
 import { copyToClipboard, createShareLink } from './cloud';
@@ -45,23 +45,21 @@ export function ShareDialog({ document, onClose, onPresent }: Props) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-2 backdrop-blur-sm sm:p-4"
-      onClick={onClose}
+    <Dialog
+      labelledBy="share-dialog-title"
+      describedBy="share-dialog-description"
+      onClose={onClose}
     >
-      <div
-        className="max-h-[94dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl bg-white p-4 shadow-xl ring-1 ring-border sm:p-6"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Share design"
-      >
+      <div className="p-5 sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="flex items-center gap-2 text-base font-semibold">
+            <h2 id="share-dialog-title" className="flex items-center gap-2 text-lg font-semibold">
               <Share2 className="size-5 text-primary" /> Share this design
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p
+              id="share-dialog-description"
+              className="mt-2 text-sm leading-relaxed text-muted-foreground"
+            >
               View links open a read-only copy stored in this browser. Nothing is uploaded.
             </p>
           </div>
@@ -70,9 +68,9 @@ export function ShareDialog({ document, onClose, onPresent }: Props) {
             size="sm"
             className="rounded-full"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Close share dialog"
           >
-            ✕
+            <X />
           </Button>
         </div>
 
@@ -150,6 +148,6 @@ export function ShareDialog({ document, onClose, onPresent }: Props) {
           ) : null}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

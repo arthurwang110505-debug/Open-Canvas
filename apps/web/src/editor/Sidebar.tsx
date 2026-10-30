@@ -6,6 +6,7 @@ import {
   Layers,
   LayoutTemplate,
   PaintBucket,
+  Palette,
   PenTool,
   Ruler,
   Shapes,
@@ -13,12 +14,20 @@ import {
   Type,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from 'react';
 
 import { useEditorActions } from './actions';
 import { FONT_PAIRINGS, TEXT_PRESETS, type TextPreset } from './textPresets';
 import { ElementsPanel } from './elements/ElementsPanel';
 import { BackgroundPanel } from './panels/BackgroundPanel';
+import { BrandPanel } from './panels/BrandPanel';
 import { LayersPanel } from './panels/LayersPanel';
 import { PanelSection } from './panels/PanelSection';
 import { UploadsPanel } from './panels/UploadsPanel';
@@ -32,8 +41,9 @@ export type SidebarTab =
   | 'design'
   | 'elements'
   | 'text'
-  | 'draw'
   | 'uploads'
+  | 'brand'
+  | 'draw'
   | 'background'
   | 'layers'
   | 'properties'
@@ -43,25 +53,40 @@ const PANEL_DESCRIPTIONS: Record<SidebarTab, string> = {
   design: 'Start with an editable layout.',
   elements: 'Shapes, frames, icons, and photos.',
   text: 'Add type styles and matched font pairings.',
-  draw: 'Create freehand strokes on the canvas.',
   uploads: 'Reuse images stored with this design.',
+  brand: 'Colors and fonts saved in this browser.',
+  draw: 'Create freehand strokes on the canvas.',
   background: 'Set the page color or gradient.',
   layers: 'Select, arrange, and organize objects.',
   properties: 'Fine-tune the current selection.',
   page: 'Canvas dimensions, metadata, and guides.',
 };
 
-const TABS: { id: SidebarTab; label: string; icon: ReactNode }[] = [
+interface SidebarTabSpec {
+  id: SidebarTab;
+  label: string;
+  icon: ReactNode;
+}
+
+/** The five destinations people use to build a design; everything else is a tool, not a library. */
+const PRIMARY_TABS: readonly SidebarTabSpec[] = [
   { id: 'design', label: 'Design', icon: <LayoutTemplate /> },
   { id: 'elements', label: 'Elements', icon: <Shapes /> },
   { id: 'text', label: 'Text', icon: <Type /> },
-  { id: 'draw', label: 'Draw', icon: <PenTool /> },
   { id: 'uploads', label: 'Uploads', icon: <ImageIcon /> },
+  { id: 'brand', label: 'Brand', icon: <Palette /> },
+];
+
+/** Secondary tools, grouped under "More tools" so the primary rail stays calm. */
+const UTILITY_TABS: readonly SidebarTabSpec[] = [
+  { id: 'draw', label: 'Draw', icon: <PenTool /> },
   { id: 'background', label: 'Background', icon: <PaintBucket /> },
   { id: 'layers', label: 'Layers', icon: <Layers /> },
   { id: 'properties', label: 'Properties', icon: <SlidersHorizontal /> },
   { id: 'page', label: 'Page', icon: <Ruler /> },
 ];
+
+const ALL_TABS: readonly SidebarTabSpec[] = [...PRIMARY_TABS, ...UTILITY_TABS];
 
 function TextPanel() {
   const { addText, addTextPairing } = useEditorActions();
@@ -251,7 +276,7 @@ export function Sidebar({
 }: SidebarProps) {
   const baseId = useId();
   const isMobile = useMediaQuery('(max-width: 1023px)');
-  const activeLabel = TABS.find((tab) => tab.id === active)?.label ?? 'Design';
+  const activeLabel = ALL_TABS.find((tab) => tab.id === active)?.label ?? 'Design';
   const panelHidden = isMobile && !mobileOpen;
 
   const closeMobilePanel = useCallback(() => {
@@ -279,6 +304,77 @@ export function Sidebar({
     if (collapsed) onToggleCollapsed();
   };
 
+  /** Roving-tabindex arrow/Home/End navigation, scoped to the tab's own group. */
+  const handleTablistKeyDown =
+    (tabs: readonly SidebarTabSpec[]) => (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      // Navigate from the tab that actually has focus; fall back to the active tab.
+      const focusedIndex = tabs.findIndex(
+        (tab) => `${baseId}-tab-${tab.id}` === document.activeElement?.id,
+      );
+      const index = focusedIndex >= 0 ? focusedIndex : tabs.findIndex((tab) => tab.id === active);
+      const next =
+        event.key === 'ArrowRight' || event.key === 'ArrowDown'
+          ? (index + 1) % tabs.length
+          : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+            ? (index - 1 + tabs.length) % tabs.length
+            : event.key === 'Home'
+              ? 0
+              : event.key === 'End'
+                ? tabs.length - 1
+                : -1;
+      if (next < 0) return;
+      event.preventDefault();
+      const tab = tabs[next]!;
+      activate(tab.id);
+      requestAnimationFrame(() => document.getElementById(`${baseId}-tab-${tab.id}`)?.focus());
+    };
+
+  const renderTab = (tab: SidebarTabSpec) => {
+    const selected = tab.id === active;
+    const expanded = selected && !collapsed && (!isMobile || mobileOpen);
+    return (
+      <button
+        key={tab.id}
+        type="button"
+        role="tab"
+        id={`${baseId}-tab-${tab.id}`}
+        aria-selected={selected}
+        tabIndex={selected ? 0 : -1}
+        aria-expanded={expanded}
+        aria-controls={!collapsed ? `${baseId}-panel-${tab.id}` : undefined}
+        onClick={() => activate(tab.id)}
+        title={collapsed ? tab.label : undefined}
+        className={cn(
+          'relative flex h-full min-w-16 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[10px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-[21px] lg:h-[62px] lg:w-full lg:min-w-0 lg:flex-none lg:rounded-xl lg:py-2',
+          selected
+            ? 'bg-primary/10 text-primary'
+            : 'text-muted-foreground hover:bg-white hover:text-foreground',
+        )}
+      >
+        {selected ? (
+          <span
+            aria-hidden="true"
+            className="absolute left-1/2 top-0 h-0.5 w-7 -translate-x-1/2 rounded-full bg-primary lg:left-0 lg:top-1/2 lg:h-7 lg:w-0.5 lg:-translate-x-0 lg:-translate-y-1/2"
+          />
+        ) : null}
+        {tab.icon}
+        <span className="max-w-full whitespace-nowrap text-[10px]">{tab.label}</span>
+      </button>
+    );
+  };
+
+  const renderTablist = (tabs: readonly SidebarTabSpec[], label: string) => (
+    <div
+      role="tablist"
+      aria-label={label}
+      aria-orientation={isMobile ? 'horizontal' : 'vertical'}
+      className="flex min-w-0 shrink-0 flex-row items-stretch gap-1 lg:w-full lg:flex-col lg:items-center"
+      onKeyDown={handleTablistKeyDown(tabs)}
+    >
+      {tabs.map(renderTab)}
+    </div>
+  );
+
   return (
     <div className="contents lg:flex lg:h-full lg:min-h-0 lg:shrink-0 lg:border-r lg:border-border lg:bg-panel">
       {isMobile && mobileOpen && !collapsed ? (
@@ -289,9 +385,7 @@ export function Sidebar({
         />
       ) : null}
       <nav
-        aria-label="Editor panels"
-        role="tablist"
-        aria-orientation={isMobile ? 'horizontal' : 'vertical'}
+        aria-label="Editor tools"
         className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(4rem_+_env(safe-area-inset-bottom))] shrink-0 flex-row items-stretch gap-1 overflow-x-auto overscroll-x-contain border-t border-border bg-[#faf9fc] px-1 pb-[env(safe-area-inset-bottom)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:static lg:z-20 lg:h-auto lg:w-[76px] lg:flex-col lg:items-center lg:overflow-x-visible lg:overflow-y-auto lg:border-r lg:border-t-0 lg:px-1.5 lg:py-2 lg:pb-2"
       >
         <Button
@@ -306,38 +400,18 @@ export function Sidebar({
           {collapsed ? <ChevronRight /> : <ChevronLeft />}
         </Button>
         <Separator className="mb-1 hidden w-9 lg:block" />
-        {TABS.map((tab) => {
-          const selected = tab.id === active;
-          const expanded = selected && !collapsed && (!isMobile || mobileOpen);
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              id={`${baseId}-tab-${tab.id}`}
-              aria-selected={selected}
-              aria-expanded={expanded}
-              aria-controls={!collapsed ? `${baseId}-panel-${tab.id}` : undefined}
-              onClick={() => activate(tab.id)}
-              title={collapsed ? tab.label : undefined}
-              className={cn(
-                'relative flex h-full min-w-16 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[10px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-[21px] lg:h-[66px] lg:w-full lg:min-w-0 lg:flex-none lg:rounded-xl lg:py-2',
-                selected
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-white hover:text-foreground',
-              )}
-            >
-              {selected ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute left-1/2 top-0 h-0.5 w-7 -translate-x-1/2 rounded-full bg-primary lg:left-0 lg:top-1/2 lg:h-7 lg:w-0.5 lg:-translate-x-0 lg:-translate-y-1/2"
-                />
-              ) : null}
-              {tab.icon}
-              <span className="max-w-full truncate">{tab.label}</span>
-            </button>
-          );
-        })}
+        {renderTablist(PRIMARY_TABS, 'Editor panels')}
+        <div
+          aria-hidden="true"
+          className="mx-0.5 w-px shrink-0 self-stretch bg-border lg:mx-0 lg:my-1 lg:h-px lg:w-9 lg:self-center"
+        />
+        <span
+          aria-hidden="true"
+          className="hidden shrink-0 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground lg:block"
+        >
+          More tools
+        </span>
+        {renderTablist(UTILITY_TABS, 'More tools')}
       </nav>
       {!collapsed ? (
         <section
@@ -346,7 +420,7 @@ export function Sidebar({
           aria-labelledby={`${baseId}-tab-${active}`}
           hidden={panelHidden}
           className={cn(
-            'fixed inset-x-0 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-40 h-[min(62dvh,560px)] min-h-0 min-w-0 flex-col rounded-t-2xl border-t border-border bg-panel shadow-[0_-16px_48px_rgba(15,23,42,0.18)] lg:static lg:z-auto lg:h-full lg:w-[300px] lg:rounded-none lg:border-t-0 lg:shadow-none',
+            'fixed inset-x-0 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-40 h-[min(62dvh,560px)] min-h-0 min-w-0 flex-col rounded-t-2xl border-t border-border bg-panel shadow-[0_-16px_48px_rgba(15,23,42,0.18)] max-lg:animate-sheet-in lg:static lg:z-auto lg:h-full lg:w-[300px] lg:rounded-none lg:border-t-0 lg:shadow-none',
             mobileOpen ? 'flex' : 'hidden lg:flex',
           )}
         >
@@ -378,11 +452,15 @@ export function Sidebar({
               </Button>
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div
+            key={active}
+            className="min-h-0 flex-1 animate-panel-in overflow-y-auto overscroll-contain"
+          >
             <div className="p-4">
               {active === 'design' && <DesignPanel />}
               {active === 'elements' && <ElementsPanel />}
               {active === 'text' && <TextPanel />}
+              {active === 'brand' && <BrandPanel />}
               {active === 'draw' && <DrawPanel />}
               {active === 'uploads' && <UploadsPanel />}
               {active === 'background' && <BackgroundPanel />}
