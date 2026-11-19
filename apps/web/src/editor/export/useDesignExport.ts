@@ -25,10 +25,12 @@ export const RASTER_SCALE = 2;
 export type ExportPageScope = 'current' | 'all';
 
 export interface ExportRequestOptions {
-  /** Raster multiplier for PNG (and the pages inside a PDF). Defaults to `RASTER_SCALE`. */
+  /** Raster multiplier for PNG/JPG (and the pages inside a PDF). Defaults to `RASTER_SCALE`. */
   scale?: number;
   /** PDF only: every page, or just the page currently on screen. */
   pageScope?: ExportPageScope;
+  /** PNG only: leave the page background out so the file has a transparent background. */
+  transparent?: boolean;
 }
 
 /** Lets callers (the download dialog) close on success and show the error inline on failure. */
@@ -44,6 +46,7 @@ export interface DesignExportApi {
   busy: ExportKind | null;
   exportDesign: (kind: ExportKind, options?: ExportRequestOptions) => Promise<ExportOutcome>;
   exportPng: () => Promise<ExportOutcome>;
+  exportJpg: () => Promise<ExportOutcome>;
   exportSvg: () => Promise<ExportOutcome>;
   exportPdf: () => Promise<ExportOutcome>;
 }
@@ -118,7 +121,12 @@ export function useDesignExport(): DesignExportApi {
       };
       const filename = exportFileName(document.name, kind);
 
-      const svg = await renderPageToSvg(document, svgOptions);
+      // A transparent PNG omits the page background rect; every other kind keeps it.
+      const transparent = kind === 'png' && options.transparent === true;
+      const svg = await renderPageToSvg(document, {
+        ...svgOptions,
+        ...(transparent ? { background: false } : {}),
+      });
       if (!svg.ok) return err(svg.error.message);
       if (kind === 'svg') {
         return ok({
@@ -127,15 +135,22 @@ export function useDesignExport(): DesignExportApi {
         });
       }
 
-      if (kind === 'png') {
+      if (kind === 'png' || kind === 'jpg') {
         const raster = await services.rasterize(
           svg.value,
           { width: document.size.width, height: document.size.height },
           scale,
+          kind === 'jpg' ? 'jpeg' : 'png',
         );
         if (!raster.ok) return err(raster.error.message);
         const blob = dataUrlToBlob(raster.value);
-        if (!blob) return err('The rendered image was not a PNG data URL.');
+        if (!blob) {
+          return err(
+            kind === 'jpg'
+              ? 'The rendered image was not a JPEG data URL.'
+              : 'The rendered image was not a PNG data URL.',
+          );
+        }
         return ok({ blob, filename });
       }
 
@@ -187,6 +202,7 @@ export function useDesignExport(): DesignExportApi {
     busy,
     exportDesign: run,
     exportPng: useCallback(() => run('png'), [run]),
+    exportJpg: useCallback(() => run('jpg'), [run]),
     exportSvg: useCallback(() => run('svg'), [run]),
     exportPdf: useCallback(() => run('pdf'), [run]),
   };

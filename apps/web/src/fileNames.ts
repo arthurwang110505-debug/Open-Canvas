@@ -16,7 +16,7 @@ export function sanitizeFileName(name: string): string {
   return cleaned.length > 0 ? cleaned : 'design';
 }
 
-export type ExportExtension = 'png' | 'svg' | 'pdf';
+export type ExportExtension = 'png' | 'jpg' | 'svg' | 'pdf';
 
 export function exportFileName(designName: string, extension: ExportExtension): string {
   return `${sanitizeFileName(designName)}.${extension}`;

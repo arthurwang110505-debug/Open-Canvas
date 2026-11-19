@@ -12,8 +12,10 @@ import {
   DEFAULT_BRAND_KIT,
   extractPageColors,
   loadBrandKit,
+  MAX_BRAND_LOGO_BYTES,
   normalizeBrandColor,
   planBrandFontApplication,
+  sanitizeBrandLogo,
   saveBrandKit,
   type BrandKit,
 } from './brandKit';
@@ -55,6 +57,49 @@ describe('brand kit storage', () => {
       headingFont: DEFAULT_BRAND_KIT.headingFont,
       bodyFont: 'Inter',
     });
+  });
+
+  it('round-trips a logo through storage', () => {
+    const logo = { dataUrl: 'data:image/png;base64,AAAA', name: 'logo.png' };
+    saveBrandKit({ ...kit, logo });
+    expect(loadBrandKit().logo).toEqual(logo);
+  });
+
+  it('drops a logo that is not a storable image', () => {
+    localStorage.setItem(
+      BRAND_KIT_STORAGE_KEY,
+      JSON.stringify({
+        ...kit,
+        logo: { dataUrl: 'https://example.com/logo.png', name: 'logo.png' },
+      }),
+    );
+    expect(loadBrandKit().logo).toBeUndefined();
+    localStorage.setItem(
+      BRAND_KIT_STORAGE_KEY,
+      JSON.stringify({ ...kit, logo: { dataUrl: 'data:image/png;base64,AAAA', name: '  ' } }),
+    );
+    expect(loadBrandKit().logo).toBeUndefined();
+  });
+});
+
+describe('sanitizeBrandLogo', () => {
+  it('keeps a valid image data URL and trims the name', () => {
+    expect(
+      sanitizeBrandLogo({ dataUrl: 'data:image/png;base64,AAAA', name: ' logo.png ' }),
+    ).toEqual({
+      dataUrl: 'data:image/png;base64,AAAA',
+      name: 'logo.png',
+    });
+  });
+
+  it('rejects non-image data URLs and oversized payloads', () => {
+    expect(sanitizeBrandLogo({ dataUrl: 'data:text/plain,hello', name: 'x.txt' })).toBeUndefined();
+    // The cap is on the data URL string (about 4/3 the byte size), so 2 MB of base64 chars
+    // comfortably exceeds the 1 MB byte budget.
+    const oversized = `data:image/png;base64,${'A'.repeat(MAX_BRAND_LOGO_BYTES * 2)}`;
+    expect(sanitizeBrandLogo({ dataUrl: oversized, name: 'big.png' })).toBeUndefined();
+    expect(sanitizeBrandLogo(null)).toBeUndefined();
+    expect(sanitizeBrandLogo('logo.png')).toBeUndefined();
   });
 });
 

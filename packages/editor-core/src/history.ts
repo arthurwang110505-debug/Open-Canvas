@@ -97,6 +97,8 @@ export function describeCommand(command: EditorCommand, document: DesignDocument
       return 'Renamed design';
     case 'document.resize':
       return 'Resized design';
+    case 'document.replace':
+      return 'Restored a saved version';
     case 'page.setBackground':
       return 'Changed page background';
     case 'page.addGuide':

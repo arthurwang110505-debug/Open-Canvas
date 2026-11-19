@@ -11,15 +11,30 @@ import {
  * deliberately stored outside documents (see `brandStore.ts`): a kit belongs to the person,
  * not to one design, and keeping it out of the document schema means it can evolve freely.
  */
+/** A brand logo stored as a data URL, so it can be inserted into any design. */
+export interface BrandLogo {
+  /** `data:image/...` URL of the logo image. */
+  dataUrl: string;
+  /** Original file name, kept for display and for the inserted image's name. */
+  name: string;
+}
+
 export interface BrandKit {
   /** `#rrggbb` colors, most important first. */
   colors: string[];
   headingFont: string;
   bodyFont: string;
+  /** Optional logo; absent until the user uploads one. */
+  logo?: BrandLogo;
 }
 
 export const BRAND_KIT_STORAGE_KEY = 'opencanvas:brand-kit:v1';
 export const MAX_BRAND_COLORS = 12;
+/**
+ * The kit lives in localStorage (about 5 MB total), so a logo must stay small. 1 MB of image
+ * data is plenty for a logo and leaves room for the rest of the kit.
+ */
+export const MAX_BRAND_LOGO_BYTES = 1 * 1024 * 1024;
 
 export const DEFAULT_BRAND_KIT: BrandKit = {
   colors: ['#6d45e8', '#1f2430', '#ff6b5e', '#f59e0b', '#0ea5a4', '#ffffff'],
@@ -40,9 +55,27 @@ export function normalizeBrandColor(input: string): string | null {
   return trimmed;
 }
 
+/** A logo is only kept when it is an image data URL that fits the storage budget. */
+export function sanitizeBrandLogo(candidate: unknown): BrandLogo | undefined {
+  if (typeof candidate !== 'object' || candidate === null) return undefined;
+  const record = candidate as { dataUrl?: unknown; name?: unknown };
+  if (typeof record.dataUrl !== 'string' || typeof record.name !== 'string') return undefined;
+  if (!record.dataUrl.startsWith('data:image/')) return undefined;
+  // A data URL is about 4/3 the size of the bytes it carries; cap the string generously.
+  if (record.dataUrl.length > (MAX_BRAND_LOGO_BYTES * 4) / 3 + 64) return undefined;
+  const name = record.name.trim().slice(0, 120);
+  if (name.length === 0) return undefined;
+  return { dataUrl: record.dataUrl, name };
+}
+
 function sanitizeKit(candidate: unknown): BrandKit {
   if (typeof candidate !== 'object' || candidate === null) return DEFAULT_BRAND_KIT;
-  const record = candidate as { colors?: unknown; headingFont?: unknown; bodyFont?: unknown };
+  const record = candidate as {
+    colors?: unknown;
+    headingFont?: unknown;
+    bodyFont?: unknown;
+    logo?: unknown;
+  };
   const colors: string[] = [];
   if (Array.isArray(record.colors)) {
     for (const entry of record.colors) {
@@ -52,6 +85,7 @@ function sanitizeKit(candidate: unknown): BrandKit {
       if (colors.length >= MAX_BRAND_COLORS) break;
     }
   }
+  const logo = sanitizeBrandLogo(record.logo);
   return {
     colors,
     headingFont:
@@ -62,6 +96,7 @@ function sanitizeKit(candidate: unknown): BrandKit {
       typeof record.bodyFont === 'string' && record.bodyFont.length > 0
         ? record.bodyFont
         : DEFAULT_BRAND_KIT.bodyFont,
+    ...(logo ? { logo } : {}),
   };
 }
 

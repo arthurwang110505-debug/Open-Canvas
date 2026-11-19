@@ -13,11 +13,16 @@ interface FakeCanvasOptions {
 
 function fakeCanvas(options: FakeCanvasOptions = {}) {
   const drawn: unknown[][] = [];
+  const filled: unknown[][] = [];
   const context =
     options.context === undefined
       ? ({
+          fillStyle: '',
           drawImage: (...args: unknown[]) => {
             drawn.push(args);
+          },
+          fillRect: (...args: unknown[]) => {
+            filled.push(args);
           },
         } as unknown as CanvasRenderingContext2D)
       : options.context;
@@ -27,7 +32,7 @@ function fakeCanvas(options: FakeCanvasOptions = {}) {
     getContext: () => context,
     toDataURL: () => options.dataUrl ?? 'data:image/png;base64,AAAA',
   } as unknown as HTMLCanvasElement;
-  return { canvas, drawn };
+  return { canvas, drawn, filled, context };
 }
 
 describe('svgDataUrl', () => {
@@ -128,5 +133,35 @@ describe('createSvgRasterizer', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('raster-failed');
+  });
+
+  it('flattens onto white and returns a JPEG data URL for jpeg format', async () => {
+    const { canvas, filled, context } = fakeCanvas({ dataUrl: 'data:image/jpeg;base64,AAAA' });
+    const rasterize = createSvgRasterizer({
+      loadImage: vi.fn().mockResolvedValue(fakeImage()),
+      createCanvas: vi.fn().mockReturnValue(canvas),
+    });
+
+    const result = await rasterize('<svg/>', { width: 100, height: 50 }, 2, 'jpeg');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toBe('data:image/jpeg;base64,AAAA');
+    // JPEG has no alpha, so the canvas is painted white before the SVG is drawn.
+    expect(filled).toEqual([[0, 0, 200, 100]]);
+    expect(context?.fillStyle).toBe('#ffffff');
+  });
+
+  it('reports a canvas that returns no JPEG', async () => {
+    const { canvas } = fakeCanvas({ dataUrl: 'data:image/png;base64,AAAA' });
+    const rasterize = createSvgRasterizer({
+      loadImage: vi.fn().mockResolvedValue(fakeImage()),
+      createCanvas: vi.fn().mockReturnValue(canvas),
+    });
+
+    const result = await rasterize('<svg/>', { width: 10, height: 10 }, 1, 'jpeg');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('raster-failed');
+    expect(result.error.message).toContain('JPEG');
   });
 });

@@ -73,6 +73,34 @@ describe('applyCommand', () => {
     expect(failed.ok).toBe(false);
   });
 
+  it('replaces the whole document with a same-id snapshot (version restore)', () => {
+    const { doc } = fixture();
+    const snapshot = structuredClone(doc);
+    snapshot.pages[0]?.elements.push(createRectElement({ id: 'extra', x: 5, y: 5 }));
+
+    const restored = expectOk(
+      applyCommand(doc, { type: 'document.replace', document: snapshot }, clock),
+    );
+    expect(elementIds(restored)).toContain('extra');
+    expect(restored.metadata.updatedAt).toBe(later.toISOString());
+    // The input document is untouched.
+    expect(elementIds(doc)).not.toContain('extra');
+  });
+
+  it('rejects a version restore for a different design or an invalid snapshot', () => {
+    const { doc } = fixture();
+    const other = createBlankDocument({ id: 'other', name: 'Other', now: fixedDate });
+    const wrongId = applyCommand(doc, { type: 'document.replace', document: other });
+    expect(wrongId.ok).toBe(false);
+    if (!wrongId.ok) expect(wrongId.error.code).toBe('invalid-command');
+
+    const invalid = applyCommand(doc, {
+      type: 'document.replace',
+      document: { ...structuredClone(doc), pages: [] },
+    });
+    expect(invalid.ok).toBe(false);
+  });
+
   it('validates canvas sizes on resize', () => {
     const { doc } = fixture();
     const resized = expectOk(

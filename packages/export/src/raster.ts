@@ -15,11 +15,15 @@ export interface RasterDependencies {
 
 export const MAX_RASTER_DIMENSION = LIMITS.maxCanvasDimension;
 
-/** PNG data URL for a rendered SVG (what the canvas and the PDF assembler consume). */
+/** Raster output format. JPEG has no alpha channel, so transparent areas are flattened on white. */
+export type RasterFormat = 'png' | 'jpeg';
+
+/** A data URL for a rendered SVG (what the canvas and the PDF assembler consume). */
 export type SvgRasterizer = (
   svg: string,
   size: RasterSize,
   scale?: number,
+  format?: RasterFormat,
 ) => Promise<Result<string, ExportError>>;
 
 export function svgDataUrl(svg: string): string {
@@ -50,7 +54,7 @@ export const browserRasterDependencies: RasterDependencies = {
 export function createSvgRasterizer(dependencies: Partial<RasterDependencies> = {}): SvgRasterizer {
   const deps: RasterDependencies = { ...browserRasterDependencies, ...dependencies };
 
-  return async (svg, size, scale = 1) => {
+  return async (svg, size, scale = 1, format: RasterFormat = 'png') => {
     const factor = Number.isFinite(scale) && scale > 0 ? scale : 1;
     const width = Math.max(1, Math.round(size.width * factor));
     const height = Math.max(1, Math.round(size.height * factor));
@@ -70,12 +74,18 @@ export function createSvgRasterizer(dependencies: Partial<RasterDependencies> = 
           message: 'This browser refused to create a 2D drawing context for the export.',
         });
       }
+      if (format === 'jpeg') {
+        // JPEG cannot store alpha; a transparent page would otherwise come out black.
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, width, height);
+      }
       context.drawImage(image, 0, 0, width, height);
-      const dataUrl = canvas.toDataURL('image/png');
-      if (!dataUrl.startsWith('data:image/png')) {
+      const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+      const dataUrl = format === 'jpeg' ? canvas.toDataURL(mime, 0.92) : canvas.toDataURL(mime);
+      if (!dataUrl.startsWith(`data:${mime}`)) {
         return err({
           code: 'raster-failed',
-          message: 'The canvas returned no PNG data (the page may be too large for this device).',
+          message: `The canvas returned no ${format.toUpperCase()} data (the page may be too large for this device).`,
         });
       }
       return ok(dataUrl);

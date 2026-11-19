@@ -1,17 +1,25 @@
-import { findPage, solidFill, type DesignElement } from '@opencanvas/document';
+import {
+  findPage,
+  solidFill,
+  SUPPORTED_IMAGE_MIME_TYPES,
+  type DesignElement,
+} from '@opencanvas/document';
+import { dataUrlToBlob } from '@opencanvas/storage';
 import { Button, Label } from '@opencanvas/ui';
-import { Check, Pipette, Plus, X } from 'lucide-react';
-import { useState } from 'react';
+import { Check, ImagePlus, Pipette, Plus, Trash2, X } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
 
 import {
   extractPageColors,
   MAX_BRAND_COLORS,
+  MAX_BRAND_LOGO_BYTES,
   planBrandFontApplication,
   type BrandFontPlan,
 } from '../../brand/brandKit';
 import { useBrandKit } from '../../brand/brandStore';
 import { FONT_FAMILY_NAMES } from '../../fonts/catalog';
 import { useEditorActions } from '../actions';
+import { useImageImport } from '../assets/useImageImport';
 import { useEditor, useNotificationStore } from '../hooks';
 import { ColorField } from './fields';
 import { PanelSection } from './PanelSection';
@@ -39,8 +47,13 @@ export function BrandPanel() {
   const removeColor = useBrandKit((state) => state.removeColor);
   const setHeadingFont = useBrandKit((state) => state.setHeadingFont);
   const setBodyFont = useBrandKit((state) => state.setBodyFont);
+  const setLogo = useBrandKit((state) => state.setLogo);
+  const removeLogo = useBrandKit((state) => state.removeLogo);
+  const { importFiles } = useImageImport();
   const [draftColor, setDraftColor] = useState('#6d45e8');
   const [pendingPlan, setPendingPlan] = useState<BrandFontPlan | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const logoInputId = useId();
 
   const page = findPage(document, activePageId);
   const selectedElements = (page?.elements ?? []).filter((element) =>
@@ -106,6 +119,45 @@ export function BrandPanel() {
       'Brand fonts applied',
       'Headings and body text now use your brand fonts. Undo restores the previous fonts in one step.',
     );
+  };
+
+  const handleLogoFile = (file: File | undefined) => {
+    if (!file) return;
+    if (!(SUPPORTED_IMAGE_MIME_TYPES as readonly string[]).includes(file.type)) {
+      notify('Logo not added', 'Choose a PNG, JPG, GIF, or WebP image for your logo.');
+      return;
+    }
+    if (file.size > MAX_BRAND_LOGO_BYTES) {
+      notify(
+        'Logo not added',
+        `Logos are stored in this browser, so keep them under ${Math.round(MAX_BRAND_LOGO_BYTES / (1024 * 1024))} MB.`,
+      );
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+      if (setLogo({ dataUrl, name: file.name })) {
+        notify('Logo saved', 'Your logo is ready to insert into any design.');
+      } else {
+        notify('Logo not added', 'This image could not be stored in your brand kit.');
+      }
+    };
+    reader.onerror = () => {
+      notify('Logo not added', 'This image could not be read.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleInsertLogo = () => {
+    const logo = kit.logo;
+    if (!logo) return;
+    const blob = dataUrlToBlob(logo.dataUrl);
+    if (!blob) {
+      notify('Logo unavailable', 'The stored logo could not be read back.');
+      return;
+    }
+    void importFiles([new File([blob], logo.name, { type: blob.type })]);
   };
 
   return (
@@ -289,6 +341,86 @@ export function BrandPanel() {
             Apply fonts to this page…
           </Button>
         )}
+      </PanelSection>
+
+      <PanelSection
+        title="Brand logo"
+        description="One logo, ready to insert into every design. Stored in this browser only."
+      >
+        <input
+          ref={logoInputRef}
+          id={logoInputId}
+          type="file"
+          accept={SUPPORTED_IMAGE_MIME_TYPES.join(',')}
+          className="sr-only"
+          aria-label="Upload brand logo"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // Reset so choosing the same file again re-triggers the change event.
+            event.target.value = '';
+            handleLogoFile(file);
+          }}
+        />
+        {kit.logo ? (
+          <>
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
+              <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-border bg-[linear-gradient(45deg,#e5e7eb_25%,transparent_25%,transparent_75%,#e5e7eb_75%),linear-gradient(45deg,#e5e7eb_25%,transparent_25%,transparent_75%,#e5e7eb_75%)] bg-[length:12px_12px] bg-[position:0_0,6px_6px]">
+                <img
+                  src={kit.logo.dataUrl}
+                  alt=""
+                  className="max-h-full max-w-full object-contain"
+                  draggable={false}
+                />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium" title={kit.logo.name}>
+                  {kit.logo.name}
+                </span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Saved in this browser
+                </span>
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Remove brand logo"
+                onClick={removeLogo}
+                className="shrink-0 rounded-lg"
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="h-9 flex-1 rounded-xl text-xs"
+                onClick={handleInsertLogo}
+              >
+                <ImagePlus aria-hidden="true" /> Insert logo into design
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-xl text-xs"
+                onClick={() => logoInputRef.current?.click()}
+              >
+                Replace
+              </Button>
+            </div>
+          </>
+        ) : (
+          <Button
+            variant="outline"
+            className="h-9 rounded-xl text-xs"
+            onClick={() => logoInputRef.current?.click()}
+          >
+            <ImagePlus aria-hidden="true" /> Upload a logo
+          </Button>
+        )}
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          PNG, JPG, GIF, or WebP up to {Math.round(MAX_BRAND_LOGO_BYTES / (1024 * 1024))} MB.
+          Inserting adds it to the current page as one undoable step.
+        </p>
       </PanelSection>
     </div>
   );

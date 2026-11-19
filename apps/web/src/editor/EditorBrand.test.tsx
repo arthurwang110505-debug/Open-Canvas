@@ -24,7 +24,10 @@ interface Harness {
   downloads: { blob: Blob; filename: string }[];
 }
 
-function renderEditor(document: DesignDocument): Harness {
+function renderEditor(
+  document: DesignDocument,
+  options: { decode?: () => Promise<{ width: number; height: number }> } = {},
+): Harness {
   const downloads: { blob: Blob; filename: string }[] = [];
   const services: Partial<ExportServices> = {
     rasterize: vi.fn(() => Promise.resolve(ok(ONE_PIXEL_PNG))),
@@ -34,7 +37,15 @@ function renderEditor(document: DesignDocument): Harness {
   const user = userEvent.setup();
   render(
     <TooltipProvider>
-      <EditorPage document={document} exportServices={services} />
+      <EditorPage
+        document={document}
+        exportServices={services}
+        assetServices={
+          options.decode
+            ? { decode: options.decode, loadImage: () => Promise.resolve(new Image()) }
+            : undefined
+        }
+      />
     </TooltipProvider>,
   );
   return { user, downloads };
@@ -141,5 +152,53 @@ describe('brand kit in the editor', () => {
     ).toBeInTheDocument();
     expect(brandKitStore.getState().kit.colors).toContain('#123456');
     expect(localStorage.getItem('opencanvas:brand-kit:v1')).toContain('#123456');
+  });
+
+  it('uploads a brand logo and inserts it into the design', async () => {
+    const document = createBlankDocument({ id: 'doc_brand_logo', name: 'Poster', now: fixedDate });
+    const { user } = renderEditor(document, {
+      decode: () => Promise.resolve({ width: 200, height: 100 }),
+    });
+
+    await activateSidebarTab(user, 'Brand');
+    // Real PNG bytes: the importer sniffs the format from the file header.
+    const pngBytes = Uint8Array.from(atob(ONE_PIXEL_PNG.split(',')[1] ?? ''), (c) =>
+      c.charCodeAt(0),
+    );
+    const file = new File([pngBytes], 'logo.png', { type: 'image/png' });
+    const input = screen.getByLabelText('Upload brand logo');
+    await user.upload(input, file);
+
+    // The logo preview and insert action appear once the file is stored.
+    expect(await screen.findByText('logo.png')).toBeInTheDocument();
+    expect(brandKitStore.getState().kit.logo?.name).toBe('logo.png');
+    expect(localStorage.getItem('opencanvas:brand-kit:v1')).toContain('data:image/png');
+
+    await user.click(screen.getByRole('button', { name: 'Insert logo into design' }));
+
+    // The logo lands on the page as an image element, undoable in one step. The import is
+    // async (decode → store → place), so wait for the selection to appear.
+    const properties = openPropertiesPanel();
+    expect(
+      await within(properties).findByRole('heading', { level: 2, name: 'Image' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+  });
+
+  it('removes the brand logo from the kit', async () => {
+    const document = createBlankDocument({
+      id: 'doc_brand_logo_rm',
+      name: 'Poster',
+      now: fixedDate,
+    });
+    brandKitStore.getState().setLogo({ dataUrl: ONE_PIXEL_PNG, name: 'logo.png' });
+    const { user } = renderEditor(document);
+
+    await activateSidebarTab(user, 'Brand');
+    expect(screen.getByText('logo.png')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove brand logo' }));
+
+    expect(brandKitStore.getState().kit.logo).toBeUndefined();
+    expect(screen.getByRole('button', { name: 'Upload a logo' })).toBeInTheDocument();
   });
 });
