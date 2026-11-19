@@ -233,10 +233,9 @@ describe('Dashboard', () => {
       await screen.findByRole('heading', { name: 'Find your next favorite' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('searchbox', { name: 'Search templates' })).toHaveValue('tote');
-    expect(screen.getAllByTestId('template-card')).toHaveLength(1);
-    expect(
-      within(screen.getByTestId('template-card')).getByText('Everyday Tote', { selector: 'p' }),
-    ).toBeInTheDocument();
+    const cards = screen.getAllByTestId('template-card');
+    expect(cards.length).toBeGreaterThan(1);
+    expect(within(cards[0]!).getByText('Everyday Tote', { selector: 'p' })).toBeInTheDocument();
   });
 
   it('offers a clear recovery action when a project search has no matches', async () => {

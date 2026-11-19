@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { EditorPage } from './EditorPage';
 import { activateSidebarTab, openPropertiesPanel } from './testHelpers';
+import { TEMPLATES } from '../templates/catalog';
 
 const fixedDate = new Date('2026-10-21T09:30:00.000Z');
 
@@ -69,7 +70,9 @@ describe('applying generated templates', () => {
     await activateSidebarTab(user, 'Design');
 
     // The sidebar pages the catalogue; the rest is one button away.
-    expect(screen.getByRole('button', { name: /Show 18 more of 60/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: new RegExp(`Show 18 more of ${TEMPLATES.length}`) }),
+    ).toBeInTheDocument();
     await user.type(screen.getByRole('searchbox', { name: 'Search templates' }), 'live build');
     expect(screen.getByRole('button', { name: 'Use Live Build template' })).toBeInTheDocument();
   });

@@ -10,6 +10,7 @@ import {
   Grid2x2,
   Grid3x3,
   LayoutGrid,
+  Link2,
   Rows2,
   Search,
   Table2,
@@ -62,10 +63,11 @@ const GRID_ICONS: Record<string, React.ReactNode> = {
  */
 export function ElementsPanel() {
   const { addShape, addFrame, addChart, addGrid, addTable, addIcon } = useEditorActions();
-  const { insertPhoto } = useImageImport();
+  const { insertPhoto, importUrl } = useImageImport();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<Category>('all');
   const [licenceOpen, setLicenceOpen] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState('');
   const deferredQuery = useDeferredValue(query);
 
   const photos = useMemo(
@@ -385,6 +387,40 @@ export function ElementsPanel() {
               . Photos are stored in the app, so they keep working offline and are never uploaded.
             </p>
           ) : null}
+          <div className="flex gap-1.5">
+            <label htmlFor="elements-photo-url" className="sr-only">
+              Image URL
+            </label>
+            <input
+              id="elements-photo-url"
+              type="url"
+              value={photoUrl}
+              placeholder="Paste an image link…"
+              onChange={(event) => setPhotoUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && photoUrl.trim()) {
+                  void importUrl(photoUrl);
+                  setPhotoUrl('');
+                }
+              }}
+              className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0"
+              disabled={!photoUrl.trim()}
+              onClick={() => {
+                void importUrl(photoUrl);
+                setPhotoUrl('');
+              }}
+            >
+              <Link2 aria-hidden="true" /> Add
+            </Button>
+          </div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            The image is downloaded and stored with this design, so it keeps working offline.
+          </p>
         </section>
       )}
 

@@ -11,6 +11,7 @@ import { importImageFile } from '@opencanvas/storage';
 import { useMemo, useState } from 'react';
 
 import { findBundledPhoto } from '../../assets/photos/catalog';
+import { rememberPhotoUrl } from '../../assets/photoUrls';
 import { useEditorStore, useNotificationStore } from '../hooks';
 import { useAssetServices } from './useAssetServices';
 
@@ -32,6 +33,11 @@ export interface InsertOptions {
 export interface ImageImport {
   /** Validates, stores and places each file. Failures are reported, never thrown. */
   importFiles: (files: Iterable<File>, options?: InsertOptions) => Promise<void>;
+  /**
+   * Fetches an image from a web URL and imports it like an uploaded file. The URL is
+   * remembered so it can be re-inserted later. Failures are reported, never thrown.
+   */
+  importUrl: (url: string, options?: InsertOptions) => Promise<void>;
   /** Places an already registered asset on the active page. */
   insertAsset: (assetId: string, options?: InsertOptions) => void;
   /**
@@ -188,6 +194,51 @@ export function useImageImport(): ImageImport {
           // Only reachable if iteration itself fails; keep the counter consistent.
           setPending(0);
           throw cause;
+        }
+      },
+
+      importUrl: async (url: string, options?: InsertOptions) => {
+        const trimmed = url.trim();
+        if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+          notifications.getState().show({
+            kind: 'error',
+            title: 'That link is not an image URL',
+            message: 'Paste a link that starts with http:// or https://.',
+          });
+          return;
+        }
+        setPending((count) => count + 1);
+        try {
+          let blob: Blob;
+          try {
+            const response = await fetch(trimmed);
+            if (!response.ok) throw new Error(`the server answered ${response.status}`);
+            blob = await response.blob();
+          } catch (cause) {
+            const detail = cause instanceof Error ? cause.message : String(cause);
+            notifications.getState().show({
+              kind: 'error',
+              title: 'Could not fetch that image',
+              message: `The image at that link could not be downloaded (${detail}). Some sites block cross-origin downloads.`,
+            });
+            return;
+          }
+          if (blob.size > LIMITS.maxAssetBytes) {
+            notifications.getState().show({
+              kind: 'error',
+              title: 'That image is too large',
+              message: `Images over ${Math.round(LIMITS.maxAssetBytes / (1024 * 1024))} MB cannot be imported.`,
+            });
+            return;
+          }
+          // A name from the URL path keeps the inserted image recognizable.
+          const pathname = trimmed.split(/[?#]/)[0] ?? '';
+          const lastSegment = pathname.split('/').filter(Boolean).pop() ?? 'web-image';
+          const name = lastSegment.includes('.') ? lastSegment : `${lastSegment}.jpg`;
+          await importOne(new File([blob], name, { type: blob.type }), options);
+          rememberPhotoUrl(trimmed);
+        } finally {
+          setPending((count) => count - 1);
         }
       },
 

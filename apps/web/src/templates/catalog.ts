@@ -1,4 +1,5 @@
 import { getBlueprint } from './blueprints';
+import { GENERATED_INSTANCES } from './generated';
 import { INSTANCES } from './instances';
 import { SIGNATURE_TEMPLATES } from './signature';
 import type { TemplateCategory, TemplateDefinition } from './types';
@@ -15,7 +16,7 @@ const CATEGORY_ORDER: Record<Exclude<TemplateCategory, 'all'>, number> = {
 };
 
 function buildGenerated(): TemplateDefinition[] {
-  return INSTANCES.map((instance) => {
+  return [...INSTANCES, ...GENERATED_INSTANCES].map((instance) => {
     const blueprint = getBlueprint(instance.blueprint);
     if (!blueprint) throw new Error(`unknown blueprint ${instance.blueprint}`);
     return {

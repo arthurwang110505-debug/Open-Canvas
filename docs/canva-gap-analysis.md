@@ -8,8 +8,8 @@
 
 | 指標    | Canva                         | OpenCanvas（Sprint 4 前）            | 差距倍率 |
 | ------- | ----------------------------- | ------------------------------------ | -------- |
-| 範本    | 免費 160 萬+、Pro 360 萬+     | 60 個（全數可編輯、字體實測品管）    | ~30,000× |
-| 素材庫  | 免費 470 萬、Pro 1.41 億      | 10 張內建照片、372 圖示、15 字體家族 | ~10,000× |
+| 範本    | 免費 160 萬+、Pro 360 萬+     | 156 個（全數可編輯、字體實測品管）    | ~15,000× |
+| 素材庫  | 免費 470 萬、Pro 1.41 億      | 10 張內建照片、372 圖示、33 字體家族 | ~5,000× |
 | AI 工具 | Magic Studio 25–40+ 項        | 0                                    | —        |
 | 使用者  | 2 億+                         | 單機開源專案                         | —        |
 | 平台    | Web + iOS/Android/Mac/Windows | 響應式 Web                           | —        |
@@ -97,8 +97,16 @@
 
 ### Sprint 7 — 內容深度（不追量，追質）
 
-7. **範本擴充到 150–200 個**：以既有 blueprint 系統程式產生 + 分類策展，而非手寫 60 個的笨方法。Canva 的百萬範本無法追，但「搜得到、品質好」的 200 個已足夠個人使用。
-8. **字體擴充**：15 → 30+ 家族（仍走 @fontsource 本機打包，離線可用）。Canva 有數百字體，但本機打包的字體每多一家就多一份體積，需取捨。
+交付（2026-11-19）：
+
+1. **字體 15 → 33 家族**：新增 18 家 OFL 字體（Montserrat、Poppins、Roboto、Open Sans、Lato、Bebas Neue、Anton、Pacifico、Dancing Script、Work Sans、Nunito、Rubik、Karla、Figtree、Merriweather、Lora、EB Garamond、Cormorant Garamond），仍走 `@fontsource` 本機打包、離線可用；Sans 21 / Serif 9 / Handwriting 3。
+2. **範本 60 → 156 個**：新增 `generated.ts` 交叉產生器（6 集合 × 2 文案 × 4 色盤 × 2 字體組合 = 96 個），全部走既有 blueprint 品管（schema、邊界、重疊、SVG 渲染、確定性）；分類分布 Social 38 / Presentation 28 / Poster 34 / Print 28 / Marketing 28。
+3. **照片 URL 可插拔**：Elements 照片區與 Frame/Image 的 PhotoPicker 新增「貼圖片連結」匯入（下載後存入設計、離線可用），URL 記於本機（上限 12 個），可一鍵忘記；Canva 式「搜尋圖庫」仍需雲端圖庫，不在此列。
+
+驗證：Vitest **767 passed / 78 files**（新增 `photoUrls.test.ts`，擴充 `catalog.test.ts`、`EditorPhotos.test.tsx`、`TemplateGallery.test.tsx`、`EditorTemplates.test.tsx`、`Dashboard.test.tsx`）；Typecheck / ESLint / Prettier / Web build 全過。
+
+7. **範本擴充到 150–200 個**：以既有 blueprint 系統程式產生 + 分類策展，而非手寫 60 個的笨方法。Canva 的百萬範本無法追，但「搜得到、品質好」的 200 個已足夠個人使用。✅ Sprint 7 完成（156 個，見下方交付紀錄）。
+8. **字體擴充**：15 → 30+ 家族（仍走 @fontsource 本機打包，離線可用）。Canva 有數百字體，但本機打包的字體每多一家就多一份體積，需取捨。✅ Sprint 7 完成（33 家族）。
 9. **照片庫可插拔**：內建照片仍少（10 張），應做成「來源可插拔」架構（本機包 + 使用者自訂 URL 來源），而非硬塞數百張進 repo。
 
 ### 明確不追（定位取捨）
