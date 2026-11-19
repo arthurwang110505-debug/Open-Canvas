@@ -1,13 +1,27 @@
 import { IconPreview } from '../panels/IconPicker';
 import { popularIcons, searchIcons } from '@opencanvas/icons';
 import { Button, EmptyState, SearchField, cn } from '@opencanvas/ui';
-import { Camera, LayoutGrid, Search } from 'lucide-react';
+import {
+  BarChart3,
+  Camera,
+  ChartLine,
+  ChartPie,
+  Columns3,
+  Grid2x2,
+  Grid3x3,
+  LayoutGrid,
+  Rows2,
+  Search,
+  Table2,
+} from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
 
 import { BUNDLED_PHOTO_LICENCE, searchBundledPhotos } from '../../assets/photos/catalog';
 import { useEditorActions } from '../actions';
 import { useImageImport } from '../assets/useImageImport';
 import { elementDragProps } from '../elements/drag';
+import { CHART_ITEMS, matchChart } from '../elements/charts';
+import { GRID_ITEMS, matchGrid } from '../elements/grids';
 import { FRAME_ITEMS, matchFrame, matchShape, SHAPE_ITEMS } from '../elements/shapeItems';
 
 /** How many icons one screen of results shows before asking the user to narrow it down. */
@@ -16,22 +30,38 @@ const ICON_PAGE = 96;
 /** Photos shown in the unfiltered "All" view; the Photos chip shows the whole match set. */
 const PHOTO_PREVIEW = 8;
 
-type Category = 'all' | 'shapes' | 'frames' | 'icons' | 'photos';
+type Category = 'all' | 'shapes' | 'frames' | 'charts' | 'grids' | 'tables' | 'icons' | 'photos';
 
 const CATEGORIES: { id: Category; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'shapes', label: 'Shapes' },
   { id: 'frames', label: 'Frames' },
+  { id: 'charts', label: 'Charts' },
+  { id: 'grids', label: 'Grids' },
+  { id: 'tables', label: 'Tables' },
   { id: 'icons', label: 'Icons' },
   { id: 'photos', label: 'Photos' },
 ];
+
+const CHART_ICONS: Record<string, React.ReactNode> = {
+  bar: <BarChart3 className="size-6" />,
+  pie: <ChartPie className="size-6" />,
+  line: <ChartLine className="size-6" />,
+};
+
+const GRID_ICONS: Record<string, React.ReactNode> = {
+  'grid-2x2': <Grid2x2 className="size-6" />,
+  'grid-3x3': <Grid3x3 className="size-6" />,
+  'grid-strip-3': <Columns3 className="size-6" />,
+  'grid-duo': <Rows2 className="size-6" />,
+};
 
 /**
  * The library: one search across shapes and icons, one place to drag from. Everything listed
  * here exists — there are no placeholder tiles for libraries that have not shipped yet.
  */
 export function ElementsPanel() {
-  const { addShape, addFrame, addIcon } = useEditorActions();
+  const { addShape, addFrame, addChart, addGrid, addTable, addIcon } = useEditorActions();
   const { insertPhoto } = useImageImport();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<Category>('all');
@@ -40,7 +70,12 @@ export function ElementsPanel() {
 
   const photos = useMemo(
     () =>
-      category === 'shapes' || category === 'icons' || category === 'frames'
+      category === 'shapes' ||
+      category === 'icons' ||
+      category === 'frames' ||
+      category === 'charts' ||
+      category === 'grids' ||
+      category === 'tables'
         ? []
         : searchBundledPhotos(deferredQuery).slice(
             0,
@@ -51,20 +86,69 @@ export function ElementsPanel() {
 
   const shapes = useMemo(
     () =>
-      category === 'icons' || category === 'frames'
+      category === 'icons' ||
+      category === 'frames' ||
+      category === 'charts' ||
+      category === 'grids' ||
+      category === 'tables'
         ? []
         : SHAPE_ITEMS.filter((item) => matchShape(item, deferredQuery)),
     [category, deferredQuery],
   );
   const frames = useMemo(
     () =>
-      category === 'icons' || category === 'shapes'
+      category === 'icons' ||
+      category === 'shapes' ||
+      category === 'charts' ||
+      category === 'grids' ||
+      category === 'tables'
         ? []
         : FRAME_ITEMS.filter((item) => matchFrame(item, deferredQuery)),
     [category, deferredQuery],
   );
+  const charts = useMemo(
+    () =>
+      category === 'icons' ||
+      category === 'shapes' ||
+      category === 'frames' ||
+      category === 'grids' ||
+      category === 'tables'
+        ? []
+        : CHART_ITEMS.filter((item) => matchChart(item, deferredQuery)),
+    [category, deferredQuery],
+  );
+  const grids = useMemo(
+    () =>
+      category === 'icons' ||
+      category === 'shapes' ||
+      category === 'frames' ||
+      category === 'charts' ||
+      category === 'tables'
+        ? []
+        : GRID_ITEMS.filter((item) => matchGrid(item, deferredQuery)),
+    [category, deferredQuery],
+  );
+  const tables = useMemo(() => {
+    if (
+      category === 'icons' ||
+      category === 'shapes' ||
+      category === 'frames' ||
+      category === 'charts' ||
+      category === 'grids'
+    )
+      return [];
+    const q = deferredQuery.trim().toLowerCase();
+    return q.length === 0 || 'table'.includes(q) || q.includes('table') ? [true] : [];
+  }, [category, deferredQuery]);
   const icons = useMemo(() => {
-    if (category === 'shapes' || category === 'frames') return [];
+    if (
+      category === 'shapes' ||
+      category === 'frames' ||
+      category === 'charts' ||
+      category === 'grids' ||
+      category === 'tables'
+    )
+      return [];
     const term = deferredQuery.trim();
     // Before anyone types, lead with the icons a page actually uses; an alphabetical dump of 372
     // is not a library, it is a directory.
@@ -79,7 +163,13 @@ export function ElementsPanel() {
   const visibleIcons = icons.slice(0, ICON_PAGE);
 
   const nothingMatches =
-    shapes.length === 0 && frames.length === 0 && icons.length === 0 && photos.length === 0;
+    shapes.length === 0 &&
+    frames.length === 0 &&
+    charts.length === 0 &&
+    grids.length === 0 &&
+    tables.length === 0 &&
+    icons.length === 0 &&
+    photos.length === 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -159,6 +249,84 @@ export function ElementsPanel() {
               </Button>
             ))}
           </div>
+        </section>
+      )}
+
+      {charts.length > 0 && (
+        <section aria-label="Charts" className="flex flex-col gap-2">
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <BarChart3 className="size-3" /> Charts
+          </h3>
+          <div className="grid grid-cols-3 gap-2">
+            {charts.map((item) => (
+              <Button
+                key={item.kind}
+                variant="outline"
+                aria-label={item.label}
+                title={`${item.label} — ${item.description}`}
+                className="h-16 flex-col gap-1 rounded-xl p-1 text-[10px] font-normal hover:border-primary/30 hover:bg-primary/[0.04]"
+                onClick={() => addChart(item.kind)}
+                {...elementDragProps({ kind: 'chart', chart: item.kind })}
+              >
+                {CHART_ICONS[item.kind]}
+                <span className="w-full truncate text-center">{item.label}</span>
+              </Button>
+            ))}
+          </div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Charts insert as one group. Ungroup to edit bars, slices, or points individually.
+          </p>
+        </section>
+      )}
+
+      {grids.length > 0 && (
+        <section aria-label="Grids" className="flex flex-col gap-2">
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <LayoutGrid className="size-3" /> Grids
+          </h3>
+          <div className="grid grid-cols-4 gap-2">
+            {grids.map((item) => (
+              <Button
+                key={item.kind}
+                variant="outline"
+                aria-label={item.label}
+                title={`${item.label} — ${item.description}`}
+                className="h-16 flex-col gap-1 rounded-xl p-1 text-[10px] font-normal hover:border-primary/30 hover:bg-primary/[0.04]"
+                onClick={() => addGrid(item.kind)}
+                {...elementDragProps({ kind: 'grid', grid: item.kind })}
+              >
+                {GRID_ICONS[item.kind]}
+                <span className="w-full truncate text-center">{item.label}</span>
+              </Button>
+            ))}
+          </div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Drop a photo onto any cell to fill it. The grid moves as one group.
+          </p>
+        </section>
+      )}
+
+      {tables.length > 0 && (
+        <section aria-label="Tables" className="flex flex-col gap-2">
+          <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <Table2 className="size-3" /> Tables
+          </h3>
+          <div className="grid grid-cols-4 gap-2">
+            <Button
+              variant="outline"
+              aria-label="Table"
+              title="Table — a 4×3 table with a header row. Edit cells in Properties."
+              className="h-16 flex-col gap-1 rounded-xl p-1 text-[10px] font-normal hover:border-primary/30 hover:bg-primary/[0.04]"
+              onClick={() => addTable()}
+              {...elementDragProps({ kind: 'table' })}
+            >
+              <Table2 className="size-6" />
+              <span className="w-full truncate text-center">Table</span>
+            </Button>
+          </div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Edit cell text in Properties. The table moves as one group.
+          </p>
         </section>
       )}
 

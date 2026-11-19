@@ -1,4 +1,27 @@
-import { Circle, Hexagon, Minus, Sparkles, Square, Squircle, Star, Triangle } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowLeftRight,
+  ArrowRight,
+  ArrowUp,
+  Circle,
+  Cloud,
+  Diamond,
+  Heart,
+  Hexagon,
+  MessageSquare,
+  Minus,
+  Moon,
+  Octagon,
+  Pentagon,
+  Plus,
+  Ribbon,
+  Sparkles,
+  Square,
+  Squircle,
+  Star,
+  Triangle,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import type { FrameKind, ShapeKind } from '../actions';
@@ -10,7 +33,11 @@ export interface ShapeItem {
   keywords: string;
 }
 
-/** The eight primitives, drawn from the same list the panel shows and the drag payload accepts. */
+/**
+ * The shape library, drawn from the same list the panel shows and the drag payload
+ * accepts. Sprint 4 expanded the original eight primitives to 22 Canva-style shapes;
+ * every entry is a real path/rect/ellipse the exporter can draw.
+ */
 export const SHAPE_ITEMS: readonly ShapeItem[] = [
   {
     kind: 'rect',
@@ -40,7 +67,7 @@ export const SHAPE_ITEMS: readonly ShapeItem[] = [
     kind: 'triangle',
     label: 'Triangle',
     icon: <Triangle className="size-6" />,
-    keywords: 'triangle arrow',
+    keywords: 'triangle',
   },
   {
     kind: 'star',
@@ -59,6 +86,90 @@ export const SHAPE_ITEMS: readonly ShapeItem[] = [
     label: 'Sparkle',
     icon: <Sparkles className="size-6" />,
     keywords: 'sparkle magic shine',
+  },
+  {
+    kind: 'pentagon',
+    label: 'Pentagon',
+    icon: <Pentagon className="size-6" />,
+    keywords: 'pentagon polygon five',
+  },
+  {
+    kind: 'octagon',
+    label: 'Octagon',
+    icon: <Octagon className="size-6" />,
+    keywords: 'octagon polygon eight stop',
+  },
+  {
+    kind: 'diamond',
+    label: 'Diamond',
+    icon: <Diamond className="size-6" />,
+    keywords: 'diamond rhombus gem',
+  },
+  {
+    kind: 'arrow-right',
+    label: 'Arrow right',
+    icon: <ArrowRight className="size-6" />,
+    keywords: 'arrow right direction next',
+  },
+  {
+    kind: 'arrow-left',
+    label: 'Arrow left',
+    icon: <ArrowLeft className="size-6" />,
+    keywords: 'arrow left direction back',
+  },
+  {
+    kind: 'arrow-up',
+    label: 'Arrow up',
+    icon: <ArrowUp className="size-6" />,
+    keywords: 'arrow up direction',
+  },
+  {
+    kind: 'arrow-down',
+    label: 'Arrow down',
+    icon: <ArrowDown className="size-6" />,
+    keywords: 'arrow down direction',
+  },
+  {
+    kind: 'arrow-both',
+    label: 'Double arrow',
+    icon: <ArrowLeftRight className="size-6" />,
+    keywords: 'double arrow both directions horizontal',
+  },
+  {
+    kind: 'heart',
+    label: 'Heart',
+    icon: <Heart className="size-6" />,
+    keywords: 'heart love',
+  },
+  {
+    kind: 'plus',
+    label: 'Plus',
+    icon: <Plus className="size-6" />,
+    keywords: 'plus cross add',
+  },
+  {
+    kind: 'moon',
+    label: 'Moon',
+    icon: <Moon className="size-6" />,
+    keywords: 'moon crescent night',
+  },
+  {
+    kind: 'cloud',
+    label: 'Cloud',
+    icon: <Cloud className="size-6" />,
+    keywords: 'cloud weather sky',
+  },
+  {
+    kind: 'speech-bubble',
+    label: 'Speech bubble',
+    icon: <MessageSquare className="size-6" />,
+    keywords: 'speech bubble chat message quote',
+  },
+  {
+    kind: 'ribbon',
+    label: 'Ribbon',
+    icon: <Ribbon className="size-6" />,
+    keywords: 'ribbon banner award',
   },
 ];
 

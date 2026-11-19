@@ -801,6 +801,7 @@ export class FabricCanvasAdapter {
       case 'text':
         return new DocumentTextbox(mapped.props.text, {
           ...mapped.props,
+          shadow: mapped.props.shadow ? new Shadow(mapped.props.shadow) : null,
           splitByGrapheme: false,
         });
       case 'image':
@@ -1316,6 +1317,16 @@ export class FabricCanvasAdapter {
     if ((element.type === 'rect' || element.type === 'ellipse') && 'fill' in props) {
       props['fill'] = this.paint(element.id, props['fill'] as FabricFill);
     }
+    // Text shadows are plain data in the mapping; Fabric needs a Shadow instance.
+    if (element.type === 'text' && 'shadow' in props) {
+      const shadow = props['shadow'] as {
+        color: string;
+        offsetX: number;
+        offsetY: number;
+        blur: number;
+      } | null;
+      props['shadow'] = shadow ? new Shadow(shadow) : null;
+    }
     // Never overwrite text the user is currently typing; it is committed on exit.
     if (object instanceof Textbox && object.isEditing) {
       delete props['text'];
@@ -1329,6 +1340,29 @@ export class FabricCanvasAdapter {
       }
       if (key === 'listStyle' && object instanceof DocumentTextbox) {
         changed = object.setListStyle(value as ListStyle) || changed;
+        continue;
+      }
+      // Shadow instances never compare equal by identity; compare their fields instead.
+      if (key === 'shadow') {
+        const current = object.get('shadow') as
+          { color: string; offsetX: number; offsetY: number; blur: number } | null | undefined;
+        const desired = value as {
+          color: string;
+          offsetX: number;
+          offsetY: number;
+          blur: number;
+        } | null;
+        const same =
+          (current === null || current === undefined) && (desired === null || desired === undefined)
+            ? true
+            : current?.color === desired?.color &&
+              current?.offsetX === desired?.offsetX &&
+              current?.offsetY === desired?.offsetY &&
+              current?.blur === desired?.blur;
+        if (!same) {
+          object.set(key, value);
+          changed = true;
+        }
         continue;
       }
       if (object.get(key) !== value) {

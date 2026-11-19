@@ -93,6 +93,14 @@ export const MIGRATIONS: readonly Migration[] = [
     // than showing a hole where a masked photo should be.
     migrate: (raw) => ({ ...raw }),
   },
+  {
+    from: 10,
+    to: 11,
+    description: 'Add text stroke (outline) and shadow',
+    // Additive with optional fields: text without them renders exactly as before. The bump
+    // keeps an older build from silently dropping an outline/shadow the author chose.
+    migrate: (raw) => ({ ...raw }),
+  },
 ];
 
 export interface MigrateOptions {

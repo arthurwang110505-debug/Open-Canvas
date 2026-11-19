@@ -1,6 +1,6 @@
 import type { DragEvent } from 'react';
 
-import type { FrameKind, ShapeKind } from '../actions';
+import type { ChartKind, FrameKind, GridKind, ShapeKind } from '../actions';
 
 /**
  * What the Elements panel drags onto the canvas. A custom MIME type keeps these drags apart from
@@ -11,6 +11,9 @@ export const ELEMENT_DRAG_MIME = 'application/x-opencanvas-element';
 export type ElementDragPayload =
   | { kind: 'shape'; shape: ShapeKind }
   | { kind: 'frame'; frame: FrameKind }
+  | { kind: 'chart'; chart: ChartKind }
+  | { kind: 'grid'; grid: GridKind }
+  | { kind: 'table' }
   | { kind: 'icon'; iconId: string }
   | { kind: 'photo'; photoId: string };
 
@@ -30,6 +33,29 @@ const SHAPE_KINDS: ReadonlySet<string> = new Set<ShapeKind>([
   'star',
   'hexagon',
   'sparkle',
+  'pentagon',
+  'octagon',
+  'diamond',
+  'arrow-right',
+  'arrow-left',
+  'arrow-up',
+  'arrow-down',
+  'arrow-both',
+  'heart',
+  'plus',
+  'moon',
+  'cloud',
+  'speech-bubble',
+  'ribbon',
+]);
+
+const CHART_KINDS: ReadonlySet<string> = new Set<ChartKind>(['bar', 'pie', 'line']);
+
+const GRID_KINDS: ReadonlySet<string> = new Set<GridKind>([
+  'grid-2x2',
+  'grid-3x3',
+  'grid-strip-3',
+  'grid-duo',
 ]);
 
 /**
@@ -62,6 +88,19 @@ export function parseElementDragPayload(raw: string): ElementDragPayload | null 
     return FRAME_KINDS.has(parsed['frame'])
       ? { kind: 'frame', frame: parsed['frame'] as FrameKind }
       : null;
+  }
+  if (parsed['kind'] === 'chart' && typeof parsed['chart'] === 'string') {
+    return CHART_KINDS.has(parsed['chart'])
+      ? { kind: 'chart', chart: parsed['chart'] as ChartKind }
+      : null;
+  }
+  if (parsed['kind'] === 'grid' && typeof parsed['grid'] === 'string') {
+    return GRID_KINDS.has(parsed['grid'])
+      ? { kind: 'grid', grid: parsed['grid'] as GridKind }
+      : null;
+  }
+  if (parsed['kind'] === 'table') {
+    return { kind: 'table' };
   }
   if (parsed['kind'] === 'icon' && typeof parsed['iconId'] === 'string') {
     const iconId = parsed['iconId'];

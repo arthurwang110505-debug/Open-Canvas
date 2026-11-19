@@ -42,6 +42,9 @@ interface RenderContext {
   gradients: string[];
   /** One `<clipPath>` per frame, referenced by the frame's own group. */
   clipPaths: string[];
+  /** One `<filter>` per distinct text shadow, referenced by the text element. */
+  filterIds: Map<string, string>;
+  filters: string[];
 }
 
 export interface SvgPageOptions {
@@ -201,14 +204,35 @@ export function iconSvgMarkup(element: IconElement): string {
   return `    <g transform="scale(${formatNumber(scaleX)} ${formatNumber(scaleY)})">\n${shapes}\n    </g>`;
 }
 
-function renderText(element: TextElement, measure?: TextMeasurer): string {
-  const lines = wrapTextLines(element, measure);
+function renderText(element: TextElement, context: RenderContext): string {
+  const lines = wrapTextLines(element, context.measure);
   const anchor = textAnchor(element.textAlign);
   const x = anchor === 'middle' ? element.width / 2 : anchor === 'end' ? element.width : 0;
   const lineHeight = element.fontSize * element.lineHeight;
   const decoration = element.underline ? ' text-decoration="underline"' : '';
   const spacing =
     element.letterSpacing !== 0 ? ` letter-spacing="${formatNumber(element.letterSpacing)}"` : '';
+  const stroke =
+    element.stroke && element.stroke.width > 0
+      ? ` stroke="${escapeXml(element.stroke.color)}" stroke-width="${formatNumber(element.stroke.width)}"`
+      : '';
+  let filter = '';
+  if (element.shadow) {
+    const shadow = element.shadow;
+    const key = `${shadow.color}|${shadow.offsetX}|${shadow.offsetY}|${shadow.blur}`;
+    let id = context.filterIds.get(key);
+    if (!id) {
+      id = `text-shadow-${context.filters.length + 1}`;
+      context.filterIds.set(key, id);
+      context.filters.push(
+        `    <filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">` +
+          `<feDropShadow dx="${formatNumber(shadow.offsetX)}" dy="${formatNumber(shadow.offsetY)}" ` +
+          `stdDeviation="${formatNumber(shadow.blur)}" flood-color="${escapeXml(shadow.color)}"/>` +
+          `</filter>`,
+      );
+    }
+    filter = ` filter="url(#${id})"`;
+  }
   const spans = lines
     .map((line, index) => {
       const y = element.fontSize * TEXT_BASELINE_EM + index * lineHeight;
@@ -219,7 +243,7 @@ function renderText(element: TextElement, measure?: TextMeasurer): string {
     element.fontSize,
   )}" font-weight="${element.fontWeight}"${
     element.fontStyle === 'italic' ? ' font-style="italic"' : ''
-  }${spacing}${decoration} fill="${escapeXml(element.color)}" text-anchor="${anchor}" xml:space="preserve">
+  }${spacing}${decoration} fill="${escapeXml(element.color)}"${stroke}${filter} text-anchor="${anchor}" xml:space="preserve">
 ${spans}
     </text>`;
 }
@@ -348,7 +372,7 @@ function renderElement(element: DesignElement, context: RenderContext): string {
       shape = renderEllipse(element, context);
       break;
     case 'text':
-      shape = renderText(element, context.measure);
+      shape = renderText(element, context);
       break;
     case 'image':
       shape = renderImage(element, context.hrefs);
@@ -434,6 +458,8 @@ export async function renderPageToSvg(
     gradientIds: new Map(),
     gradients: [],
     clipPaths: [],
+    filterIds: new Map(),
+    filters: [],
   };
 
   // The body is rendered first: it is what discovers which gradients (and therefore which
@@ -459,7 +485,7 @@ export async function renderPageToSvg(
       `    </style>`,
     );
   }
-  defs.push(...context.gradients, ...context.clipPaths);
+  defs.push(...context.gradients, ...context.clipPaths, ...context.filters);
 
   const lines: string[] = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(

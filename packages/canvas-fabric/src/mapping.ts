@@ -207,6 +207,14 @@ export interface EllipseFabricProps extends CommonFabricProps {
   strokeUniform: true;
 }
 
+/** Plain-data shadow for text; the adapter turns it into a Fabric `Shadow`. */
+export interface TextShadowProps {
+  color: string;
+  offsetX: number;
+  offsetY: number;
+  blur: number;
+}
+
 export interface TextFabricProps extends CommonFabricProps {
   width: number;
   text: string;
@@ -223,6 +231,11 @@ export interface TextFabricProps extends CommonFabricProps {
   /** Marker drawn before each rendered line; the stored text is never prefixed. */
   listStyle: ListStyle;
   fill: string;
+  /** Outline around the glyphs; empty string means no outline. */
+  stroke: string;
+  strokeWidth: number;
+  /** Drop shadow, or null when the text has none. */
+  shadow: TextShadowProps | null;
   editable: boolean;
 }
 
@@ -409,6 +422,16 @@ export function textToFabricProps(element: TextElement): TextFabricProps {
     textTransform: element.textTransform,
     listStyle: element.listStyle,
     fill: element.color,
+    stroke: element.stroke?.color ?? '',
+    strokeWidth: element.stroke?.width ?? 0,
+    shadow: element.shadow
+      ? {
+          color: element.shadow.color,
+          offsetX: element.shadow.offsetX,
+          offsetY: element.shadow.offsetY,
+          blur: element.shadow.blur,
+        }
+      : null,
     editable: !element.locked,
   };
 }

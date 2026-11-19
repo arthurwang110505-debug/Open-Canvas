@@ -1,4 +1,5 @@
 import { createTextElement } from '@opencanvas/document';
+import { Shadow } from 'fabric';
 import { describe, expect, it } from 'vitest';
 
 import { textToFabricProps } from './mapping';
@@ -10,8 +11,10 @@ function makeBox(
   listStyle: 'none' | 'bullet' | 'number' = 'none',
 ) {
   const element = createTextElement({ id: 't', text, textTransform, listStyle });
+  const props = textToFabricProps(element);
   return new DocumentTextbox(element.text, {
-    ...textToFabricProps(element),
+    ...props,
+    shadow: props.shadow ? new Shadow(props.shadow) : null,
     splitByGrapheme: false,
   });
 }

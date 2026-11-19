@@ -32,14 +32,52 @@ import { useMemo } from 'react';
 
 import { useCanvasController, useEditorStore } from './hooks';
 import { FONT_PAIRINGS, TEXT_PRESETS, type TextPreset } from './textPresets';
+import { buildChartGroup, type ChartDatum, type ChartKind } from './elements/charts';
+import { regenerateChartGroup } from './elements/chartData';
+import { buildGridGroup, type GridKind } from './elements/grids';
+import { buildTableGroup, regenerateTableGroup } from './elements/tables';
+import {
+  arrowPoints,
+  cloudPoints,
+  diamondPoints,
+  heartPoints,
+  moonPoints,
+  plusPoints,
+  regularPolygonPoints,
+  ribbonPoints,
+  speechBubblePoints,
+} from './elements/shapeGeometry';
 
 export type { TextPreset } from './textPresets';
+export type { ChartDatum, ChartKind } from './elements/charts';
+export type { GridKind } from './elements/grids';
 
 /** The frame shapes offered in the Elements panel. */
 export type FrameKind = 'frame-rect' | 'frame-rounded' | 'frame-ellipse' | 'frame-circle';
 
 export type ShapeKind =
-  'rect' | 'rounded-rect' | 'ellipse' | 'line' | 'triangle' | 'star' | 'hexagon' | 'sparkle';
+  | 'rect'
+  | 'rounded-rect'
+  | 'ellipse'
+  | 'line'
+  | 'triangle'
+  | 'star'
+  | 'hexagon'
+  | 'sparkle'
+  | 'pentagon'
+  | 'octagon'
+  | 'diamond'
+  | 'arrow-right'
+  | 'arrow-left'
+  | 'arrow-up'
+  | 'arrow-down'
+  | 'arrow-both'
+  | 'heart'
+  | 'plus'
+  | 'moon'
+  | 'cloud'
+  | 'speech-bubble'
+  | 'ribbon';
 
 export interface EditorActions {
   /** Adds a shape in the middle of the page, or centred on `at` (page coordinates). */
@@ -47,6 +85,12 @@ export interface EditorActions {
   addText: (preset: TextPreset, at?: { x: number; y: number }) => void;
   /** Inserts an empty frame (a mask waiting for a photo). */
   addFrame: (kind: FrameKind, at?: { x: number; y: number }) => void;
+  /** Inserts a chart (bar/pie/line) as one editable group. */
+  addChart: (kind: ChartKind, at?: { x: number; y: number }) => void;
+  /** Inserts a photo grid as one group of empty frames. */
+  addGrid: (kind: GridKind, at?: { x: number; y: number }) => void;
+  /** Inserts a table as one editable group. */
+  addTable: (at?: { x: number; y: number }) => void;
   /** Inserts the heading and body of a font pairing as one undo step. */
   addTextPairing: (pairingId: string) => void;
   /** Places a bundled icon; the id comes from `@opencanvas/icons`. */
@@ -100,6 +144,16 @@ export interface EditorActions {
    * every text element) while keeping the page background. One undo step.
    */
   replacePageElements: (elements: readonly DesignElement[]) => void;
+  /**
+   * Rebuilds a chart group's children from edited data, keeping the group's id,
+   * position and size. One undo step.
+   */
+  updateChartData: (groupId: string, data: readonly ChartDatum[]) => void;
+  /**
+   * Rebuilds a table group's children from edited cell text, keeping the group's
+   * id, position and size. One undo step.
+   */
+  updateTableData: (groupId: string, rows: readonly (readonly string[])[]) => void;
   /** Replaces the current page with a template, fitted to this canvas (one undo step). */
   applyTemplate: (template: DesignDocument) => void;
   /** Inserts a template as a new page after the current one (one undo step). */
@@ -238,6 +292,105 @@ export function useEditorActions(): EditorActions {
               closed: true,
             }),
           );
+        } else if (kind === 'pentagon' || kind === 'octagon') {
+          const { x, y } = position;
+          const sides = kind === 'pentagon' ? 5 : 8;
+          const color = kind === 'pentagon' ? '#14b8a6' : '#3b82f6';
+          addElement(
+            createPathElement(regularPolygonPoints(x + side / 2, y + side / 2, side / 2, sides), {
+              fill: { type: 'solid', color },
+              stroke: { color, width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (kind === 'diamond') {
+          const { x, y } = position;
+          addElement(
+            createPathElement(diamondPoints(x, y, side), {
+              fill: { type: 'solid', color: '#f43f5e' },
+              stroke: { color: '#f43f5e', width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (
+          kind === 'arrow-right' ||
+          kind === 'arrow-left' ||
+          kind === 'arrow-up' ||
+          kind === 'arrow-down' ||
+          kind === 'arrow-both'
+        ) {
+          const { x, y } = position;
+          const direction =
+            kind === 'arrow-right'
+              ? ('right' as const)
+              : kind === 'arrow-left'
+                ? ('left' as const)
+                : kind === 'arrow-up'
+                  ? ('up' as const)
+                  : kind === 'arrow-down'
+                    ? ('down' as const)
+                    : ('both' as const);
+          addElement(
+            createPathElement(arrowPoints(direction, x, y, side), {
+              fill: { type: 'solid', color: '#6366f1' },
+              stroke: { color: '#6366f1', width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (kind === 'heart') {
+          const { x, y } = position;
+          addElement(
+            createPathElement(heartPoints(x, y, side), {
+              fill: { type: 'solid', color: '#ef4444' },
+              stroke: { color: '#ef4444', width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (kind === 'plus') {
+          const { x, y } = position;
+          addElement(
+            createPathElement(plusPoints(x, y, side), {
+              fill: { type: 'solid', color: '#22c55e' },
+              stroke: { color: '#22c55e', width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (kind === 'moon') {
+          const { x, y } = position;
+          addElement(
+            createPathElement(moonPoints(x, y, side), {
+              fill: { type: 'solid', color: '#eab308' },
+              stroke: { color: '#eab308', width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (kind === 'cloud') {
+          const { x, y } = position;
+          addElement(
+            createPathElement(cloudPoints(x, y, side), {
+              fill: { type: 'solid', color: '#38bdf8' },
+              stroke: { color: '#38bdf8', width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (kind === 'speech-bubble') {
+          const { x, y } = position;
+          addElement(
+            createPathElement(speechBubblePoints(x, y, side), {
+              fill: { type: 'solid', color: '#8b5cf6' },
+              stroke: { color: '#8b5cf6', width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (kind === 'ribbon') {
+          const { x, y } = position;
+          addElement(
+            createPathElement(ribbonPoints(x, y, side), {
+              fill: { type: 'solid', color: '#f97316' },
+              stroke: { color: '#f97316', width: 0 },
+              closed: true,
+            }),
+          );
         } else {
           addElement(
             createRectElement({
@@ -300,6 +453,21 @@ export function useEditorActions(): EditorActions {
             cornerRadius: kind === 'frame-rounded' ? Math.round(side * 0.12) : 0,
           }),
         );
+      },
+
+      addChart: (kind, at) => {
+        const { size } = store.getState().document;
+        addElement(buildChartGroup(kind, size, at));
+      },
+
+      addGrid: (kind, at) => {
+        const { size } = store.getState().document;
+        addElement(buildGridGroup(kind, size, at));
+      },
+
+      addTable: (at) => {
+        const { size } = store.getState().document;
+        addElement(buildTableGroup(size, at));
       },
 
       addTextPairing: (pairingId) => {
@@ -542,6 +710,46 @@ export function useEditorActions(): EditorActions {
         const state = store.getState();
         const page = state.document.pages.find((candidate) => candidate.id === state.activePageId);
         if (!page) return;
+        dispatch({
+          type: 'page.replaceContent',
+          pageId: page.id,
+          background: page.background,
+          elements,
+        });
+      },
+
+      updateChartData: (groupId, data) => {
+        const state = store.getState();
+        const page = selectActivePage(state);
+        const group = page.elements.find(
+          (element): element is Extract<DesignElement, { type: 'group' }> =>
+            element.id === groupId && element.type === 'group',
+        );
+        if (!group) return;
+        const regenerated = regenerateChartGroup(group, data);
+        const elements = page.elements.map((element) =>
+          element.id === groupId ? regenerated : element,
+        );
+        dispatch({
+          type: 'page.replaceContent',
+          pageId: page.id,
+          background: page.background,
+          elements,
+        });
+      },
+
+      updateTableData: (groupId, rows) => {
+        const state = store.getState();
+        const page = selectActivePage(state);
+        const group = page.elements.find(
+          (element): element is Extract<DesignElement, { type: 'group' }> =>
+            element.id === groupId && element.type === 'group',
+        );
+        if (!group) return;
+        const regenerated = regenerateTableGroup(group, rows);
+        const elements = page.elements.map((element) =>
+          element.id === groupId ? regenerated : element,
+        );
         dispatch({
           type: 'page.replaceContent',
           pageId: page.id,
