@@ -539,6 +539,7 @@ function applyToPage(
 
     case 'document.rename':
     case 'document.resize':
+    case 'document.replace':
     case 'asset.register':
     case 'asset.remove':
     case 'page.add':
@@ -589,6 +590,28 @@ export function applyCommand(
         });
       }
       outcome = ok({ ...document, size: size.data });
+      break;
+    }
+    case 'document.replace': {
+      if (command.document.id !== document.id) {
+        return err({
+          code: 'invalid-command',
+          message: 'A version restore must belong to the same design.',
+          command: command.type,
+        });
+      }
+      const parsed = DocumentSchema.safeParse(command.document);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return err({
+          code: 'invalid-command',
+          message: issue
+            ? `Invalid version snapshot "${issue.path.map(String).join('.')}": ${issue.message}`
+            : 'Invalid version snapshot.',
+          command: command.type,
+        });
+      }
+      outcome = ok(parsed.data);
       break;
     }
     case 'asset.register': {

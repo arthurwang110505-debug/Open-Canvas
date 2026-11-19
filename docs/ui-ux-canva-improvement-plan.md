@@ -360,3 +360,23 @@ JPG + transparent PNG export, brand logos, version history, template/font/photo 
 ### Still open
 
 JPG + transparent PNG export, brand logos, version history, template/font/photo depth, broader usability studies, and production performance budgets remain later-phase work. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.
+
+## Implementation status — sixth sprint (JPG/transparent export, brand logo, version history)
+
+**Updated:** 2026-10-29. JPG + transparent PNG export, brand logo, and named version history are implemented on `arena/57f807e5-open-canvas`. Full gap analysis: `docs/canva-gap-analysis.md`.
+
+### Shipped in this pass
+
+- **JPG + transparent PNG export.** The Download dialog gained a JPG format (rasterizer supports a `jpeg` format: canvas is flattened onto white since JPEG has no alpha, output at 0.92 quality) and a **Transparent background** toggle for PNG (SVG renders without the page background rect, so the PNG carries no background color). Both honor the 1×/2×/3× size choices and the existing filename/pixel summaries.
+- **Brand logo.** The brand kit gained an optional logo (data URL + file name, 1 MB cap for localStorage). The Brand panel shows a **Brand logo** section: upload (validated image type/size), preview, replace, remove, and **Insert logo into design**, which routes through the normal image-import pipeline (sniff/decode/store/place) as one undo step.
+- **Version history.** The existing History dialog (undo timeline with jump-to-step) gained **Saved versions**: name and save a snapshot of the current design, restore it, or delete it. Snapshots live in localStorage under one key per design (20-version cap, corrupt entries dropped on read). Restore dispatches a new `document.replace` command (same-id enforced, schema-validated), so restoring is itself one undo step.
+
+### Verification
+
+- Full workspace typecheck, ESLint, Prettier, and production build pass.
+- Vitest: **760 tests in 77 files** pass (was 741/75), including new `EditorVersions.test.tsx` (save/restore as one undo, name required, delete) and `versions.test.ts` (newest-first listing, per-design isolation, cap, corrupt-entry dropping), plus extended `raster.test.ts` (JPEG white-flatten + data URL), `EditorExport.test.tsx` (JPG download, transparent PNG omits background), `EditorBrand.test.tsx` (logo upload/insert/remove), `brandKit.test.ts` (logo sanitize/round-trip), and `reducer.test.ts` (`document.replace` same-id/invalid rejection).
+- Note: the pre-existing Modal-based `HistoryPanel` (opened from the TopBar) was extended in place rather than replaced, so the established History entry point is unchanged.
+
+### Still open
+
+Template/font/photo depth, broader usability studies, and production performance budgets remain later-phase work. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.

@@ -25,7 +25,14 @@ const FORMATS: readonly FormatOption[] = [
     kind: 'png',
     name: 'PNG',
     tag: 'Image',
-    description: 'For sharing, slides, and social posts.',
+    description: 'For sharing, slides, and social posts. Can keep a transparent background.',
+    icon: <FileImage />,
+  },
+  {
+    kind: 'jpg',
+    name: 'JPG',
+    tag: 'Image',
+    description: 'A smaller photo-style file. Transparent areas become white.',
     icon: <FileImage />,
   },
   {
@@ -55,7 +62,7 @@ export interface ExportDialogProps {
   busy: ExportKind | null;
   onExport: (
     kind: ExportKind,
-    options?: { scale?: number; pageScope?: ExportPageScope },
+    options?: { scale?: number; pageScope?: ExportPageScope; transparent?: boolean },
   ) => Promise<ExportOutcome>;
   onClose: () => void;
 }
@@ -73,6 +80,7 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportKind>('png');
   const [scale, setScale] = useState<number>(RASTER_SCALE);
   const [pageScope, setPageScope] = useState<ExportPageScope>('all');
+  const [transparent, setTransparent] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const exporting = busy !== null;
@@ -86,14 +94,19 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
   const outputHeight = Math.round(document.size.height * scale);
   const filename = exportFileName(document.name, format);
 
+  const isRaster = format === 'png' || format === 'jpg';
   const summary =
     format === 'png'
-      ? `${outputWidth} × ${outputHeight} px · ${pageLabel.toLowerCase()} (current page only)`
-      : format === 'svg'
-        ? `${document.size.width} × ${document.size.height} · vector · current page only`
-        : pageScope === 'all'
-          ? `All ${pageCount} ${pageCount === 1 ? 'page' : 'pages'} · rendered as images at ${RASTER_SCALE}×`
-          : `${pageLabel} only · rendered as an image at ${RASTER_SCALE}×`;
+      ? `${outputWidth} × ${outputHeight} px · ${pageLabel.toLowerCase()} (current page only)${
+          transparent ? ' · transparent background' : ''
+        }`
+      : format === 'jpg'
+        ? `${outputWidth} × ${outputHeight} px · ${pageLabel.toLowerCase()} (current page only)`
+        : format === 'svg'
+          ? `${document.size.width} × ${document.size.height} · vector · current page only`
+          : pageScope === 'all'
+            ? `All ${pageCount} ${pageCount === 1 ? 'page' : 'pages'} · rendered as images at ${RASTER_SCALE}×`
+            : `${pageLabel} only · rendered as an image at ${RASTER_SCALE}×`;
 
   const chooseFormat = (kind: ExportKind) => {
     setFormat(kind);
@@ -103,8 +116,9 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
   const handleDownload = async () => {
     setError(null);
     const outcome = await onExport(format, {
-      scale: format === 'png' ? scale : RASTER_SCALE,
+      scale: isRaster ? scale : RASTER_SCALE,
       pageScope: format === 'pdf' ? pageScope : 'current',
+      ...(format === 'png' ? { transparent } : {}),
     });
     if (outcome.ok) onClose();
     else setError(outcome.error);
@@ -181,7 +195,7 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
               })}
             </div>
 
-            {format === 'png' ? (
+            {isRaster ? (
               <div>
                 <p id="export-scale-label" className="text-xs font-medium">
                   Size
@@ -211,6 +225,23 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
                   ))}
                 </div>
               </div>
+            ) : null}
+
+            {format === 'png' ? (
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border bg-panel px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={transparent}
+                  onChange={(event) => setTransparent(event.target.checked)}
+                  className="mt-0.5 size-4 shrink-0 accent-primary"
+                />
+                <span>
+                  <span className="block text-sm font-medium">Transparent background</span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                    Leaves the page background out, so the PNG has no background color.
+                  </span>
+                </span>
+              </label>
             ) : null}
 
             {format === 'pdf' ? (

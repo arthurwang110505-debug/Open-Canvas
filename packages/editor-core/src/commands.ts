@@ -1,6 +1,7 @@
 import type {
   Asset,
   FrameElement,
+  DesignDocument,
   DesignElement,
   EllipseElement,
   Fill,
@@ -38,6 +39,12 @@ export type ReorderTarget = 'front' | 'back' | 'forward' | 'backward' | { index:
 export type EditorCommand =
   | { type: 'document.rename'; name: string }
   | { type: 'document.resize'; width: number; height: number }
+  /**
+   * Replaces the whole document with a snapshot of the same design (version restore). The
+   * replacement must carry the same document id; anything else is rejected so a restore can
+   * never silently swap one design for another.
+   */
+  | { type: 'document.replace'; document: DesignDocument }
   | { type: 'page.setBackground'; pageId: string; background: Fill }
   | { type: 'page.addGuide'; pageId: string; guide: PageGuide }
   | { type: 'page.updateGuide'; pageId: string; guideId: string; position: number }

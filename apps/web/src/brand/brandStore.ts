@@ -5,8 +5,10 @@ import {
   loadBrandKit,
   MAX_BRAND_COLORS,
   normalizeBrandColor,
+  sanitizeBrandLogo,
   saveBrandKit,
   type BrandKit,
+  type BrandLogo,
 } from './brandKit';
 
 export interface BrandKitState {
@@ -16,6 +18,9 @@ export interface BrandKitState {
   removeColor: (color: string) => void;
   setHeadingFont: (fontFamily: string) => void;
   setBodyFont: (fontFamily: string) => void;
+  /** Sets the brand logo. Returns false when the logo is not a storable image. */
+  setLogo: (logo: BrandLogo) => boolean;
+  removeLogo: () => void;
   /** Replaces the whole kit (used by tests and future import/reset flows). */
   setKit: (kit: BrandKit) => void;
 }
@@ -54,6 +59,19 @@ export function createBrandKitStore(storage?: Storage | null): BrandKitStore {
       const kit = { ...get().kit, bodyFont };
       set({ kit });
       persist(kit);
+    },
+    setLogo: (logo) => {
+      const sanitized = sanitizeBrandLogo(logo);
+      if (!sanitized) return false;
+      const kit = { ...get().kit, logo: sanitized };
+      set({ kit });
+      persist(kit);
+      return true;
+    },
+    removeLogo: () => {
+      const { logo: _removed, ...rest } = get().kit;
+      set({ kit: rest });
+      persist(rest);
     },
     setKit: (kit) => {
       set({ kit });

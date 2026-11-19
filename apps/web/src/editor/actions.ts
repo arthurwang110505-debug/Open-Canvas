@@ -160,6 +160,13 @@ export interface EditorActions {
   addTemplatePage: (template: DesignDocument) => void;
   undo: () => void;
   redo: () => void;
+  /** Jumps to a point in the `[...past, current, ...future]` timeline (history panel). */
+  jumpToHistory: (index: number) => void;
+  /**
+   * Restores a saved version snapshot of this design. One undo step, so restoring is itself
+   * reversible.
+   */
+  restoreVersion: (document: DesignDocument) => void;
 }
 
 /**
@@ -800,6 +807,10 @@ export function useEditorActions(): EditorActions {
 
       undo: () => store.getState().undo(),
       redo: () => store.getState().redo(),
+      jumpToHistory: (index) => store.getState().jumpToHistory(index),
+      restoreVersion: (snapshot) => {
+        dispatch({ type: 'document.replace', document: snapshot });
+      },
     };
   }, [store, canvas]);
 }

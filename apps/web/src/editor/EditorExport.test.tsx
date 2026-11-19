@@ -27,6 +27,10 @@ const fixedDate = new Date('2026-05-06T07:08:09.000Z');
 const ONE_PIXEL_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
+/** A real 1×1 JPEG so the JPG export path receives a JPEG data URL. */
+const ONE_PIXEL_JPEG =
+  'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AvwH/2Q==';
+
 /** Opens the Download dialog, picks a format, and confirms, like a user would. */
 async function exportFormat(
   user: ReturnType<typeof userEvent.setup>,
@@ -65,8 +69,12 @@ function renderEditor(
 ): Harness {
   const downloads: { blob: Blob; filename: string }[] = [];
   const failure: ExportError = { code: 'raster-failed', message: 'No 2D context in this browser.' };
-  const rasterize = vi.fn(() =>
-    Promise.resolve(options.rasterizeResult === 'failed' ? err(failure) : ok(ONE_PIXEL_PNG)),
+  const rasterize = vi.fn((_svg: string, _size: unknown, _scale: unknown, format?: string) =>
+    Promise.resolve(
+      options.rasterizeResult === 'failed'
+        ? err(failure)
+        : ok(format === 'jpeg' ? ONE_PIXEL_JPEG : ONE_PIXEL_PNG),
+    ),
   );
   const resolveFontFaces = vi.fn(() =>
     options.fontFailure
@@ -200,6 +208,53 @@ describe('exporting a design', () => {
     expect(download?.filename).toBe('Poster.png');
     expect(download?.blob.type).toBe('image/png');
     expect(download?.blob.size).toBeGreaterThan(0);
+  });
+
+  it('rasterizes a JPG at the chosen size and hands over a JPEG blob', async () => {
+    const { user, downloads, rasterize } = renderEditor(designWithRectangle());
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Download design' });
+    await user.click(within(dialog).getByRole('radio', { name: /JPG/ }));
+    expect(within(dialog).getByText('Poster.jpg')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('2160 × 2160 px · page 1 of 1 (current page only)'),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Download JPG' }));
+
+    expect(rasterize).toHaveBeenCalledTimes(1);
+    const [, , scale, format] = rasterize.mock.calls[0] as [string, unknown, number, string];
+    expect(scale).toBe(2);
+    expect(format).toBe('jpeg');
+
+    const [download] = downloads;
+    expect(download?.filename).toBe('Poster.jpg');
+    expect(download?.blob.type).toBe('image/jpeg');
+    expect(download?.blob.size).toBeGreaterThan(0);
+  });
+
+  it('exports a transparent PNG without the page background', async () => {
+    const { user, downloads, rasterize } = renderEditor(designWithRectangle());
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Download design' });
+    await user.click(within(dialog).getByRole('checkbox', { name: /Transparent background/ }));
+    expect(
+      within(dialog).getByText(
+        '2160 × 2160 px · page 1 of 1 (current page only) · transparent background',
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Download PNG' }));
+
+    expect(rasterize).toHaveBeenCalledTimes(1);
+    const [svg, , , format] = rasterize.mock.calls[0] as [string, unknown, unknown, string];
+    expect(format).toBe('png');
+    // The page background rect is omitted, so the PNG carries no background color.
+    expect(svg).not.toContain('<rect width="1080" height="1080"');
+
+    const [download] = downloads;
+    expect(download?.filename).toBe('Poster.png');
+    expect(download?.blob.type).toBe('image/png');
   });
 
   it('assembles a PDF from the document pages', async () => {

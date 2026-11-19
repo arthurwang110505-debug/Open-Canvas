@@ -87,11 +87,13 @@
 
 驗證：Vitest **741 passed / 75 files**（新增 `EditorSprint5.test.tsx` 8 項）；Typecheck / ESLint / Prettier / Web build 全過。
 
-### Sprint 6 — 匯出與品牌補完
+### Sprint 6 已交付（本分支）
 
-4. **JPG 匯出 + 透明 PNG**：JPG 需 rasterizer 支援 jpeg mime；透明 PNG 需 SVG 匯出可選不畫背景。Canva Pro 的透明背景是付費賣點，OpenCanvas 可免費提供。
-5. **品牌包 Logo**：品牌包新增 Logo 上傳（data URL 存 localStorage，小圖可接受；大圖需 IndexedDB），並提供「插入 Logo」動作。Canva Brand Kit 的 Logo 是團隊一致性的核心。
-6. **版本歷程**：利用現有 history 做具名版次與還原（Canva 的 Version history）。
+4. **JPG 匯出 + 透明 PNG**：下載對話框新增 JPG 格式（rasterizer 支援 jpeg mime，透明區自動填白）與 PNG「透明背景」開關（SVG 匯出可選不畫背景）。Canva Pro 的透明背景是付費賣點，OpenCanvas 免費提供。
+5. **品牌包 Logo**：品牌包新增 Logo 上傳（data URL 存 localStorage，上限 1 MB）與「插入 Logo」動作（經既有圖片匯入管線，一步 undo）。Canva Brand Kit 的 Logo 是團隊一致性的核心。
+6. **版本歷程**：History 對話框（既有時間軸）新增具名版本——儲存快照、還原（新增 `document.replace` 命令，一步 undo）、刪除，全部存於本機 localStorage（每設計 20 個上限）。
+
+驗證：Vitest **760 passed / 77 files**（新增 `EditorVersions.test.tsx`、`versions.test.ts`，擴充 `raster.test.ts`、`EditorExport.test.tsx`、`EditorBrand.test.tsx`、`brandKit.test.ts`、`reducer.test.ts`）；Typecheck / ESLint / Prettier / Web build 全過。
 
 ### Sprint 7 — 內容深度（不追量，追質）
 
