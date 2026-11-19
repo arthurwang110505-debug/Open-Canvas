@@ -54,6 +54,19 @@ export function fitElementsToSize(
           ...geometry,
           fontSize: Math.max(1, round(element.fontSize * scale)),
           letterSpacing: round(element.letterSpacing * scale),
+          ...(element.stroke
+            ? { stroke: { ...element.stroke, width: round(element.stroke.width * scale) } }
+            : {}),
+          ...(element.shadow
+            ? {
+                shadow: {
+                  ...element.shadow,
+                  offsetX: round(element.shadow.offsetX * scale),
+                  offsetY: round(element.shadow.offsetY * scale),
+                  blur: round(element.shadow.blur * scale),
+                },
+              }
+            : {}),
         };
       case 'image':
       case 'icon':
@@ -134,6 +147,19 @@ export function scaleElementsToSize(
           ...geometry,
           fontSize: Math.max(1, round(element.fontSize * scaleX)),
           letterSpacing: round(element.letterSpacing * scaleX),
+          ...(element.stroke
+            ? { stroke: { ...element.stroke, width: round(element.stroke.width * scaleX) } }
+            : {}),
+          ...(element.shadow
+            ? {
+                shadow: {
+                  ...element.shadow,
+                  offsetX: round(element.shadow.offsetX * scaleX),
+                  offsetY: round(element.shadow.offsetY * scaleY),
+                  blur: round(element.shadow.blur * average),
+                },
+              }
+            : {}),
         };
       case 'image':
       case 'icon':

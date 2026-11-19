@@ -140,6 +140,14 @@ export const TextTransformSchema = z.enum(['none', 'uppercase', 'lowercase', 'ca
  */
 export const ListStyleSchema = z.enum(['none', 'bullet', 'number']);
 
+/** Drop shadow behind text (Canva "Shadow"). Offsets/blur are in page pixels. */
+export const TextShadowSchema = z.object({
+  color: HexColorSchema,
+  offsetX: z.number().min(-200).max(200).default(0),
+  offsetY: z.number().min(-200).max(200).default(4),
+  blur: z.number().min(0).max(100).default(8),
+});
+
 export const TextElementSchema = ElementBaseSchema.extend({
   type: z.literal('text'),
   text: z.string().max(LIMITS.maxTextLength),
@@ -157,6 +165,10 @@ export const TextElementSchema = ElementBaseSchema.extend({
   textTransform: TextTransformSchema.default('none'),
   listStyle: ListStyleSchema.default('none'),
   color: HexColorSchema,
+  /** Outline around the glyphs (Canva "Outline"). Absent means no outline. */
+  stroke: StrokeSchema.optional(),
+  /** Drop shadow behind the text. Absent means no shadow. */
+  shadow: TextShadowSchema.optional(),
 });
 
 export const ImageFitSchema = z.enum(['cover', 'fill']);
@@ -258,6 +270,7 @@ export type TextAlign = z.infer<typeof TextAlignSchema>;
 export type FontStyle = z.infer<typeof FontStyleSchema>;
 export type TextTransform = z.infer<typeof TextTransformSchema>;
 export type ListStyle = z.infer<typeof ListStyleSchema>;
+export type TextShadow = z.infer<typeof TextShadowSchema>;
 
 export type RectElement = z.infer<typeof RectElementSchema>;
 export type EllipseElement = z.infer<typeof EllipseElementSchema>;

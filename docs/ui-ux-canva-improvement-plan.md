@@ -318,3 +318,45 @@ Layout-aware resize preview, brand logos, broader usability studies, and product
 ### Still open
 
 Brand logos, broader usability studies, and production performance budgets remain later-phase work. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.
+
+## Implementation status — fourth sprint (Canva elements parity)
+
+**Updated:** 2026-10-29. Shapes 8→22, Charts (bar/pie/line), photo Grids, and canvas presets 8→18 are implemented on `arena/57f807e5-open-canvas`. Full gap analysis: `docs/canva-gap-analysis.md`.
+
+### Shipped in this pass
+
+- **Shapes 8→22.** Added pentagon, octagon, diamond, four block arrows + double arrow, heart (parametric curve), plus, moon (crescent), cloud (dual-Gaussian top), speech bubble, and ribbon — all as `path` elements via pure `shapeGeometry.ts` helpers, so no schema change and export/resize/grouping work unchanged. Panel shows 22 Lucide-icon tiles with Canva-style keywords; drag payloads accept the new kinds.
+- **Charts (bar/pie/line).** New Charts section inserts each chart as one editable group (bars/slices/trend + value/category labels + legend/baseline) built from existing primitives. Groups move, resize (children scale via `layout.ts`), export, and ungroup for per-bar editing. Data-table editing (change a number, chart redraws) is Sprint 5.
+- **Photo grids (2×2, 3×3, strip, duo).** New Grids section inserts a group of empty `frame` elements; dropping a photo fills that cell. Whole grid moves/resizes as one group.
+- **Canvas presets 8→18.** Added TikTok, Pinterest Pin, LinkedIn post, Facebook story, YouTube banner, Poster A5, Instagram landscape, X header, Presentation 4:3, and Facebook cover to the Create/Resize dialogs.
+- **Drag & drop.** `drag.ts` validates `chart`/`grid` payloads; `CanvasStage` drops them at the pointer via `addChart`/`addGrid`.
+
+### Verification
+
+- Full workspace typecheck, ESLint, Prettier, and production build pass.
+- Vitest: **732 tests in 74 files** pass (was 720/73), including new `EditorCharts.test.tsx` (shape geometry counts, chart/grid builder child counts, schema-valid insertion, panel insert + category filtering, heart-shape insert) and updated `EditorElements.test.tsx` (heart now matches both shape and icon; pentagon is a valid drag payload; chart/grid payload validation).
+- Charts/grids verified schema-valid via `validateDocument`; export uses existing group/path/frame pipeline.
+
+### Still open
+
+JPG + transparent PNG export, brand logos, version history, template/font/photo depth, broader usability studies, and production performance budgets remain later-phase work. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.
+
+## Implementation status — fifth sprint (chart data, tables, text effects)
+
+**Updated:** 2026-10-29. Chart data editing, tables, and text outline/shadow are implemented on `arena/57f807e5-open-canvas`. Full gap analysis: `docs/canva-gap-analysis.md`.
+
+### Shipped in this pass
+
+- **Text outline & shadow (schema v11).** Text elements gained optional `stroke` and `shadow` fields (additive migration 10→11; old documents render unchanged). Fabric renders them via `Shadow` + stroke props, SVG export emits `stroke`/`stroke-width` and an `feDropShadow` filter, resize scaling adapts stroke width and shadow offsets/blur, and style copy carries them between text elements. The Properties panel shows a **Text effects** section (Outline/Shadow toggles with color, width, offset, and blur controls).
+- **Chart data editing.** Chart builders now accept `ChartDatum[]` (label/value/color). Selecting a Bar/Pie/Line group shows a **Chart data** editor in Properties; Apply rebuilds the group children in place (same id/position/size) as one undo step. Data is recovered from existing labels/legends (`parseChartGroup`), so hand-edited charts degrade gracefully with an explanatory note.
+- **Tables.** New Tables section inserts a 4×3 table group (header tint, grid strokes, cell text). Selecting it shows a **Table data** editor: edit cells, add/remove rows and columns, Apply as one undo step. Drag payload `{ kind: 'table' }` is supported.
+
+### Verification
+
+- Full workspace typecheck, ESLint, Prettier, and production build pass.
+- Vitest: **741 tests in 75 files** pass (was 732/74), including new `EditorSprint5.test.tsx` (schema validation, SVG stroke/shadow output, panel toggles, chart parse/regenerate round-trip for all three kinds, chart data edit as one undo, table build/parse/regenerate, table insert + cell edit, row add/remove) and updated `migrations.test.ts` (v11 fixture + v10→v11 step).
+- Chart/table groups verified schema-valid; export uses existing group/text/rect pipeline.
+
+### Still open
+
+JPG + transparent PNG export, brand logos, version history, template/font/photo depth, broader usability studies, and production performance budgets remain later-phase work. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.

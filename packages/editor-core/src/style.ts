@@ -48,6 +48,8 @@ export function compatibleStylePatch(source: DesignElement, target: DesignElemen
       underline: source.underline,
       textTransform: source.textTransform,
       listStyle: source.listStyle,
+      stroke: source.stroke,
+      shadow: source.shadow,
     });
   }
 

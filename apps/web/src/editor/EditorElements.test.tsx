@@ -68,12 +68,14 @@ describe('elements panel', () => {
     expect(within(icons).getByRole('option', { name: 'Insert star' })).toBeInTheDocument();
 
     // A keyword only an icon has empties the shape half of the panel.
+    // (Sprint 4 added a Heart shape, so "heart" now matches both libraries;
+    // "camera" is icon-only and keeps this case meaningful.)
     await user.clear(search);
-    await user.type(search, 'heart');
+    await user.type(search, 'camera');
     expect(screen.queryByRole('region', { name: 'Shapes' })).not.toBeInTheDocument();
     expect(
       within(screen.getByRole('listbox', { name: 'Icons' })).getByRole('option', {
-        name: 'Insert heart',
+        name: 'Insert camera',
       }),
     ).toBeInTheDocument();
   });
@@ -216,11 +218,26 @@ describe('elements panel', () => {
   it('rejects payloads that would not survive the document schema', () => {
     expect(parseElementDragPayload('')).toBeNull();
     expect(parseElementDragPayload('not json')).toBeNull();
-    expect(parseElementDragPayload('{"kind":"shape","shape":"pentagon"}')).toBeNull();
+    // Sprint 4 added pentagon as a real shape; an unknown shape must still be rejected.
+    expect(parseElementDragPayload('{"kind":"shape","shape":"decagon"}')).toBeNull();
+    expect(parseElementDragPayload('{"kind":"shape","shape":"pentagon"}')).toEqual({
+      kind: 'shape',
+      shape: 'pentagon',
+    });
     expect(parseElementDragPayload('{"kind":"icon","iconId":"Heart"}')).toBeNull();
     expect(parseElementDragPayload('{"kind":"icon","iconId":"heart"}')).toEqual({
       kind: 'icon',
       iconId: 'heart',
     });
+    expect(parseElementDragPayload('{"kind":"chart","chart":"bar"}')).toEqual({
+      kind: 'chart',
+      chart: 'bar',
+    });
+    expect(parseElementDragPayload('{"kind":"chart","chart":"scatter"}')).toBeNull();
+    expect(parseElementDragPayload('{"kind":"grid","grid":"grid-2x2"}')).toEqual({
+      kind: 'grid',
+      grid: 'grid-2x2',
+    });
+    expect(parseElementDragPayload('{"kind":"grid","grid":"grid-9x9"}')).toBeNull();
   });
 });

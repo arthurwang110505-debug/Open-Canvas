@@ -4,6 +4,7 @@ import {
   type DesignElement,
   type FrameElement,
   type FrameShape,
+  type GroupElement,
   type IconElement,
   type ImageElement,
   type ImageFit,
@@ -41,11 +42,13 @@ import {
 import { useId, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 
-import { useEditorActions } from './actions';
+import { useEditorActions, type ChartDatum } from './actions';
 import { ResizeDialog } from './ResizeDialog';
 import { SelectionAlignmentControls } from './SelectionAlignmentControls';
 import { useImageImport } from './assets/useImageImport';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
+import { parseChartGroup } from './elements/chartData';
+import { parseTableGroup } from './elements/tables';
 import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
 import { useEditor, useEditorStore } from './hooks';
 import { ColorField, FieldGroup, NumberField } from './panels/fields';
@@ -483,6 +486,108 @@ function TextProperties({ element }: { element: TextElement }) {
         value={element.color}
         onCommit={(color) => updateSelection({ color }, `color:${element.id}`)}
       />
+    </FieldGroup>
+  );
+}
+
+function TextEffects({ element }: { element: TextElement }) {
+  const { updateSelection } = useEditorActions();
+  const key = (field: string) => `${field}:${element.id}`;
+  const stroke = element.stroke;
+  const shadow = element.shadow;
+
+  return (
+    <FieldGroup title="Effects">
+      <label className="flex items-center gap-2 text-xs text-foreground">
+        <input
+          type="checkbox"
+          checked={!!stroke}
+          onChange={(event) =>
+            updateSelection(
+              event.target.checked
+                ? { stroke: { color: '#111827', width: 2 } }
+                : { stroke: undefined },
+            )
+          }
+          className="accent-primary"
+        />
+        Outline
+      </label>
+      {stroke ? (
+        <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+          <ColorField
+            label="Outline color"
+            value={stroke.color}
+            onCommit={(color) => updateSelection({ stroke: { ...stroke, color } }, key('stroke'))}
+          />
+          <NumberField
+            label="Outline width"
+            value={stroke.width}
+            min={0}
+            max={LIMITS.maxStrokeWidth}
+            unit="px"
+            precision={1}
+            className="w-24"
+            onCommit={(width) =>
+              updateSelection({ stroke: { ...stroke, width } }, key('strokeWidth'))
+            }
+          />
+        </div>
+      ) : null}
+      <label className="flex items-center gap-2 text-xs text-foreground">
+        <input
+          type="checkbox"
+          checked={!!shadow}
+          onChange={(event) =>
+            updateSelection(
+              event.target.checked
+                ? { shadow: { color: '#000000', offsetX: 0, offsetY: 4, blur: 8 } }
+                : { shadow: undefined },
+            )
+          }
+          className="accent-primary"
+        />
+        Shadow
+      </label>
+      {shadow ? (
+        <>
+          <ColorField
+            label="Shadow color"
+            value={shadow.color}
+            onCommit={(color) => updateSelection({ shadow: { ...shadow, color } }, key('shadow'))}
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <NumberField
+              label="Offset X"
+              value={shadow.offsetX}
+              min={-200}
+              max={200}
+              unit="px"
+              onCommit={(offsetX) =>
+                updateSelection({ shadow: { ...shadow, offsetX } }, key('shadow'))
+              }
+            />
+            <NumberField
+              label="Offset Y"
+              value={shadow.offsetY}
+              min={-200}
+              max={200}
+              unit="px"
+              onCommit={(offsetY) =>
+                updateSelection({ shadow: { ...shadow, offsetY } }, key('shadow'))
+              }
+            />
+            <NumberField
+              label="Blur"
+              value={shadow.blur}
+              min={0}
+              max={100}
+              unit="px"
+              onCommit={(blur) => updateSelection({ shadow: { ...shadow, blur } }, key('shadow'))}
+            />
+          </div>
+        </>
+      ) : null}
     </FieldGroup>
   );
 }
@@ -938,6 +1043,207 @@ function ImageProperties({ element }: { element: ImageElement }) {
   );
 }
 
+function ChartProperties({ element }: { element: GroupElement }) {
+  const { updateChartData } = useEditorActions();
+  const parsed = parseChartGroup(element);
+  const [draft, setDraft] = useState<ChartDatum[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!parsed) {
+    return (
+      <FieldGroup title="Chart data">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          This chart was edited by hand, so its data can no longer be read. Ungroup it to edit bars,
+          slices, or points individually.
+        </p>
+      </FieldGroup>
+    );
+  }
+
+  const data = draft ?? parsed.data;
+  const isDirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(parsed.data);
+
+  const updateRow = (index: number, patch: Partial<ChartDatum>) => {
+    const next = data.map((datum, i) => (i === index ? { ...datum, ...patch } : datum));
+    setDraft(next);
+    setError(null);
+  };
+
+  const apply = () => {
+    if (!draft) return;
+    for (const datum of draft) {
+      if (!datum.label.trim()) {
+        setError('Every label needs text.');
+        return;
+      }
+      if (!Number.isFinite(datum.value) || datum.value <= 0) {
+        setError('Every value must be greater than 0.');
+        return;
+      }
+    }
+    updateChartData(element.id, draft);
+    setDraft(null);
+    setError(null);
+  };
+
+  return (
+    <FieldGroup title="Chart data">
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Edit labels, values, and colors, then Apply. One undo restores the previous chart.
+      </p>
+      <div className="flex flex-col gap-2">
+        {data.map((datum, index) => (
+          <div key={index} className="flex items-center gap-1.5">
+            <input
+              type="color"
+              value={datum.color}
+              aria-label={`Color for ${datum.label || `item ${index + 1}`}`}
+              onChange={(event) => updateRow(index, { color: event.target.value })}
+              className="h-8 w-8 shrink-0 rounded border border-border p-0.5"
+            />
+            <input
+              type="text"
+              value={datum.label}
+              aria-label={`Label for item ${index + 1}`}
+              maxLength={24}
+              onChange={(event) => updateRow(index, { label: event.target.value })}
+              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-panel px-2 text-xs"
+            />
+            <input
+              type="number"
+              value={datum.value}
+              aria-label={`Value for ${datum.label || `item ${index + 1}`}`}
+              min={1}
+              onChange={(event) => updateRow(index, { value: Number(event.target.value) })}
+              className="h-8 w-16 shrink-0 rounded-md border border-border bg-panel px-2 text-xs"
+            />
+          </div>
+        ))}
+      </div>
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <Button
+        variant="default"
+        size="sm"
+        className="rounded-full"
+        disabled={!isDirty}
+        onClick={apply}
+      >
+        Apply chart data
+      </Button>
+    </FieldGroup>
+  );
+}
+
+function TableProperties({ element }: { element: GroupElement }) {
+  const { updateTableData } = useEditorActions();
+  const parsed = parseTableGroup(element);
+  const [draft, setDraft] = useState<string[][] | null>(null);
+
+  if (!parsed) {
+    return (
+      <FieldGroup title="Table data">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          This table was edited by hand, so its cells can no longer be read. Ungroup it to edit
+          cells individually.
+        </p>
+      </FieldGroup>
+    );
+  }
+
+  const rows = draft ?? parsed;
+  const isDirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(parsed);
+  const colCount = rows[0]?.length ?? 0;
+
+  const updateCell = (rowIndex: number, colIndex: number, value: string) => {
+    const next = rows.map((row, r) =>
+      r === rowIndex ? row.map((cell, c) => (c === colIndex ? value : cell)) : row,
+    );
+    setDraft(next);
+  };
+
+  const addRow = () => setDraft([...rows, Array(colCount).fill('')]);
+  const removeRow = (rowIndex: number) => {
+    if (rows.length <= 2) return;
+    setDraft(rows.filter((_, r) => r !== rowIndex));
+  };
+  const addColumn = () => setDraft(rows.map((row) => [...row, '']));
+  const removeColumn = (colIndex: number) => {
+    if (colCount <= 2) return;
+    setDraft(rows.map((row) => row.filter((_, c) => c !== colIndex)));
+  };
+
+  return (
+    <FieldGroup title="Table data">
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Edit cells, then Apply. One undo restores the previous table.
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {rows.map((row, rowIndex) => (
+          <div key={rowIndex} className="flex items-center gap-1">
+            <div className="flex min-w-0 flex-1 gap-1">
+              {row.map((cell, colIndex) => (
+                <input
+                  key={colIndex}
+                  type="text"
+                  value={cell}
+                  aria-label={`Row ${rowIndex + 1}, column ${colIndex + 1}`}
+                  maxLength={40}
+                  onChange={(event) => updateCell(rowIndex, colIndex, event.target.value)}
+                  className="h-8 min-w-0 flex-1 rounded-md border border-border bg-panel px-2 text-xs"
+                />
+              ))}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Remove row ${rowIndex + 1}`}
+              disabled={rows.length <= 2}
+              onClick={() => removeRow(rowIndex)}
+              className="shrink-0 rounded-full px-2"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <Button variant="outline" size="sm" className="rounded-full" onClick={addRow}>
+          Add row
+        </Button>
+        <Button variant="outline" size="sm" className="rounded-full" onClick={addColumn}>
+          Add column
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          disabled={colCount <= 2}
+          onClick={() => removeColumn(colCount - 1)}
+        >
+          Remove column
+        </Button>
+      </div>
+      <Button
+        variant="default"
+        size="sm"
+        className="rounded-full"
+        disabled={!isDirty}
+        onClick={() => {
+          if (!draft) return;
+          updateTableData(element.id, draft);
+          setDraft(null);
+        }}
+      >
+        Apply table data
+      </Button>
+    </FieldGroup>
+  );
+}
+
 function ElementProperties({ element }: { element: DesignElement }) {
   const { updateSelection } = useEditorActions();
   const assets = useEditor((state) => state.document.assets);
@@ -1169,9 +1475,17 @@ function ElementProperties({ element }: { element: DesignElement }) {
         </FieldGroup>
       )}
       {element.type === 'text' && <TextProperties element={element} />}
+      {element.type === 'text' && <TextEffects element={element} />}
       {element.type === 'icon' && <IconProperties element={element} />}
       {element.type === 'frame' && <FrameProperties element={element} />}
       {element.type === 'image' && <ImageProperties element={element} />}
+      {element.type === 'group' &&
+        (element.name === 'Bar chart' ||
+          element.name === 'Pie chart' ||
+          element.name === 'Line chart') && <ChartProperties element={element} />}
+      {element.type === 'group' && element.name === 'Table' && (
+        <TableProperties element={element} />
+      )}
       <AlignControls elements={[element]} />
       <ArrangeControls elements={[element]} />
     </>

@@ -406,6 +406,9 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
         // else it becomes a new image element.
         insertPhoto(payload.photoId, targetOptions(dropTargetAt(pagePoint(event)), at));
       } else if (payload.kind === 'frame') actions.addFrame(payload.frame, at);
+      else if (payload.kind === 'chart') actions.addChart(payload.chart, at);
+      else if (payload.kind === 'grid') actions.addGrid(payload.grid, at);
+      else if (payload.kind === 'table') actions.addTable(at);
       else actions.addShape(payload.shape, at);
       return;
     }

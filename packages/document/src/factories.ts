@@ -124,6 +124,8 @@ export function createTextElement(overrides: Partial<Omit<TextElement, 'type'>> 
     textTransform: overrides.textTransform ?? 'none',
     listStyle: overrides.listStyle ?? 'none',
     color: overrides.color ?? '#111827',
+    ...(overrides.stroke !== undefined ? { stroke: overrides.stroke } : {}),
+    ...(overrides.shadow !== undefined ? { shadow: overrides.shadow } : {}),
   };
 }
 

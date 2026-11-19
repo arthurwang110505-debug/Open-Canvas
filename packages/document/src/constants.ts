@@ -2,7 +2,7 @@
  * Hard limits for the document format. They protect the editor, exporters and
  * AI validation from pathological input (huge canvases, millions of elements, ...).
  */
-export const CURRENT_SCHEMA_VERSION = 10 as const;
+export const CURRENT_SCHEMA_VERSION = 11 as const;
 
 export const LIMITS = {
   /** Maximum canvas edge length in pixels (browser canvases degrade well before this). */
@@ -83,6 +83,29 @@ export const CANVAS_PRESETS: readonly CanvasPreset[] = [
   },
   { id: 'poster-a4', label: 'Poster A4 (300 dpi)', category: 'print', width: 2480, height: 3508 },
   { id: 'business-card', label: 'Business card', category: 'print', width: 1050, height: 600 },
+  // --- Canva-parity sizes added in Sprint 4 ---
+  { id: 'tiktok-video', label: 'TikTok video', category: 'video', width: 1080, height: 1920 },
+  { id: 'pinterest-pin', label: 'Pinterest Pin', category: 'social', width: 1000, height: 1500 },
+  { id: 'linkedin-post', label: 'LinkedIn post', category: 'social', width: 1200, height: 627 },
+  { id: 'facebook-story', label: 'Facebook story', category: 'social', width: 1080, height: 1920 },
+  { id: 'youtube-banner', label: 'YouTube banner', category: 'video', width: 2560, height: 1440 },
+  { id: 'poster-a5', label: 'Poster A5 (300 dpi)', category: 'print', width: 1748, height: 2480 },
+  {
+    id: 'instagram-landscape',
+    label: 'Instagram landscape',
+    category: 'social',
+    width: 1080,
+    height: 566,
+  },
+  { id: 'x-header', label: 'X header', category: 'social', width: 1500, height: 500 },
+  {
+    id: 'presentation-4-3',
+    label: 'Presentation (4:3)',
+    category: 'presentation',
+    width: 1600,
+    height: 1200,
+  },
+  { id: 'facebook-cover', label: 'Facebook cover', category: 'social', width: 820, height: 312 },
 ];
 
 export const DEFAULT_PRESET: CanvasPreset = INSTAGRAM_POST_PRESET;
