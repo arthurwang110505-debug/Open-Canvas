@@ -603,7 +603,7 @@ const FRAME_SHAPES: { value: FrameShape; label: string }[] = [
  */
 function FrameProperties({ element }: { element: FrameElement }) {
   const { updateSelection } = useEditorActions();
-  const { insertPhoto, importFiles } = useImageImport();
+  const { insertPhoto, importFiles, importUrl } = useImageImport();
   const store = useEditorStore();
   const photoPanId = useEditor((state) => state.photoPanId);
   const shapeId = useId();
@@ -684,6 +684,10 @@ function FrameProperties({ element }: { element: FrameElement }) {
             }}
             onUpload={(files) => {
               void importFiles(files, { frameId: element.id });
+              setPicking(false);
+            }}
+            onImportUrl={(url) => {
+              void importUrl(url, { frameId: element.id });
               setPicking(false);
             }}
             uploadLabel="Upload a photo for this frame"
@@ -789,7 +793,7 @@ function IconProperties({ element }: { element: IconElement }) {
 
 function ImageProperties({ element }: { element: ImageElement }) {
   const { updateSelection } = useEditorActions();
-  const { insertPhoto, importFiles } = useImageImport();
+  const { insertPhoto, importFiles, importUrl } = useImageImport();
   const store = useEditorStore();
   const asset = useEditor((state) => state.document.assets[element.assetId]);
   const fitId = useId();
@@ -863,6 +867,10 @@ function ImageProperties({ element }: { element: ImageElement }) {
             }}
             onUpload={(files) => {
               void importFiles(files, { replaceId: element.id });
+              setReplacing(false);
+            }}
+            onImportUrl={(url) => {
+              void importUrl(url, { replaceId: element.id });
               setReplacing(false);
             }}
             uploadLabel="Upload a replacement image"

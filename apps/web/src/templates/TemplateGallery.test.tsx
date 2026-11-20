@@ -33,7 +33,8 @@ describe('template gallery', () => {
 
     await user.type(screen.getByRole('searchbox', { name: 'Search templates' }), 'tote');
     const cards = screen.getAllByTestId('template-card');
-    expect(cards).toHaveLength(1);
+    // The hand-tuned tote plus its generated palette/type cuts.
+    expect(cards.length).toBeGreaterThan(1);
     await user.click(
       within(cards[0]!).getByRole('button', { name: 'Use template: Everyday Tote' }),
     );
@@ -45,7 +46,7 @@ describe('template gallery', () => {
     render(<TemplateGallery onUse={() => undefined} />);
     const search = screen.getByRole('searchbox', { name: 'Search templates' });
     await user.type(search, 'tote');
-    expect(screen.getAllByTestId('template-card')).toHaveLength(1);
+    expect(screen.getAllByTestId('template-card').length).toBeGreaterThan(1);
 
     await user.click(screen.getByRole('button', { name: 'Clear template search' }));
 
@@ -106,12 +107,14 @@ describe('template gallery', () => {
     expect(screen.queryByRole('searchbox', { name: 'Search templates' })).not.toBeInTheDocument();
   });
 
-  it('pages the compact sidebar browser instead of mounting sixty cards', async () => {
+  it('pages the compact sidebar browser instead of mounting the whole catalogue', async () => {
     const user = userEvent.setup();
     render(<TemplateGallery onUse={() => undefined} variant="panel" />);
 
     expect(screen.getAllByTestId('template-card').length).toBeLessThanOrEqual(18);
-    await user.click(screen.getByRole('button', { name: /Show 18 more of 60/ }));
+    await user.click(
+      screen.getByRole('button', { name: new RegExp(`Show 18 more of ${TEMPLATES.length}`) }),
+    );
     expect(screen.getAllByTestId('template-card').length).toBeGreaterThan(18);
   });
 });

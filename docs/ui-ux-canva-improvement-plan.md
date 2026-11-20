@@ -380,3 +380,20 @@ JPG + transparent PNG export, brand logos, version history, template/font/photo 
 ### Still open
 
 Template/font/photo depth, broader usability studies, and production performance budgets remain later-phase work. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.
+
+## Seventh sprint — content depth (2026-11-19)
+
+### What shipped
+
+- **Fonts 15 → 33 families.** Added 18 OFL families through `@fontsource`/`@fontsource-variable` (Montserrat, Poppins, Roboto, Open Sans, Lato, Bebas Neue, Anton, Pacifico, Dancing Script, Work Sans, Nunito, Rubik, Karla, Figtree, Merriweather, Lora, EB Garamond, Cormorant Garamond). The font picker now spans 21 sans, 9 serif, and 3 handwriting families, all bundled locally for offline use.
+- **Templates 60 → 156.** A new cross-product generator (`templates/generated.ts`) builds 96 additional designs from 6 collections × 2 content sets × 4 palettes × 2 type pairings on the existing blueprint system, so every generated design passes the same schema, bounds, overlap, SVG-render, and determinism gates as the hand-tuned ones. Category spread: Social 38, Poster 34, Presentation 28, Print 28, Marketing 28.
+- **Pluggable photo URLs.** The Elements Photos section and both PhotoPicker call sites (frame fill, image replace) accept a pasted image URL: the bytes are fetched, validated, and stored with the design (offline-safe), and the URL is remembered in this browser (up to 12) with a one-click forget. Fetch failures report honestly instead of silently failing.
+
+### Verification
+
+- Full workspace typecheck, ESLint, Prettier, and production build pass.
+- Vitest: **767 tests in 78 files** pass (was 760/77), including new `photoUrls.test.ts` (remember/forget/cap/corrupt-entry handling) and `EditorPhotos.test.tsx` URL-import cases (success remembers the link; failure reports and leaves the design untouched), plus updated catalogue/gallery/dashboard counts that now derive from `TEMPLATES.length` instead of a hard-coded 60.
+
+### Still open
+
+Canva-scale cloud photo search, AI tools, and marketplace content remain out of scope for a local-first product. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.

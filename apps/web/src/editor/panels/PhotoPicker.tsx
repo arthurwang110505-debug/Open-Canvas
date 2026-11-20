@@ -1,9 +1,10 @@
 import { SUPPORTED_IMAGE_MIME_TYPES } from '@opencanvas/document';
 import { Button } from '@opencanvas/ui';
-import { ImagePlus } from 'lucide-react';
-import { useId, useRef } from 'react';
+import { ImagePlus, Link2, Trash2 } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
 
 import { BUNDLED_PHOTOS } from '../../assets/photos/catalog';
+import { forgetPhotoUrl, listPhotoUrls } from '../../assets/photoUrls';
 
 export interface PhotoPickerProps {
   /** Accessible name of the grid, e.g. "Choose a photo". */
@@ -15,6 +16,8 @@ export interface PhotoPickerProps {
   onUpload?: (files: File[]) => void;
   /** Accessible name of the upload button; ignored without `onUpload`. */
   uploadLabel?: string;
+  /** Imports an image from a web URL; enables the link field and remembered links. */
+  onImportUrl?: (url: string) => void;
 }
 
 /**
@@ -30,9 +33,22 @@ export function PhotoPicker({
   onPick,
   onUpload,
   uploadLabel = 'Upload a photo',
+  onImportUrl,
 }: PhotoPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const inputId = useId();
+  const urlInputId = useId();
+  const [url, setUrl] = useState('');
+  const [remembered, setRemembered] = useState<string[]>(() => listPhotoUrls());
+
+  const submitUrl = () => {
+    const trimmed = url.trim();
+    if (!trimmed || !onImportUrl) return;
+    onImportUrl(trimmed);
+    setUrl('');
+    // The import remembers the URL asynchronously; refresh shortly after.
+    window.setTimeout(() => setRemembered(listPhotoUrls()), 0);
+  };
 
   return (
     <div className="flex flex-col gap-2">
@@ -77,6 +93,69 @@ export function PhotoPicker({
             <ImagePlus />
             Upload from your computer
           </Button>
+        </>
+      )}
+      {onImportUrl && (
+        <>
+          <div className="flex gap-1.5">
+            <label htmlFor={urlInputId} className="sr-only">
+              Image URL
+            </label>
+            <input
+              id={urlInputId}
+              type="url"
+              value={url}
+              placeholder="Paste an image link…"
+              onChange={(event) => setUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') submitUrl();
+              }}
+              className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <Button variant="outline" size="sm" className="h-8 shrink-0" onClick={submitUrl}>
+              <Link2 aria-hidden="true" /> Add
+            </Button>
+          </div>
+          {remembered.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[11px] font-medium text-muted-foreground">From a link</p>
+              <div
+                className="grid grid-cols-3 gap-1.5"
+                role="listbox"
+                aria-label="Photos from links"
+              >
+                {remembered.map((entry) => (
+                  <span key={entry} className="group relative">
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      aria-label={optionLabel(entry)}
+                      title={entry}
+                      onClick={() => onImportUrl(entry)}
+                      className="block aspect-[4/3] w-full overflow-hidden rounded-lg border border-border hover:border-primary/50"
+                    >
+                      <img
+                        src={entry}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="size-full object-cover"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Forget link ${entry}`}
+                      onClick={() => setRemembered(forgetPhotoUrl(entry))}
+                      className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [&_svg]:size-3"
+                    >
+                      <Trash2 aria-hidden="true" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

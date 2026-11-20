@@ -5,17 +5,19 @@ import { describe, expect, it } from 'vitest';
 
 import { getBlueprint } from './blueprints';
 import { TEMPLATES, categoryLabel, getTemplate } from './catalog';
+import { GENERATED_INSTANCES } from './generated';
 import { INSTANCES } from './instances';
 import { SIGNATURE_TEMPLATES } from './signature';
 
 const PRESETS = new Set(CANVAS_PRESETS.map((preset) => preset.id));
 
 describe('the template catalogue', () => {
-  it('ships 60 designs from two sources and no duplicate ids', () => {
-    expect(TEMPLATES).toHaveLength(60);
-    expect(SIGNATURE_TEMPLATES.length + INSTANCES.length).toBe(60);
+  it('ships 156 designs from three sources and no duplicate ids', () => {
+    expect(TEMPLATES).toHaveLength(156);
+    expect(SIGNATURE_TEMPLATES.length + INSTANCES.length + GENERATED_INSTANCES.length).toBe(156);
+    expect(GENERATED_INSTANCES).toHaveLength(96);
     const ids = TEMPLATES.map((template) => template.id);
-    expect(new Set(ids).size).toBe(60);
+    expect(new Set(ids).size).toBe(156);
     for (const id of ids) expect(id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
   });
 
@@ -34,7 +36,7 @@ describe('the template catalogue', () => {
     for (const template of TEMPLATES) {
       expect(PRESETS.has(template.presetId), template.id).toBe(true);
     }
-    for (const instance of INSTANCES) {
+    for (const instance of [...INSTANCES, ...GENERATED_INSTANCES]) {
       expect(getBlueprint(instance.blueprint), instance.id).toBeDefined();
     }
     expect(INSTANCES.map((instance) => instance.blueprint).length).toBeGreaterThan(0);
@@ -71,7 +73,7 @@ describe('the template catalogue', () => {
   });
 
   it('keeps generated text boxes from landing on each other', () => {
-    for (const instance of INSTANCES) {
+    for (const instance of [...INSTANCES, ...GENERATED_INSTANCES]) {
       const template = getTemplate(instance.id);
       const document = template?.build();
       const texts = (document?.pages[0]?.elements ?? []).filter(
