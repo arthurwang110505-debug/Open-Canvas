@@ -35,7 +35,7 @@ import { FONT_PAIRINGS, TEXT_PRESETS, type TextPreset } from './textPresets';
 import { buildChartGroup, type ChartDatum, type ChartKind } from './elements/charts';
 import { regenerateChartGroup } from './elements/chartData';
 import { buildGridGroup, type GridKind } from './elements/grids';
-import { buildTableGroup, regenerateTableGroup } from './elements/tables';
+import { buildTableGroup, regenerateTableGroup, type TableStyle } from './elements/tables';
 import {
   arrowPoints,
   boltPoints,
@@ -59,6 +59,7 @@ import {
 export type { TextPreset } from './textPresets';
 export type { ChartDatum, ChartKind } from './elements/charts';
 export type { GridKind } from './elements/grids';
+export type { TableStyle } from './elements/tables';
 
 /** The frame shapes offered in the Elements panel. */
 export type FrameKind = 'frame-rect' | 'frame-rounded' | 'frame-ellipse' | 'frame-circle';
@@ -184,7 +185,11 @@ export interface EditorActions {
    * Rebuilds a table group's children from edited cell text, keeping the group's
    * id, position and size. One undo step.
    */
-  updateTableData: (groupId: string, rows: readonly (readonly string[])[]) => void;
+  updateTableData: (
+    groupId: string,
+    rows: readonly (readonly string[])[],
+    style?: TableStyle,
+  ) => void;
   /** Replaces the current page with a template, fitted to this canvas (one undo step). */
   applyTemplate: (template: DesignDocument) => void;
   /** Inserts a template as a new page after the current one (one undo step). */
@@ -811,7 +816,7 @@ export function useEditorActions(): EditorActions {
         });
       },
 
-      updateTableData: (groupId, rows) => {
+      updateTableData: (groupId, rows, style) => {
         const state = store.getState();
         const page = selectActivePage(state);
         const group = page.elements.find(
@@ -819,7 +824,7 @@ export function useEditorActions(): EditorActions {
             element.id === groupId && element.type === 'group',
         );
         if (!group) return;
-        const regenerated = regenerateTableGroup(group, rows);
+        const regenerated = regenerateTableGroup(group, rows, style);
         const elements = page.elements.map((element) =>
           element.id === groupId ? regenerated : element,
         );

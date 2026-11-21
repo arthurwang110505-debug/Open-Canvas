@@ -169,3 +169,100 @@
     transform: translateX(0);
   }
 }
+
+/*
+ * Element entrance animations (Canva "Animate").
+ *
+ * The SVG a player renders carries `data-animate` on the element's own <g>, so the keyframes
+ * below drive the entrance without the player having to know anything about the document. The
+ * transform origin is the element's own box, which is what makes `pop` read as a scale-up rather
+ * than a slide from the page corner.
+ */
+[data-animate] {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-duration: var(--element-animate-duration, 600ms);
+  animation-delay: var(--element-animate-delay, 0ms);
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+[data-animate='fade'] {
+  animation-name: element-fade;
+}
+
+[data-animate='rise'] {
+  animation-name: element-rise;
+}
+
+[data-animate='pop'] {
+  animation-name: element-pop;
+}
+
+[data-animate='pan'] {
+  animation-name: element-pan;
+}
+
+[data-animate='blur'] {
+  animation-name: element-blur;
+}
+
+@keyframes element-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes element-rise {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes element-pop {
+  from {
+    opacity: 0;
+    scale: 0.82;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes element-pan {
+  from {
+    opacity: 0;
+    translate: -32px 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes element-blur {
+  from {
+    opacity: 0;
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* A viewer who asked for less motion sees the final frame immediately. */
+@media (prefers-reduced-motion: reduce) {
+  [data-animate] {
+    animation: none !important;
+  }
+}

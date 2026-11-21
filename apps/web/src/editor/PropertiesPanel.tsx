@@ -2,6 +2,8 @@ import {
   CANVAS_PRESETS,
   LIMITS,
   type DesignElement,
+  type ElementAnimation,
+  type ElementAnimationType,
   type FrameElement,
   type FrameShape,
   type GroupElement,
@@ -49,7 +51,7 @@ import { useImageImport } from './assets/useImageImport';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
 import { CHART_GROUP_NAMES } from './elements/charts';
 import { parseChartGroup } from './elements/chartData';
-import { parseTableGroup } from './elements/tables';
+import { parseTableGroup, parseTableStyle, type TableStyle } from './elements/tables';
 import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
 import { useEditor, useEditorStore } from './hooks';
 import { ColorField, FieldGroup, NumberField } from './panels/fields';
@@ -1155,6 +1157,7 @@ function ChartProperties({ element }: { element: GroupElement }) {
 function TableProperties({ element }: { element: GroupElement }) {
   const { updateTableData } = useEditorActions();
   const parsed = parseTableGroup(element);
+  const style = parseTableStyle(element);
   const [draft, setDraft] = useState<string[][] | null>(null);
 
   if (!parsed) {
@@ -1190,70 +1193,192 @@ function TableProperties({ element }: { element: GroupElement }) {
     setDraft(rows.map((row) => row.filter((_, c) => c !== colIndex)));
   };
 
+  // Style changes apply straight away (one undo each) and keep whatever cells are on screen.
+  const applyStyle = (patch: Partial<TableStyle>) =>
+    updateTableData(element.id, rows, { ...style, ...patch });
+
   return (
-    <FieldGroup title="Table data">
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        Edit cells, then Apply. One undo restores the previous table.
-      </p>
-      <div className="flex flex-col gap-1.5">
-        {rows.map((row, rowIndex) => (
-          <div key={rowIndex} className="flex items-center gap-1">
-            <div className="flex min-w-0 flex-1 gap-1">
-              {row.map((cell, colIndex) => (
-                <input
-                  key={colIndex}
-                  type="text"
-                  value={cell}
-                  aria-label={`Row ${rowIndex + 1}, column ${colIndex + 1}`}
-                  maxLength={40}
-                  onChange={(event) => updateCell(rowIndex, colIndex, event.target.value)}
-                  className="h-8 min-w-0 flex-1 rounded-md border border-border bg-panel px-2 text-xs"
-                />
-              ))}
+    <>
+      <FieldGroup title="Table style">
+        <ColorField
+          label="Accent"
+          value={style.accent}
+          onCommit={(accent) => applyStyle({ accent })}
+        />
+        <label className="flex items-center gap-2 text-xs text-foreground">
+          <input
+            type="checkbox"
+            checked={style.header}
+            onChange={(event) => applyStyle({ header: event.target.checked })}
+            className="accent-primary"
+          />
+          Header row
+        </label>
+        <label className="flex items-center gap-2 text-xs text-foreground">
+          <input
+            type="checkbox"
+            checked={style.banded}
+            onChange={(event) => applyStyle({ banded: event.target.checked })}
+            className="accent-primary"
+          />
+          Banded rows
+        </label>
+      </FieldGroup>
+      <FieldGroup title="Table data">
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Edit cells, then Apply. One undo restores the previous table.
+        </p>
+        <div className="flex flex-col gap-1.5">
+          {rows.map((row, rowIndex) => (
+            <div key={rowIndex} className="flex items-center gap-1">
+              <div className="flex min-w-0 flex-1 gap-1">
+                {row.map((cell, colIndex) => (
+                  <input
+                    key={colIndex}
+                    type="text"
+                    value={cell}
+                    aria-label={`Row ${rowIndex + 1}, column ${colIndex + 1}`}
+                    maxLength={40}
+                    onChange={(event) => updateCell(rowIndex, colIndex, event.target.value)}
+                    className="h-8 min-w-0 flex-1 rounded-md border border-border bg-panel px-2 text-xs"
+                  />
+                ))}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Remove row ${rowIndex + 1}`}
+                disabled={rows.length <= 2}
+                onClick={() => removeRow(rowIndex)}
+                className="shrink-0 rounded-full px-2"
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Remove row ${rowIndex + 1}`}
-              disabled={rows.length <= 2}
-              onClick={() => removeRow(rowIndex)}
-              className="shrink-0 rounded-full px-2"
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          </div>
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        <Button variant="outline" size="sm" className="rounded-full" onClick={addRow}>
-          Add row
-        </Button>
-        <Button variant="outline" size="sm" className="rounded-full" onClick={addColumn}>
-          Add column
-        </Button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <Button variant="outline" size="sm" className="rounded-full" onClick={addRow}>
+            Add row
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-full" onClick={addColumn}>
+            Add column
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full"
+            disabled={colCount <= 2}
+            onClick={() => removeColumn(colCount - 1)}
+          >
+            Remove column
+          </Button>
+        </div>
         <Button
-          variant="outline"
+          variant="default"
           size="sm"
           className="rounded-full"
-          disabled={colCount <= 2}
-          onClick={() => removeColumn(colCount - 1)}
+          disabled={!isDirty}
+          onClick={() => {
+            if (!draft) return;
+            updateTableData(element.id, draft);
+            setDraft(null);
+          }}
         >
-          Remove column
+          Apply table data
         </Button>
+      </FieldGroup>
+    </>
+  );
+}
+
+/** The entrances the Animate section offers, in the order Canva's own list reads. */
+const ANIMATION_OPTIONS: readonly { id: ElementAnimationType; label: string }[] = [
+  { id: 'fade', label: 'Fade' },
+  { id: 'rise', label: 'Rise' },
+  { id: 'pop', label: 'Pop' },
+  { id: 'pan', label: 'Pan' },
+  { id: 'blur', label: 'Blur' },
+];
+
+const DEFAULT_ANIMATION: ElementAnimation = { type: 'fade', duration: 0.6, delay: 0 };
+
+/**
+ * Entrance animation for the selected element.
+ *
+ * The animation is playback metadata: it runs in Present mode and in a shared link, and a
+ * downloaded PNG/JPG/PDF/SVG keeps the element exactly as the canvas shows it. The panel says so
+ * rather than letting someone discover it after exporting.
+ */
+function AnimationProperties({ element }: { element: DesignElement }) {
+  const { updateSelection } = useEditorActions();
+  const animation = element.animation;
+  const typeId = useId();
+  const key = (field: string) => `${field}:${element.id}`;
+
+  return (
+    <FieldGroup title="Animate">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor={typeId}>Entrance</Label>
+        <Select
+          id={typeId}
+          value={animation?.type ?? 'none'}
+          onChange={(event) => {
+            const next = event.target.value;
+            updateSelection(
+              next === 'none'
+                ? { animation: undefined }
+                : {
+                    animation: {
+                      ...(animation ?? DEFAULT_ANIMATION),
+                      type: next as ElementAnimationType,
+                    },
+                  },
+            );
+          }}
+        >
+          <option value="none">None</option>
+          {ANIMATION_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
       </div>
-      <Button
-        variant="default"
-        size="sm"
-        className="rounded-full"
-        disabled={!isDirty}
-        onClick={() => {
-          if (!draft) return;
-          updateTableData(element.id, draft);
-          setDraft(null);
-        }}
-      >
-        Apply table data
-      </Button>
+      {animation ? (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <NumberField
+              label="Duration"
+              value={animation.duration}
+              min={0.1}
+              max={5}
+              step={0.1}
+              precision={1}
+              unit="s"
+              onCommit={(duration) =>
+                updateSelection({ animation: { ...animation, duration } }, key('animDuration'))
+              }
+            />
+            <NumberField
+              label="Delay"
+              value={animation.delay}
+              min={0}
+              max={10}
+              step={0.1}
+              precision={1}
+              unit="s"
+              onCommit={(delay) =>
+                updateSelection({ animation: { ...animation, delay } }, key('animDelay'))
+              }
+            />
+          </div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Plays in Present mode and in a shared link. Downloads are still images, so they show the
+            element in its final position.
+          </p>
+        </>
+      ) : null}
     </FieldGroup>
   );
 }
@@ -1499,6 +1624,7 @@ function ElementProperties({ element }: { element: DesignElement }) {
       {element.type === 'group' && element.name === 'Table' && (
         <TableProperties element={element} />
       )}
+      <AnimationProperties element={element} />
       <AlignControls elements={[element]} />
       <ArrangeControls elements={[element]} />
     </>

@@ -17,6 +17,39 @@ import {
 
 export const TABLE_GROUP_NAME = 'Table';
 
+/**
+ * How a table is painted. Canva's table styles boil down to three decisions — does the first row
+ * read as a header, do body rows alternate, and what colour ties it together — so those are the
+ * three knobs here. The style is recovered from the drawn cells (see `parseTableStyle`), which
+ * keeps it out of the document schema: a table stays a plain group of rects and texts.
+ */
+export interface TableStyle {
+  /** Tint used for the header fill and the banded rows. */
+  accent: string;
+  /** Paints the first row and sets its text semibold. */
+  header: boolean;
+  /** Tints every other body row. */
+  banded: boolean;
+}
+
+export const DEFAULT_TABLE_STYLE: TableStyle = {
+  accent: '#f3f4f6',
+  header: true,
+  banded: false,
+};
+
+/** Mixes `color` with white; used so a banded row reads lighter than the header. */
+function lighten(color: string, amount: number): string {
+  const hex = color.replace('#', '');
+  if (hex.length !== 6) return color;
+  const channel = (index: number) => {
+    const value = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+    if (!Number.isFinite(value)) return 255;
+    return Math.round(value + (255 - value) * amount);
+  };
+  return `#${[0, 1, 2].map((i) => channel(i).toString(16).padStart(2, '0')).join('')}`;
+}
+
 export const DEFAULT_TABLE_DATA: readonly (readonly string[])[] = [
   ['Item', 'Qty', 'Price'],
   ['Apples', '12', '$24'],
@@ -29,6 +62,7 @@ export function buildTableElements(
   origin: { x: number; y: number },
   width: number,
   height: number,
+  style: TableStyle = DEFAULT_TABLE_STYLE,
 ): DesignElement[] {
   const { x, y } = origin;
   const rowCount = rows.length;
@@ -56,35 +90,26 @@ export function buildTableElements(
     row.forEach((cell, colIndex) => {
       const cellX = x + colIndex * cellW;
       const cellY = y + rowIndex * cellH;
-      const isHeader = rowIndex === 0;
-      // Cell fill: header tint, body transparent (background shows through).
-      if (isHeader) {
-        elements.push(
-          createRectElement({
-            x: Math.round(cellX),
-            y: Math.round(cellY),
-            width: Math.round(cellW),
-            height: Math.round(cellH),
-            fill: { type: 'solid', color: '#f3f4f6' },
-            stroke: { color: '#e5e7eb', width: 1 },
-            cornerRadius: 0,
-          }),
-        );
-      } else {
-        // Body cells get a light grid line via stroke only (no fill rect needed
-        // beyond the background, but a stroke-only rect draws the grid).
-        elements.push(
-          createRectElement({
-            x: Math.round(cellX),
-            y: Math.round(cellY),
-            width: Math.round(cellW),
-            height: Math.round(cellH),
-            fill: { type: 'none' },
-            stroke: { color: '#e5e7eb', width: 1 },
-            cornerRadius: 0,
-          }),
-        );
-      }
+      const isHeader = style.header && rowIndex === 0;
+      // Cell fill: header tint, banded body rows a lighter wash, everything else transparent so
+      // the page background shows through.
+      const banded = style.banded && !isHeader && (rowIndex - (style.header ? 1 : 0)) % 2 === 1;
+      const fill = isHeader
+        ? ({ type: 'solid', color: style.accent } as const)
+        : banded
+          ? ({ type: 'solid', color: lighten(style.accent, 0.5) } as const)
+          : ({ type: 'none' } as const);
+      elements.push(
+        createRectElement({
+          x: Math.round(cellX),
+          y: Math.round(cellY),
+          width: Math.round(cellW),
+          height: Math.round(cellH),
+          fill,
+          stroke: { color: '#e5e7eb', width: 1 },
+          cornerRadius: 0,
+        }),
+      );
       const pad = cellW * 0.08;
       elements.push(
         createTextElement({
@@ -111,6 +136,7 @@ export function buildTableGroup(
   pageSize: { width: number; height: number },
   at?: { x: number; y: number },
   rows: readonly (readonly string[])[] = DEFAULT_TABLE_DATA,
+  style: TableStyle = DEFAULT_TABLE_STYLE,
 ): GroupElement {
   const width = Math.round(Math.min(pageSize.width, pageSize.height) * 0.68);
   const height = Math.round(width * 0.55);
@@ -123,7 +149,7 @@ export function buildTableGroup(
         x: Math.round((pageSize.width - width) / 2),
         y: Math.round((pageSize.height - height) / 2),
       };
-  const children = buildTableElements(rows, origin, width, height);
+  const children = buildTableElements(rows, origin, width, height, style);
   return createGroupElement(children, { name: TABLE_GROUP_NAME });
 }
 
@@ -157,11 +183,39 @@ export function parseTableGroup(group: GroupElement): string[][] | null {
   return rows.map((row) => [...row].sort((a, b) => a.x - b.x).map((text) => text.text));
 }
 
+/**
+ * Recovers the painted style from a table group so the panel can show what is actually drawn
+ * rather than a remembered guess. Falls back to the default when the group is unreadable.
+ */
+export function parseTableStyle(group: GroupElement): TableStyle {
+  const rects = group.children.filter(
+    (child): child is Extract<DesignElement, { type: 'rect' }> => child.type === 'rect',
+  );
+  // The first rect is the table's outer background; cells follow in row order.
+  const cells = rects.slice(1);
+  if (cells.length === 0) return DEFAULT_TABLE_STYLE;
+
+  const topY = Math.min(...cells.map((cell) => cell.y));
+  const firstRow = cells.filter((cell) => Math.abs(cell.y - topY) < 1);
+  const headerFill = firstRow.find((cell) => cell.fill.type === 'solid');
+  const header = headerFill !== undefined;
+
+  const bodyFills = cells
+    .filter((cell) => Math.abs(cell.y - topY) >= 1)
+    .filter((cell) => cell.fill.type === 'solid');
+  return {
+    accent: headerFill?.fill.type === 'solid' ? headerFill.fill.color : DEFAULT_TABLE_STYLE.accent,
+    header,
+    banded: bodyFills.length > 0,
+  };
+}
+
 /** Rebuilds a table group's children from edited rows, keeping id/position/size. */
 export function regenerateTableGroup(
   group: GroupElement,
   rows: readonly (readonly string[])[],
+  style: TableStyle = parseTableStyle(group),
 ): GroupElement {
-  const children = buildTableElements(rows, { x: 0, y: 0 }, group.width, group.height);
+  const children = buildTableElements(rows, { x: 0, y: 0 }, group.width, group.height, style);
   return { ...group, children };
 }

@@ -28,7 +28,9 @@ export function ShareViewer({ shareId }: { shareId: string }) {
     if (!doc || !page) return;
     let cancelled = false;
     void (async () => {
-      const res = await renderPageToSvg(doc, { pageId: page.id });
+      // A shared link is a viewer, not a file: entrances play here the same way they do in
+      // Present mode.
+      const res = await renderPageToSvg(doc, { pageId: page.id, animations: true });
       if (!cancelled && res.ok) setRendered({ pageId: page.id, svg: res.value });
     })();
     return () => {

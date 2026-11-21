@@ -26,8 +26,8 @@
 | **相片格（Grids）** | 2×2、3×3、拼貼等一鍵格線                                  | 0（只有單張框架）                                                            | 🔴 大缺口                   |
 | **畫布尺寸**        | 數百種（IG、TikTok、Pinterest、LinkedIn、YouTube…）       | 8 種預設                                                                     | 🟡 中缺口                   |
 | **文字效果**        | 描邊、陰影、彎曲、間距、列表                              | 僅大小寫與列表，無描邊/陰影/彎曲                                             | 🟡 中缺口                   |
-| **表格**            | 一鍵表格，可編輯儲存格                                    | 0                                                                            | 🟡 中缺口                   |
-| **動畫**            | 元素進場動畫（上升、淡入、彈跳…）                         | 僅簡報模式頁面轉場                                                           | 🟡 中缺口                   |
+| **表格**            | 一鍵表格，可編輯儲存格                                    | 表格群組 + 儲存格編輯 + 樣式（標題列/斑馬紋/主色）                           | ✅ 已接近                   |
+| **動畫**            | 元素進場動畫（上升、淡入、彈跳…）                         | 元素進場動畫 5 種 + 簡報頁面轉場（Sprint 9）                                 | ✅ 已接近                   |
 | **匯出**            | PNG / JPG / PDF / SVG / MP4 / GIF，透明背景               | PNG（1–3×）/ SVG / 光柵 PDF                                                  | 🟡 部分缺口                 |
 | **品牌包**          | 色票、字體、Logo、團隊共用、核准流程                      | 本機單一品牌包（色票+字體）                                                  | 🟡 個人夠用，團隊缺席       |
 | **AI**              | Magic Design / Write / Dream Lab / 去背 / Magic Eraser 等 | 0                                                                            | 🔴 最大缺口（但屬雲端戰場） |
@@ -116,6 +116,16 @@
 5. **範本 156 → 220**：新增 4 個集合（agenda 議程簡報、profile 名片、banner 影片縮圖、big-type 大字報），各 2 文案 × 4 色盤 × 2 字體 = 64 個，全部通過既有品管（schema、邊界、重疊、SVG 渲染、確定性）。
 
 驗證：Vitest **783 passed / 79 files**（新增 `editor/elements/sprint8.test.ts` 14 項：新形狀幾何邊界/縮放、環圈與面積圖建構與資料往返、格線頁面邊界、24 預設、SVG 匯出無 NaN；擴充 `EditorCharts.test.tsx` 面板插入與資料編輯整合測試）；Typecheck / ESLint / Prettier / Web build 全過。
+
+### Sprint 9 — 動畫與表格樣式
+
+交付（2026-11-20）：
+
+1. **元素進場動畫（Canva「Animate」）**：schema v12 新增選用的 `animation`（`type` / `duration` / `delay`），5 種進場——Fade、Rise、Pop、Pan、Blur。屬性面板新增「Animate」區（下拉選單 + 秒數欄位），動畫**在簡報模式與分享連結中播放**，下載的 PNG/JPG/PDF/SVG 仍是靜態最終畫面（面板直接寫明，不讓使用者匯出後才發現）。實作上匯出器新增 `animations` 選項，只有播放端會收到 `data-animate` 與 CSS 自訂屬性；`prefers-reduced-motion` 直接停用動畫。
+2. **表格樣式（Canva Table styles）**：新增標題列開關、斑馬紋列開關、主色選擇。樣式不進 schema——從畫出來的儲存格反推（`parseTableStyle`），所以表格仍是普通的 rect + text 群組，取消群組後一切照常；每次改樣式都是一步 undo。
+3. **schema v12 遷移**：v11 → v12 為加法遷移，舊文件開啟後不會多出欄位；`schema-v12.json` fixture 與 v11 單步遷移測試同步加入。
+
+驗證：Vitest **794 passed / 80 files**（新增 `EditorAnimate.test.tsx` 10 項：動畫 schema 往返與非法值拒絕、匯出只在請求播放時標註、面板設定/清除進場、表格樣式往返與一步 undo、儲存格邊界；擴充 `migrations.test.ts`）；Typecheck / ESLint / Prettier / Web build 全過；產出 CSS 已確認含 5 組 keyframes 與 reduced-motion 停用規則。
 
 7. **範本擴充到 150–200 個**：以既有 blueprint 系統程式產生 + 分類策展，而非手寫 60 個的笨方法。Canva 的百萬範本無法追，但「搜得到、品質好」的 200 個已足夠個人使用。✅ Sprint 7 完成（156 個，見下方交付紀錄）。
 8. **字體擴充**：15 → 30+ 家族（仍走 @fontsource 本機打包，離線可用）。Canva 有數百字體，但本機打包的字體每多一家就多一份體積，需取捨。✅ Sprint 7 完成（33 家族）。

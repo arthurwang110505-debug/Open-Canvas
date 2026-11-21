@@ -45,6 +45,8 @@ interface RenderContext {
   /** One `<filter>` per distinct text shadow, referenced by the text element. */
   filterIds: Map<string, string>;
   filters: string[];
+  /** Emit `data-animate` hints for elements that carry an entrance animation. */
+  animations: boolean;
 }
 
 export interface SvgPageOptions {
@@ -56,6 +58,12 @@ export interface SvgPageOptions {
   background?: boolean;
   /** Renders elements the user hid. Default false. */
   includeHidden?: boolean;
+  /**
+   * Tags animated elements with `data-animate` attributes so a player (Present mode, a shared
+   * link) can drive their entrance with CSS. Off by default: a downloaded file is a still image
+   * and must not carry playback hints that no viewer would honour.
+   */
+  animations?: boolean;
   /** Required as soon as the page shows an image element. */
   resolveImageHref?: ImageHrefResolver;
   /** Enables word wrapping to the element width, matching the canvas. */
@@ -355,13 +363,30 @@ function collectImages(elements: readonly DesignElement[]): ImageSourceElement[]
   return out;
 }
 
+/**
+ * Playback hints for one element. Emitted only when the caller asked for animations, so a plain
+ * export stays byte-identical to what earlier versions produced.
+ */
+function animationAttributes(element: DesignElement, context: RenderContext): string {
+  if (!context.animations || !element.animation) return '';
+  const { type, duration, delay } = element.animation;
+  // Timing travels as custom properties so a player only has to ship the stylesheet: no DOM
+  // walking, and the same markup animates inside a shared link.
+  return (
+    ` data-animate="${escapeXml(type)}"` +
+    ` style="--element-animate-duration:${formatNumber(duration)}s;` +
+    `--element-animate-delay:${formatNumber(delay)}s"`
+  );
+}
+
 function renderElement(element: DesignElement, context: RenderContext): string {
   const rotation = element.rotation !== 0 ? ` rotate(${formatNumber(element.rotation)})` : '';
   const opacity = element.opacity < 1 ? ` opacity="${formatNumber(element.opacity)}"` : '';
+  const animate = animationAttributes(element, context);
   if (element.type === 'group') {
     const inner = element.children.map((child) => renderElement(child, context)).join('\n');
     // Group itself is a container; its children are already positioned relative to group's origin
-    return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(element.y)})${rotation}"${opacity}>\n${inner}\n  </g>`;
+    return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(element.y)})${rotation}"${opacity}${animate}>\n${inner}\n  </g>`;
   }
   let shape: string;
   switch (element.type) {
@@ -389,7 +414,7 @@ function renderElement(element: DesignElement, context: RenderContext): string {
   }
   return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(
     element.y,
-  )})${rotation}"${opacity}>
+  )})${rotation}"${opacity}${animate}>
 ${shape}
   </g>`;
 }
@@ -460,6 +485,7 @@ export async function renderPageToSvg(
     clipPaths: [],
     filterIds: new Map(),
     filters: [],
+    animations: options.animations === true,
   };
 
   // The body is rendered first: it is what discovers which gradients (and therefore which
