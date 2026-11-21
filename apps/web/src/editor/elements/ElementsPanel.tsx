@@ -4,14 +4,18 @@ import { Button, EmptyState, SearchField, cn } from '@opencanvas/ui';
 import {
   BarChart3,
   Camera,
+  ChartArea,
   ChartLine,
   ChartPie,
   Columns3,
   Grid2x2,
   Grid3x3,
   LayoutGrid,
+  LayoutPanelLeft,
   Link2,
+  PieChart,
   Rows2,
+  Rows3,
   Search,
   Table2,
 } from 'lucide-react';
@@ -48,6 +52,8 @@ const CHART_ICONS: Record<string, React.ReactNode> = {
   bar: <BarChart3 className="size-6" />,
   pie: <ChartPie className="size-6" />,
   line: <ChartLine className="size-6" />,
+  donut: <PieChart className="size-6" />,
+  area: <ChartArea className="size-6" />,
 };
 
 const GRID_ICONS: Record<string, React.ReactNode> = {
@@ -55,6 +61,9 @@ const GRID_ICONS: Record<string, React.ReactNode> = {
   'grid-3x3': <Grid3x3 className="size-6" />,
   'grid-strip-3': <Columns3 className="size-6" />,
   'grid-duo': <Rows2 className="size-6" />,
+  'grid-2x3': <Rows3 className="size-6" />,
+  'grid-stack-2': <Rows2 className="size-6 rotate-90" />,
+  'grid-feature-3': <LayoutPanelLeft className="size-6" />,
 };
 
 /**

@@ -1,7 +1,9 @@
 import type { DesignElement, GroupElement } from '@opencanvas/document';
 
 import {
+  buildAreaChartElements,
   buildBarChartElements,
+  buildDonutChartElements,
   buildLineChartElements,
   buildPieChartElements,
   type ChartDatum,
@@ -101,6 +103,38 @@ function parsePieChart(group: GroupElement): ChartDatum[] | null {
   return data;
 }
 
+function parseDonutChart(group: GroupElement): ChartDatum[] | null {
+  const children = group.children;
+  // The hole shows a total that is not a legend row, so only rows with a separator count.
+  const texts = children
+    .filter(isText)
+    .filter((text) => text.text.includes('\u00b7'))
+    .sort((a, b) => a.y - b.y);
+  const swatches = children.filter((child) => child.type === 'rect').sort((a, b) => a.y - b.y);
+  if (texts.length < 2 || texts.length > 8) return null;
+  if (swatches.length !== texts.length) return null;
+
+  const data: ChartDatum[] = [];
+  for (let index = 0; index < texts.length; index += 1) {
+    const text = texts[index]!;
+    const swatch = swatches[index]!;
+    const separator = text.text.lastIndexOf('\u00b7');
+    const label = text.text.slice(0, separator).trim();
+    const percent = parseNumber(
+      text.text
+        .slice(separator + 1)
+        .trim()
+        .replace('%', '')
+        .trim(),
+    );
+    if (!label || percent === null || percent <= 0) return null;
+    const color = solidFillColor(swatch);
+    if (!color) return null;
+    data.push({ label, value: percent, color });
+  }
+  return data;
+}
+
 function parseLineChart(group: GroupElement): ChartDatum[] | null {
   const children = group.children;
   const dots = children.filter((child) => child.type === 'ellipse').sort((a, b) => a.x - b.x);
@@ -146,14 +180,21 @@ export function parseChartGroup(group: GroupElement): ParsedChart | null {
         ? 'pie'
         : name === 'Line chart'
           ? 'line'
-          : null;
+          : name === 'Donut chart'
+            ? 'donut'
+            : name === 'Area chart'
+              ? 'area'
+              : null;
   if (!kind) return null;
   const data =
     kind === 'bar'
       ? parseBarChart(group)
       : kind === 'pie'
         ? parsePieChart(group)
-        : parseLineChart(group);
+        : kind === 'donut'
+          ? parseDonutChart(group)
+          : // Area charts carry the same dots and labels as line charts.
+            parseLineChart(group);
   return data ? { kind, data } : null;
 }
 
@@ -166,15 +207,24 @@ export function regenerateChartGroup(
   data: readonly ChartDatum[],
 ): GroupElement {
   const parsed = parseChartGroup(group);
-  const kind =
-    parsed?.kind ??
-    (group.name === 'Pie chart' ? 'pie' : group.name === 'Line chart' ? 'line' : 'bar');
+  const byName: Record<string, ChartKind> = {
+    'Bar chart': 'bar',
+    'Pie chart': 'pie',
+    'Line chart': 'line',
+    'Donut chart': 'donut',
+    'Area chart': 'area',
+  };
+  const kind = parsed?.kind ?? byName[group.name ?? ''] ?? 'bar';
   const origin = { x: 0, y: 0 };
   const children =
     kind === 'bar'
       ? buildBarChartElements(data, origin, group.width, group.height)
       : kind === 'pie'
         ? buildPieChartElements(data, origin, group.width, group.height)
-        : buildLineChartElements(data, origin, group.width, group.height);
+        : kind === 'donut'
+          ? buildDonutChartElements(data, origin, group.width, group.height)
+          : kind === 'area'
+            ? buildAreaChartElements(data, origin, group.width, group.height)
+            : buildLineChartElements(data, origin, group.width, group.height);
   return { ...group, children };
 }

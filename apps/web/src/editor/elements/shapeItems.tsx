@@ -5,8 +5,10 @@ import {
   ArrowRight,
   ArrowUp,
   Circle,
+  ChevronRight,
   Cloud,
   Diamond,
+  Flag,
   Heart,
   Hexagon,
   MessageSquare,
@@ -16,11 +18,14 @@ import {
   Pentagon,
   Plus,
   Ribbon,
+  Shield,
   Sparkles,
   Square,
   Squircle,
   Star,
   Triangle,
+  X,
+  Zap,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -170,6 +175,71 @@ export const SHAPE_ITEMS: readonly ShapeItem[] = [
     label: 'Ribbon',
     icon: <Ribbon className="size-6" />,
     keywords: 'ribbon banner award',
+  },
+  {
+    kind: 'cross',
+    label: 'Cross',
+    icon: <X className="size-6" />,
+    keywords: 'cross x close multiply',
+  },
+  {
+    kind: 'chevron',
+    label: 'Chevron',
+    icon: <ChevronRight className="size-6" />,
+    keywords: 'chevron arrow banner next step',
+  },
+  {
+    kind: 'bolt',
+    label: 'Lightning bolt',
+    icon: <Zap className="size-6" />,
+    keywords: 'bolt lightning energy flash power',
+  },
+  {
+    kind: 'shield',
+    label: 'Shield',
+    icon: <Shield className="size-6" />,
+    keywords: 'shield badge secure crest guarantee',
+  },
+  {
+    kind: 'flag',
+    label: 'Flag',
+    icon: <Flag className="size-6" />,
+    keywords: 'flag pennant banner marker',
+  },
+  {
+    kind: 'parallelogram',
+    label: 'Parallelogram',
+    icon: (
+      <svg viewBox="0 0 24 24" className="size-6" aria-hidden="true">
+        <path d="M7 5h14l-4 14H3z" fill="none" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    ),
+    keywords: 'parallelogram slant skew quad',
+  },
+  {
+    kind: 'trapezoid',
+    label: 'Trapezoid',
+    icon: (
+      <svg viewBox="0 0 24 24" className="size-6" aria-hidden="true">
+        <path d="M7 5h10l4 14H3z" fill="none" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    ),
+    keywords: 'trapezoid trapezium quad base',
+  },
+  {
+    kind: 'burst',
+    label: 'Starburst',
+    icon: (
+      <svg viewBox="0 0 24 24" className="size-6" aria-hidden="true">
+        <path
+          d="m12 2 2 3.6 3.8-1.6-.4 4.1 4.1.5-2.8 3 2.8 3-4.1.5.4 4.1-3.8-1.6L12 22l-2-3.4-3.8 1.6.4-4.1-4.1-.5 2.8-3-2.8-3 4.1-.5-.4-4.1L10 5.6z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+      </svg>
+    ),
+    keywords: 'burst starburst seal sticker price sale',
   },
 ];
 

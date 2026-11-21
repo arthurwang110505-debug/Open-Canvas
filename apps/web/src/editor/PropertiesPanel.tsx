@@ -47,6 +47,7 @@ import { ResizeDialog } from './ResizeDialog';
 import { SelectionAlignmentControls } from './SelectionAlignmentControls';
 import { useImageImport } from './assets/useImageImport';
 import { describeElement, ELEMENT_TYPE_LABELS } from './elementLabels';
+import { CHART_GROUP_NAMES } from './elements/charts';
 import { parseChartGroup } from './elements/chartData';
 import { parseTableGroup } from './elements/tables';
 import { FONT_CATEGORIES, FONT_FAMILY_NAMES, fontWeightsFor } from '../fonts/catalog';
@@ -1051,6 +1052,11 @@ function ImageProperties({ element }: { element: ImageElement }) {
   );
 }
 
+/** Every chart the Elements panel can insert; the group name is the chart's identity. */
+function isChartGroupName(name: string | undefined): boolean {
+  return name !== undefined && Object.values(CHART_GROUP_NAMES).includes(name);
+}
+
 function ChartProperties({ element }: { element: GroupElement }) {
   const { updateChartData } = useEditorActions();
   const parsed = parseChartGroup(element);
@@ -1487,10 +1493,9 @@ function ElementProperties({ element }: { element: DesignElement }) {
       {element.type === 'icon' && <IconProperties element={element} />}
       {element.type === 'frame' && <FrameProperties element={element} />}
       {element.type === 'image' && <ImageProperties element={element} />}
-      {element.type === 'group' &&
-        (element.name === 'Bar chart' ||
-          element.name === 'Pie chart' ||
-          element.name === 'Line chart') && <ChartProperties element={element} />}
+      {element.type === 'group' && isChartGroupName(element.name) && (
+        <ChartProperties element={element} />
+      )}
       {element.type === 'group' && element.name === 'Table' && (
         <TableProperties element={element} />
       )}

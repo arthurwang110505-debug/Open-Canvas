@@ -37,14 +37,23 @@ function renderEditor(document?: DesignDocument) {
 }
 
 describe('shape geometry (Sprint 4)', () => {
-  it('ships 22 shapes with unique kinds', () => {
-    expect(SHAPE_ITEMS).toHaveLength(22);
+  it('ships 30 shapes with unique kinds', () => {
+    expect(SHAPE_ITEMS).toHaveLength(30);
     const kinds = SHAPE_ITEMS.map((item) => item.kind);
-    expect(new Set(kinds).size).toBe(22);
+    expect(new Set(kinds).size).toBe(30);
     expect(kinds).toContain('pentagon');
     expect(kinds).toContain('heart');
     expect(kinds).toContain('arrow-right');
     expect(kinds).toContain('ribbon');
+    // Sprint 8 silhouettes.
+    expect(kinds).toContain('cross');
+    expect(kinds).toContain('chevron');
+    expect(kinds).toContain('bolt');
+    expect(kinds).toContain('shield');
+    expect(kinds).toContain('flag');
+    expect(kinds).toContain('parallelogram');
+    expect(kinds).toContain('trapezoid');
+    expect(kinds).toContain('burst');
   });
 
   it('generates the right point counts for polygons and arrows', () => {
@@ -80,9 +89,13 @@ describe('shape geometry (Sprint 4)', () => {
 });
 
 describe('chart and grid builders (Sprint 4)', () => {
-  it('ships 3 charts and 4 grids', () => {
-    expect(CHART_ITEMS).toHaveLength(3);
-    expect(GRID_ITEMS).toHaveLength(4);
+  it('ships 5 charts and 7 grids', () => {
+    expect(CHART_ITEMS).toHaveLength(5);
+    expect(GRID_ITEMS).toHaveLength(7);
+    expect(CHART_ITEMS.map((item) => item.kind)).toEqual(expect.arrayContaining(['donut', 'area']));
+    expect(GRID_ITEMS.map((item) => item.kind)).toEqual(
+      expect.arrayContaining(['grid-2x3', 'grid-stack-2', 'grid-feature-3']),
+    );
   });
 
   it('builds a bar chart group with bars, values and labels', () => {
@@ -118,9 +131,47 @@ describe('chart and grid builders (Sprint 4)', () => {
     expect(buildGridGroup('grid-3x3', { width: 1080, height: 1080 }).children).toHaveLength(9);
     expect(buildGridGroup('grid-strip-3', { width: 1080, height: 1080 }).children).toHaveLength(3);
     expect(buildGridGroup('grid-duo', { width: 1080, height: 1080 }).children).toHaveLength(2);
+    expect(buildGridGroup('grid-2x3', { width: 1080, height: 1080 }).children).toHaveLength(6);
+    expect(buildGridGroup('grid-stack-2', { width: 1080, height: 1080 }).children).toHaveLength(2);
+    expect(buildGridGroup('grid-feature-3', { width: 1080, height: 1080 }).children).toHaveLength(
+      3,
+    );
     for (const child of buildGridGroup('grid-2x2', { width: 1080, height: 1080 }).children) {
       expect(child.type).toBe('frame');
     }
+  });
+
+  it('inserts a donut chart from the panel and edits its data in Properties', async () => {
+    const { user } = renderEditor();
+    await activateSidebarTab(user, 'Elements');
+    await user.click(screen.getByRole('button', { name: 'Donut chart' }));
+
+    let properties = openPropertiesPanel();
+    expect(within(properties).getByText('Chart data')).toBeInTheDocument();
+
+    const labelInput = within(properties).getByLabelText('Label for item 1');
+    await user.clear(labelInput);
+    await user.type(labelInput, 'Referral');
+    await user.click(within(properties).getByRole('button', { name: 'Apply chart data' }));
+
+    properties = openPropertiesPanel();
+    expect(within(properties).getByLabelText('Label for item 1')).toHaveValue('Referral');
+    // Applying data is one undo step, like every other chart edit.
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    properties = openPropertiesPanel();
+    expect(within(properties).getByLabelText('Label for item 1')).toHaveValue('Direct');
+  });
+
+  it('inserts an area chart and a feature grid from the panel', async () => {
+    const { user } = renderEditor();
+    await activateSidebarTab(user, 'Elements');
+    await user.click(screen.getByRole('button', { name: 'Area chart' }));
+    await user.click(screen.getByRole('button', { name: 'Feature + 2' }));
+
+    await activateSidebarTab(user, 'Layers');
+    const layers = screen.getByRole('tabpanel', { name: 'Layers' });
+    expect(within(layers).getByText('Area chart')).toBeInTheDocument();
+    expect(within(layers).getAllByText('Photo grid').length).toBeGreaterThan(0);
   });
 
   it('produces schema-valid documents when charts and grids are inserted', () => {

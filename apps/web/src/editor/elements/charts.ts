@@ -18,7 +18,7 @@ import {
  * other element, and ungrouping reveals the individual bars/slices/points.
  */
 
-export type ChartKind = 'bar' | 'pie' | 'line';
+export type ChartKind = 'bar' | 'pie' | 'line' | 'donut' | 'area';
 
 export interface ChartItem {
   kind: ChartKind;
@@ -46,6 +46,18 @@ export const CHART_ITEMS: readonly ChartItem[] = [
     keywords: 'line graph trend data statistics',
     description: 'A trend line with dots and labels — drag the dots to reshape it.',
   },
+  {
+    kind: 'donut',
+    label: 'Donut chart',
+    keywords: 'donut doughnut ring circle share percent data',
+    description: 'A ring with a legend and a total in the middle.',
+  },
+  {
+    kind: 'area',
+    label: 'Area chart',
+    keywords: 'area filled trend mountain graph data',
+    description: 'A filled trend area with value labels along the top.',
+  },
 ];
 
 export function matchChart(item: ChartItem, query: string): boolean {
@@ -53,6 +65,15 @@ export function matchChart(item: ChartItem, query: string): boolean {
   if (q.length === 0) return true;
   return item.label.toLowerCase().includes(q) || item.keywords.includes(q) || item.kind.includes(q);
 }
+
+/** Group names double as the chart's identity when its data is edited later. */
+export const CHART_GROUP_NAMES: Record<ChartKind, string> = {
+  bar: 'Bar chart',
+  pie: 'Pie chart',
+  line: 'Line chart',
+  donut: 'Donut chart',
+  area: 'Area chart',
+};
 
 export const CHART_COLORS = ['#6d45e8', '#0ea5a4', '#f59e0b', '#ec4899', '#3b82f6'] as const;
 
@@ -74,6 +95,20 @@ export const DEFAULT_PIE_DATA: readonly ChartDatum[] = [
   { label: 'Marketing', value: 30, color: '#0ea5a4' },
   { label: 'Sales', value: 20, color: '#f59e0b' },
   { label: 'Support', value: 10, color: '#ec4899' },
+];
+
+export const DEFAULT_DONUT_DATA: readonly ChartDatum[] = [
+  { label: 'Direct', value: 45, color: '#6d45e8' },
+  { label: 'Search', value: 25, color: '#0ea5a4' },
+  { label: 'Social', value: 20, color: '#f59e0b' },
+  { label: 'Email', value: 10, color: '#ec4899' },
+];
+
+export const DEFAULT_AREA_DATA: readonly ChartDatum[] = [
+  { label: 'Q1', value: 30, color: '#0ea5a4' },
+  { label: 'Q2', value: 48, color: '#0ea5a4' },
+  { label: 'Q3', value: 42, color: '#0ea5a4' },
+  { label: 'Q4', value: 72, color: '#0ea5a4' },
 ];
 
 export const DEFAULT_LINE_DATA: readonly ChartDatum[] = [
@@ -353,6 +388,223 @@ export function buildLineChartElements(
   return elements;
 }
 
+function ringSlicePoints(
+  cx: number,
+  cy: number,
+  outerR: number,
+  innerR: number,
+  startAngle: number,
+  endAngle: number,
+): PathPoint[] {
+  const steps = Math.max(4, Math.round(((endAngle - startAngle) / 360) * 28));
+  const points: PathPoint[] = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const angle = ((startAngle + ((endAngle - startAngle) * i) / steps) * Math.PI) / 180;
+    points.push({ x: cx + outerR * Math.cos(angle), y: cy + outerR * Math.sin(angle) });
+  }
+  for (let i = steps; i >= 0; i -= 1) {
+    const angle = ((startAngle + ((endAngle - startAngle) * i) / steps) * Math.PI) / 180;
+    points.push({ x: cx + innerR * Math.cos(angle), y: cy + innerR * Math.sin(angle) });
+  }
+  return points;
+}
+
+/**
+ * Donut chart: a ring of slices, a legend, and the total in the hole. The legend rows read
+ * exactly like the pie legend so the data editor can recover them the same way.
+ */
+export function buildDonutChartElements(
+  data: readonly ChartDatum[],
+  origin: { x: number; y: number },
+  width: number,
+  height: number,
+): DesignElement[] {
+  const { x, y } = origin;
+  const total = data.reduce((sum, d) => sum + d.value, 0) || 1;
+  const size = Math.min(height * 0.86, width * 0.52);
+  const cx = x + size / 2 + width * 0.04;
+  const cy = y + height / 2;
+  const outerR = size / 2;
+  const innerR = outerR * 0.58;
+  const elements: DesignElement[] = [];
+  let angle = -90;
+
+  data.forEach((datum) => {
+    const sweep = (datum.value / total) * 360;
+    elements.push(
+      createPathElement(ringSlicePoints(cx, cy, outerR, innerR, angle, angle + sweep), {
+        fill: { type: 'solid', color: datum.color },
+        stroke: { color: '#ffffff', width: Math.max(1, Math.round(outerR * 0.03)) },
+        closed: true,
+      }),
+    );
+    angle += sweep;
+  });
+
+  // Total in the hole — a plain text element users can retype.
+  const totalFont = Math.max(14, Math.round(innerR * 0.52));
+  elements.push(
+    createTextElement({
+      x: Math.round(cx - innerR),
+      y: Math.round(cy - totalFont * 0.75),
+      width: Math.round(innerR * 2),
+      height: Math.round(totalFont * 1.5),
+      text: String(Math.round(total)),
+      fontSize: totalFont,
+      fontFamily: 'Inter',
+      fontWeight: 700,
+      textAlign: 'center',
+      color: '#111827',
+    }),
+  );
+
+  const legendX = cx + outerR + width * 0.08;
+  const legendW = x + width - legendX - width * 0.04;
+  const rowH = height / (data.length + 0.5);
+  const fontSize = Math.max(11, Math.round(height * 0.045));
+  const swatch = Math.max(10, Math.round(rowH * 0.42));
+  data.forEach((datum, index) => {
+    const rowY = y + height * 0.14 + index * rowH;
+    const pct = Math.round((datum.value / total) * 100);
+    elements.push(
+      createRectElement({
+        x: Math.round(legendX),
+        y: Math.round(rowY + (rowH - swatch) / 2),
+        width: swatch,
+        height: swatch,
+        fill: { type: 'solid', color: datum.color },
+        cornerRadius: Math.max(2, Math.round(swatch * 0.25)),
+      }),
+    );
+    elements.push(
+      labelElement(
+        `${datum.label} · ${pct}%`,
+        legendX + swatch + fontSize * 0.6,
+        rowY,
+        Math.max(40, legendW - swatch - fontSize),
+        rowH,
+        fontSize,
+        'left',
+      ),
+    );
+  });
+
+  return elements;
+}
+
+/**
+ * Area chart: the line chart silhouette with the space under the trend filled. Dots and labels
+ * match the line chart exactly, so editing data works through the same parser.
+ */
+export function buildAreaChartElements(
+  data: readonly ChartDatum[],
+  origin: { x: number; y: number },
+  width: number,
+  height: number,
+): DesignElement[] {
+  const { x, y } = origin;
+  const padLeft = width * 0.08;
+  const padRight = width * 0.08;
+  const padTop = height * 0.2;
+  const padBottom = height * 0.2;
+  const chartW = width - padLeft - padRight;
+  const chartH = height - padTop - padBottom;
+  const max = Math.max(...data.map((d) => d.value), 1);
+  const baselineY = y + padTop + chartH;
+  const fontSize = Math.max(11, Math.round(height * 0.045));
+  const color = data[0]?.color ?? '#0ea5a4';
+  const elements: DesignElement[] = [];
+
+  const points = data.map((datum, index) => {
+    const px =
+      data.length === 1
+        ? x + padLeft + chartW / 2
+        : x + padLeft + (index / (data.length - 1)) * chartW;
+    const py = baselineY - (datum.value / max) * chartH;
+    return { px, py, datum };
+  });
+
+  // Filled area under the trend.
+  elements.push(
+    createPathElement(
+      [
+        { x: points[0]!.px, y: baselineY },
+        ...points.map(({ px, py }) => ({ x: px, y: py })),
+        { x: points[points.length - 1]!.px, y: baselineY },
+      ],
+      {
+        fill: { type: 'solid', color },
+        stroke: { color, width: 0 },
+        closed: true,
+        opacity: 0.28,
+      },
+    ),
+  );
+
+  // Baseline axis.
+  elements.push(
+    createPathElement(
+      [
+        { x, y: baselineY },
+        { x: x + width, y: baselineY },
+      ],
+      {
+        stroke: { color: '#d1d5db', width: Math.max(1, Math.round(height * 0.006)) },
+        fill: { type: 'none' },
+        closed: false,
+      },
+    ),
+  );
+
+  // Trend line on top of the fill.
+  elements.push(
+    createPathElement(
+      points.map(({ px, py }) => ({ x: px, y: py })),
+      {
+        stroke: { color, width: Math.max(2, Math.round(height * 0.012)) },
+        fill: { type: 'none' },
+        closed: false,
+      },
+    ),
+  );
+
+  const dotR = Math.max(5, Math.round(height * 0.022));
+  points.forEach(({ px, py, datum }) => {
+    elements.push(
+      createEllipseElement({
+        x: Math.round(px - dotR),
+        y: Math.round(py - dotR),
+        width: dotR * 2,
+        height: dotR * 2,
+        fill: { type: 'solid', color: '#ffffff' },
+        stroke: { color, width: Math.max(2, Math.round(dotR * 0.45)) },
+      }),
+    );
+    elements.push(
+      labelElement(
+        String(datum.value),
+        px - fontSize * 1.2,
+        py - fontSize * 2.1,
+        fontSize * 2.4,
+        fontSize * 1.3,
+        fontSize,
+      ),
+    );
+    elements.push(
+      labelElement(
+        datum.label,
+        px - fontSize * 1.2,
+        baselineY + fontSize * 0.6,
+        fontSize * 2.4,
+        fontSize * 1.3,
+        fontSize,
+      ),
+    );
+  });
+
+  return elements;
+}
+
 /**
  * Builds a chart group centred on `at` (or the page centre when omitted).
  * Children are created in page coordinates; `createGroupElement` re-bases them.
@@ -379,8 +631,11 @@ export function buildChartGroup(
       ? buildBarChartElements(DEFAULT_BAR_DATA, origin, width, height)
       : kind === 'pie'
         ? buildPieChartElements(DEFAULT_PIE_DATA, origin, width, height)
-        : buildLineChartElements(DEFAULT_LINE_DATA, origin, width, height);
+        : kind === 'donut'
+          ? buildDonutChartElements(DEFAULT_DONUT_DATA, origin, width, height)
+          : kind === 'area'
+            ? buildAreaChartElements(DEFAULT_AREA_DATA, origin, width, height)
+            : buildLineChartElements(DEFAULT_LINE_DATA, origin, width, height);
 
-  const name = kind === 'bar' ? 'Bar chart' : kind === 'pie' ? 'Pie chart' : 'Line chart';
-  return createGroupElement(children, { name });
+  return createGroupElement(children, { name: CHART_GROUP_NAMES[kind] });
 }

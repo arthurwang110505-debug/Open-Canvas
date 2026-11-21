@@ -6,7 +6,22 @@ import { createFrameElement, createGroupElement, type GroupElement } from '@open
  * just that cell, and the whole grid moves/resizes as one group.
  */
 
-export type GridKind = 'grid-2x2' | 'grid-3x3' | 'grid-strip-3' | 'grid-duo';
+export type GridKind =
+  | 'grid-2x2'
+  | 'grid-3x3'
+  | 'grid-strip-3'
+  | 'grid-duo'
+  | 'grid-2x3'
+  | 'grid-stack-2'
+  | 'grid-feature-3';
+
+/** A cell of a non-uniform grid, in unit space (0–1 of the grid box). */
+export interface GridCell {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export interface GridItem {
   kind: GridKind;
@@ -15,6 +30,8 @@ export interface GridItem {
   description: string;
   cols: number;
   rows: number;
+  /** Explicit cells for layouts the cols/rows pair cannot describe (e.g. a feature cell). */
+  cells?: readonly GridCell[];
 }
 
 export const GRID_ITEMS: readonly GridItem[] = [
@@ -50,6 +67,35 @@ export const GRID_ITEMS: readonly GridItem[] = [
     cols: 2,
     rows: 1,
   },
+  {
+    kind: 'grid-2x3',
+    label: '2 × 3 grid',
+    keywords: 'grid 2x3 six photos collage landscape',
+    description: 'Six photos in a wide collage.',
+    cols: 3,
+    rows: 2,
+  },
+  {
+    kind: 'grid-stack-2',
+    label: '2-photo stack',
+    keywords: 'stack two photos above below vertical',
+    description: 'Two photos stacked vertically.',
+    cols: 1,
+    rows: 2,
+  },
+  {
+    kind: 'grid-feature-3',
+    label: 'Feature + 2',
+    keywords: 'feature hero three photos asymmetric collage',
+    description: 'One large photo with two smaller ones beside it.',
+    cols: 2,
+    rows: 2,
+    cells: [
+      { x: 0, y: 0, width: 0.62, height: 1 },
+      { x: 0.62, y: 0, width: 0.38, height: 0.5 },
+      { x: 0.62, y: 0.5, width: 0.38, height: 0.5 },
+    ],
+  },
 ];
 
 export function matchGrid(item: GridItem, query: string): boolean {
@@ -67,9 +113,22 @@ export function buildGridGroup(
   const item = GRID_ITEMS.find((entry) => entry.kind === kind) ?? GRID_ITEMS[0]!;
   const { cols, rows } = item;
   const base = Math.min(pageSize.width, pageSize.height);
-  // Single-row strips use the full width; square grids use a square box.
-  const width = rows === 1 ? Math.round(pageSize.width * 0.8) : Math.round(base * 0.72);
-  const height = rows === 1 ? Math.round(width / (cols * 0.9)) : Math.round(base * 0.72);
+  // Single-row strips use the full width; other grids take the cell grid's own aspect and are
+  // clamped so a tall stack on a square page still fits inside the canvas.
+  let width: number;
+  let height: number;
+  if (rows === 1) {
+    width = Math.round(pageSize.width * 0.8);
+    height = Math.round(width / (cols * 0.9));
+  } else {
+    width = base * 0.72;
+    height = (width * rows) / cols;
+    const maxW = pageSize.width * 0.86;
+    const maxH = pageSize.height * 0.86;
+    const scale = Math.min(1, maxW / width, maxH / height);
+    width = Math.round(width * scale);
+    height = Math.round(height * scale);
+  }
   const gap = Math.max(6, Math.round(base * 0.015));
   const cellW = Math.round((width - gap * (cols - 1)) / cols);
   const cellH = Math.round((height - gap * (rows - 1)) / rows);
@@ -84,19 +143,44 @@ export function buildGridGroup(
       };
 
   const children = [];
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
+  if (item.cells) {
+    // Explicit layout: unit cells scaled into the grid box, insets keeping the gap even.
+    for (const cell of item.cells) {
+      const cx = origin.x + cell.x * width + (cell.x > 0 ? gap / 2 : 0);
+      const cy = origin.y + cell.y * height + (cell.y > 0 ? gap / 2 : 0);
+      const cw =
+        cell.width * width - (cell.x > 0 ? gap / 2 : 0) - (cell.x + cell.width < 1 ? gap / 2 : 0);
+      const ch =
+        cell.height * height -
+        (cell.y > 0 ? gap / 2 : 0) -
+        (cell.y + cell.height < 1 ? gap / 2 : 0);
       children.push(
         createFrameElement({
-          x: origin.x + col * (cellW + gap),
-          y: origin.y + row * (cellH + gap),
-          width: cellW,
-          height: cellH,
+          x: Math.round(cx),
+          y: Math.round(cy),
+          width: Math.max(1, Math.round(cw)),
+          height: Math.max(1, Math.round(ch)),
           shape: 'rect',
-          cornerRadius: Math.max(4, Math.round(cellW * 0.04)),
+          cornerRadius: Math.max(4, Math.round(Math.min(cw, ch) * 0.04)),
           fill: { type: 'solid', color: '#e5e7eb' },
         }),
       );
+    }
+  } else {
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        children.push(
+          createFrameElement({
+            x: origin.x + col * (cellW + gap),
+            y: origin.y + row * (cellH + gap),
+            width: cellW,
+            height: cellH,
+            shape: 'rect',
+            cornerRadius: Math.max(4, Math.round(cellW * 0.04)),
+            fill: { type: 'solid', color: '#e5e7eb' },
+          }),
+        );
+      }
     }
   }
 

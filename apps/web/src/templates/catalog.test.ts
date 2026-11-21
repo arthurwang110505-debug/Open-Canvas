@@ -12,12 +12,12 @@ import { SIGNATURE_TEMPLATES } from './signature';
 const PRESETS = new Set(CANVAS_PRESETS.map((preset) => preset.id));
 
 describe('the template catalogue', () => {
-  it('ships 156 designs from three sources and no duplicate ids', () => {
-    expect(TEMPLATES).toHaveLength(156);
-    expect(SIGNATURE_TEMPLATES.length + INSTANCES.length + GENERATED_INSTANCES.length).toBe(156);
-    expect(GENERATED_INSTANCES).toHaveLength(96);
+  it('ships 220 designs from three sources and no duplicate ids', () => {
+    expect(TEMPLATES).toHaveLength(220);
+    expect(SIGNATURE_TEMPLATES.length + INSTANCES.length + GENERATED_INSTANCES.length).toBe(220);
+    expect(GENERATED_INSTANCES).toHaveLength(160);
     const ids = TEMPLATES.map((template) => template.id);
-    expect(new Set(ids).size).toBe(156);
+    expect(new Set(ids).size).toBe(220);
     for (const id of ids) expect(id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
   });
 
