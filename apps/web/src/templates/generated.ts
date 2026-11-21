@@ -403,6 +403,282 @@ const COLLECTIONS: readonly Collection[] = [
       },
     ],
   },
+  {
+    blueprint: 'agenda',
+    presetId: 'presentation-16-9',
+    category: 'presentation',
+    tags: ['agenda', 'schedule', 'meeting'],
+    palettes: [
+      {
+        slug: 'chalk',
+        label: 'Chalk',
+        palette: { bg: '#fafaf9', ink: '#1c1917', accent: '#c2410c', soft: '#f5f5f4' },
+      },
+      {
+        slug: 'harbor',
+        label: 'Harbor',
+        palette: { bg: '#eff6ff', ink: '#172554', accent: '#1d4ed8', soft: '#dbeafe' },
+      },
+      {
+        slug: 'fern',
+        label: 'Fern',
+        palette: { bg: '#f0fdf4', ink: '#14532d', accent: '#15803d', soft: '#dcfce7' },
+      },
+      {
+        slug: 'graphite',
+        label: 'Graphite',
+        palette: {
+          bg: '#0f172a',
+          ink: '#e2e8f0',
+          accent: '#38bdf8',
+          soft: '#1e293b',
+          onAccent: '#0f172a',
+        },
+      },
+    ],
+    types: [
+      { slug: 'grotesk', type: { display: 'Space Grotesk', body: 'Inter' } },
+      { slug: 'figtree', type: { display: 'Bricolage Grotesque', body: 'Figtree' } },
+    ],
+    contents: [
+      {
+        slug: 'kickoff-agenda',
+        label: 'Kickoff Agenda',
+        description: 'Numbered running order for a project kickoff',
+        content: {
+          eyebrow: 'Project kickoff',
+          title: 'How today runs',
+          items: [
+            'Why this project exists, in one page',
+            'What ships first and what waits',
+            'Who owns which decision',
+            'Risks we already know about',
+          ],
+          footer: '09:30 – 11:00 · Meeting room 2',
+        },
+      },
+      {
+        slug: 'sprint-review-agenda',
+        label: 'Sprint Review',
+        description: 'Review agenda with four timed sections',
+        content: {
+          eyebrow: 'Sprint review',
+          title: 'What we will cover',
+          items: [
+            'Demo: the three things that shipped',
+            'Numbers: usage, errors, and load',
+            'What slipped, and the honest reason',
+            'Next sprint: one goal, not five',
+          ],
+          footer: '45 minutes · Questions welcome throughout',
+        },
+      },
+    ],
+  },
+  {
+    blueprint: 'profile',
+    presetId: 'business-card',
+    category: 'business',
+    tags: ['business card', 'contact', 'profile'],
+    palettes: [
+      {
+        slug: 'paper',
+        label: 'Paper',
+        palette: {
+          bg: '#fafaf9',
+          ink: '#18181b',
+          accent: '#18181b',
+          soft: '#e4e4e7',
+          onAccent: '#fafaf9',
+        },
+      },
+      {
+        slug: 'ink',
+        label: 'Ink',
+        palette: {
+          bg: '#0f172a',
+          ink: '#f8fafc',
+          accent: '#38bdf8',
+          soft: '#1e293b',
+          onAccent: '#0f172a',
+        },
+      },
+      {
+        slug: 'clay',
+        label: 'Clay',
+        palette: { bg: '#fef3c7', ink: '#44403c', accent: '#b45309', soft: '#fde68a' },
+      },
+      {
+        slug: 'mint',
+        label: 'Mint',
+        palette: { bg: '#ecfdf5', ink: '#064e3b', accent: '#047857', soft: '#d1fae5' },
+      },
+    ],
+    types: [
+      { slug: 'fraunces', type: { display: 'Fraunces', body: 'Inter' } },
+      { slug: 'karla', type: { display: 'Archivo', body: 'Karla' } },
+    ],
+    contents: [
+      {
+        slug: 'studio-card',
+        label: 'Studio Card',
+        description: 'Business card for an independent studio',
+        content: {
+          monogram: 'SL',
+          title: 'Sam Lin',
+          subtitle: 'Studio lead',
+          items: ['sam@slstudio.co', '+886 900 123 456', 'slstudio.co'],
+          cta: 'Say hello',
+        },
+      },
+      {
+        slug: 'freelance-card',
+        label: 'Freelance Card',
+        description: 'Contact card for a freelance specialist',
+        content: {
+          monogram: 'JR',
+          title: 'Jo Rivera',
+          subtitle: 'Brand consultant',
+          items: ['jo@riveraworks.com', '+1 415 555 0147', 'riveraworks.com'],
+          cta: 'Book a call',
+        },
+      },
+    ],
+  },
+  {
+    blueprint: 'banner',
+    presetId: 'youtube-thumbnail',
+    category: 'video',
+    tags: ['thumbnail', 'youtube', 'video'],
+    palettes: [
+      {
+        slug: 'midnight',
+        label: 'Midnight',
+        palette: {
+          bg: '#0b1220',
+          ink: '#f8fafc',
+          accent: '#fb7185',
+          soft: '#1e293b',
+          onAccent: '#0b1220',
+        },
+      },
+      {
+        slug: 'citrus',
+        label: 'Citrus',
+        palette: { bg: '#fff7ed', ink: '#7c2d12', accent: '#ea580c', soft: '#fed7aa' },
+      },
+      {
+        slug: 'electric',
+        label: 'Electric',
+        palette: {
+          bg: '#1e1b4b',
+          ink: '#ede9fe',
+          accent: '#a78bfa',
+          soft: '#312e81',
+          onAccent: '#1e1b4b',
+        },
+      },
+      {
+        slug: 'lagoon',
+        label: 'Lagoon',
+        palette: { bg: '#ecfeff', ink: '#164e63', accent: '#0891b2', soft: '#cffafe' },
+      },
+    ],
+    types: [
+      { slug: 'sora', type: { display: 'Sora', body: 'Inter' } },
+      { slug: 'anton', type: { display: 'Anton', body: 'Work Sans' } },
+    ],
+    contents: [
+      {
+        slug: 'tutorial-thumb',
+        label: 'Tutorial',
+        description: 'Thumbnail for a step-by-step build video',
+        content: {
+          eyebrow: 'New tutorial',
+          title: 'Build it\nin one\nsitting',
+          subtitle: 'Every step, no skipped files, nothing hidden off-screen.',
+          cta: 'Watch now',
+          footer: '22:10',
+        },
+      },
+      {
+        slug: 'interview-thumb',
+        label: 'Interview',
+        description: 'Thumbnail for a long-form interview episode',
+        content: {
+          eyebrow: 'Episode 24',
+          title: 'The tools\nwe keep\ncoming back to',
+          subtitle: 'An hour on craft, constraints, and shipping small.',
+          cta: 'Listen in',
+          footer: '58:04',
+        },
+      },
+    ],
+  },
+  {
+    blueprint: 'big-type',
+    presetId: 'poster-a4',
+    category: 'print',
+    tags: ['poster', 'typography', 'event'],
+    palettes: [
+      {
+        slug: 'bone',
+        label: 'Bone',
+        palette: { bg: '#fafafa', ink: '#09090b', accent: '#db2777', soft: '#f4f4f5' },
+      },
+      {
+        slug: 'obsidian',
+        label: 'Obsidian',
+        palette: {
+          bg: '#101010',
+          ink: '#fafafa',
+          accent: '#f97316',
+          soft: '#1f1f1f',
+          onAccent: '#101010',
+        },
+      },
+      {
+        slug: 'cobalt',
+        label: 'Cobalt',
+        palette: { bg: '#eef2ff', ink: '#1e1b4b', accent: '#4338ca', soft: '#e0e7ff' },
+      },
+      {
+        slug: 'olive',
+        label: 'Olive',
+        palette: { bg: '#f7f7ed', ink: '#1a2e05', accent: '#4d7c0f', soft: '#e7edd3' },
+      },
+    ],
+    types: [
+      { slug: 'oswald', type: { display: 'Oswald', body: 'Inter' } },
+      { slug: 'bebas', type: { display: 'Bebas Neue', body: 'Montserrat' } },
+    ],
+    contents: [
+      {
+        slug: 'open-studio-poster',
+        label: 'Open Studio',
+        description: 'Oversized headline poster for an open studio night',
+        content: {
+          eyebrow: 'One night only',
+          title: 'OPEN\nSTUDIO\n26',
+          subtitle: 'Prints, proofs, and work still drying on the table.',
+          footer: 'Warehouse 4 · Mar 14',
+          meta: 'FREE ENTRY',
+        },
+      },
+      {
+        slug: 'record-fair-poster',
+        label: 'Record Fair',
+        description: 'Bold type poster for a weekend record fair',
+        content: {
+          eyebrow: 'Twelve sellers · all day',
+          title: 'RECORD\nFAIR\nNO. 9',
+          subtitle: 'Crates from nine cities, coffee from one very tired van.',
+          footer: 'Old Market Hall · Sat 10:00',
+          meta: 'ENTRY €4',
+        },
+      },
+    ],
+  },
 ];
 
 /** Expands every collection into its cross-product of instances. */

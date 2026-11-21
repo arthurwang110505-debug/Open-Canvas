@@ -38,14 +38,22 @@ import { buildGridGroup, type GridKind } from './elements/grids';
 import { buildTableGroup, regenerateTableGroup } from './elements/tables';
 import {
   arrowPoints,
+  boltPoints,
+  burstPoints,
+  chevronPoints,
   cloudPoints,
+  crossPoints,
   diamondPoints,
+  flagPoints,
   heartPoints,
   moonPoints,
+  parallelogramPoints,
   plusPoints,
   regularPolygonPoints,
   ribbonPoints,
+  shieldPoints,
   speechBubblePoints,
+  trapezoidPoints,
 } from './elements/shapeGeometry';
 
 export type { TextPreset } from './textPresets';
@@ -77,7 +85,30 @@ export type ShapeKind =
   | 'moon'
   | 'cloud'
   | 'speech-bubble'
-  | 'ribbon';
+  | 'ribbon'
+  | 'cross'
+  | 'chevron'
+  | 'bolt'
+  | 'shield'
+  | 'flag'
+  | 'parallelogram'
+  | 'trapezoid'
+  | 'burst';
+
+/** Default fills for the Sprint 8 silhouettes, kept beside the union they belong to. */
+const SHAPE_FILLS: Record<
+  'cross' | 'chevron' | 'bolt' | 'shield' | 'flag' | 'parallelogram' | 'trapezoid' | 'burst',
+  string
+> = {
+  cross: '#ef4444',
+  chevron: '#0ea5e9',
+  bolt: '#facc15',
+  shield: '#10b981',
+  flag: '#f97316',
+  parallelogram: '#8b5cf6',
+  trapezoid: '#14b8a6',
+  burst: '#e11d48',
+};
 
 export interface EditorActions {
   /** Adds a shape in the middle of the page, or centred on `at` (page coordinates). */
@@ -395,6 +426,41 @@ export function useEditorActions(): EditorActions {
             createPathElement(ribbonPoints(x, y, side), {
               fill: { type: 'solid', color: '#f97316' },
               stroke: { color: '#f97316', width: 0 },
+              closed: true,
+            }),
+          );
+        } else if (
+          kind === 'cross' ||
+          kind === 'chevron' ||
+          kind === 'bolt' ||
+          kind === 'shield' ||
+          kind === 'flag' ||
+          kind === 'parallelogram' ||
+          kind === 'trapezoid' ||
+          kind === 'burst'
+        ) {
+          const { x, y } = position;
+          const builder =
+            kind === 'cross'
+              ? crossPoints
+              : kind === 'chevron'
+                ? chevronPoints
+                : kind === 'bolt'
+                  ? boltPoints
+                  : kind === 'shield'
+                    ? shieldPoints
+                    : kind === 'flag'
+                      ? flagPoints
+                      : kind === 'parallelogram'
+                        ? parallelogramPoints
+                        : kind === 'trapezoid'
+                          ? trapezoidPoints
+                          : burstPoints;
+          const color = SHAPE_FILLS[kind];
+          addElement(
+            createPathElement(builder(x, y, side), {
+              fill: { type: 'solid', color },
+              stroke: { color, width: 0 },
               closed: true,
             }),
           );

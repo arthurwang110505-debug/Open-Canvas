@@ -47,15 +47,32 @@ const SHAPE_KINDS: ReadonlySet<string> = new Set<ShapeKind>([
   'cloud',
   'speech-bubble',
   'ribbon',
+  'cross',
+  'chevron',
+  'bolt',
+  'shield',
+  'flag',
+  'parallelogram',
+  'trapezoid',
+  'burst',
 ]);
 
-const CHART_KINDS: ReadonlySet<string> = new Set<ChartKind>(['bar', 'pie', 'line']);
+const CHART_KINDS: ReadonlySet<string> = new Set<ChartKind>([
+  'bar',
+  'pie',
+  'line',
+  'donut',
+  'area',
+]);
 
 const GRID_KINDS: ReadonlySet<string> = new Set<GridKind>([
   'grid-2x2',
   'grid-3x3',
   'grid-strip-3',
   'grid-duo',
+  'grid-2x3',
+  'grid-stack-2',
+  'grid-feature-3',
 ]);
 
 /**

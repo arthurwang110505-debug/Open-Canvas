@@ -397,3 +397,22 @@ Template/font/photo depth, broader usability studies, and production performance
 ### Still open
 
 Canva-scale cloud photo search, AI tools, and marketplace content remain out of scope for a local-first product. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.
+
+## Eighth sprint — content depth II (2026-11-20)
+
+### What shipped
+
+- **Shapes 22 → 30.** Added cross, chevron, lightning bolt, shield, flag, parallelogram, trapezoid, and a 12-point starburst. Each silhouette is pure geometry in `shapeGeometry.ts`, so the exporter, resize, grouping and style tools need no new code.
+- **Charts 3 → 5.** Added a **donut** chart (ring slices, legend, total in the hole) and an **area** chart (filled trend body under the line). Both insert as editable groups and both work with the existing data editor: the donut parser skips the centre total and reads the legend rows, while the area chart shares the line chart's dots and labels. The Properties panel now recognises charts through `CHART_GROUP_NAMES` instead of a hard-coded trio of names.
+- **Photo grids 4 → 7.** Added a 2 × 3 collage, a 2-photo vertical stack, and **Feature + 2** (one large cell with two stacked beside it). Grids gained an optional explicit `cells` layout for non-uniform arrangements, and grid boxes now take their own aspect ratio and are clamped to the page.
+- **Canvas presets 18 → 24.** Added Logo (500 × 500), Poster A3, Postcard (6 × 4 in), Resume (US Letter), Invitation (5 × 7 in), and a video-call background.
+- **Templates 156 → 220.** Four new generated collections — agenda slides, business cards, video thumbnails, and big-type posters — each crossing 2 content sets × 4 palettes × 2 type pairings, all passing the existing schema/bounds/overlap/SVG/determinism gates.
+
+### Verification
+
+- Full workspace typecheck, ESLint, Prettier, and production build pass.
+- Vitest: **783 tests in 79 files** pass (was 767/78), including a new `editor/elements/sprint8.test.ts` (silhouette bounds and scaling, donut/area construction and data round-trips, grid page-bounds, 24 unique presets, and an SVG export of every new shape and chart with no `NaN`) plus new `EditorCharts.test.tsx` cases that insert a donut, edit its data as one undo step, and insert an area chart and feature grid from the panel.
+
+### Still open
+
+Cloud photo search, AI generation, video editing, and realtime collaboration stay out of scope for a local-first, account-free product. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.

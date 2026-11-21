@@ -106,6 +106,25 @@ export const CANVAS_PRESETS: readonly CanvasPreset[] = [
     height: 1200,
   },
   { id: 'facebook-cover', label: 'Facebook cover', category: 'social', width: 820, height: 312 },
+  // --- Canva-parity sizes added in Sprint 8 ---
+  { id: 'logo', label: 'Logo', category: 'print', width: 500, height: 500 },
+  { id: 'poster-a3', label: 'Poster A3 (300 dpi)', category: 'print', width: 3508, height: 4961 },
+  { id: 'postcard', label: 'Postcard (6 × 4 in)', category: 'print', width: 1800, height: 1200 },
+  { id: 'resume', label: 'Resume (US Letter)', category: 'print', width: 2550, height: 3300 },
+  {
+    id: 'invitation',
+    label: 'Invitation (5 × 7 in)',
+    category: 'print',
+    width: 1500,
+    height: 2100,
+  },
+  {
+    id: 'video-background',
+    label: 'Video call background',
+    category: 'video',
+    width: 1920,
+    height: 1080,
+  },
 ];
 
 export const DEFAULT_PRESET: CanvasPreset = INSTAGRAM_POST_PRESET;

@@ -263,3 +263,153 @@ export function ribbonPoints(x: number, y: number, side: number): PathPoint[] {
     side,
   );
 }
+
+/** Cross / X mark: a plus rotated 45°, drawn directly so the arms stay axis-true. */
+export function crossPoints(x: number, y: number, side: number): PathPoint[] {
+  const t = 0.18; // half arm thickness in unit space
+  const c = 0.5;
+  const o = 0.5 - t; // outer offset from the centre along each diagonal
+  return toPoints(
+    [
+      [c - o, c - o - t],
+      [c, c - t * 1.414],
+      [c + o, c - o - t],
+      [c + o + t, c - o],
+      [c + t * 1.414, c],
+      [c + o + t, c + o],
+      [c + o, c + o + t],
+      [c, c + t * 1.414],
+      [c - o, c + o + t],
+      [c - o - t, c + o],
+      [c - t * 1.414, c],
+      [c - o - t, c - o],
+    ],
+    x,
+    y,
+    side,
+  );
+}
+
+/** Chevron: a thick arrow-head band pointing right. */
+export function chevronPoints(x: number, y: number, side: number): PathPoint[] {
+  return toPoints(
+    [
+      [0, 0.12],
+      [0.42, 0.12],
+      [1, 0.5],
+      [0.42, 0.88],
+      [0, 0.88],
+      [0.58, 0.5],
+    ],
+    x,
+    y,
+    side,
+  );
+}
+
+/** Lightning bolt. */
+export function boltPoints(x: number, y: number, side: number): PathPoint[] {
+  return toPoints(
+    [
+      [0.56, 0.02],
+      [0.2, 0.54],
+      [0.44, 0.54],
+      [0.34, 0.98],
+      [0.78, 0.42],
+      [0.52, 0.42],
+      [0.68, 0.02],
+    ],
+    x,
+    y,
+    side,
+  );
+}
+
+/** Shield / badge outline with a pointed base. */
+export function shieldPoints(x: number, y: number, side: number): PathPoint[] {
+  const points: PathPoint[] = [
+    { x: x + side * 0.5, y: y + side * 0.02 },
+    { x: x + side * 0.94, y: y + side * 0.18 },
+    { x: x + side * 0.94, y: y + side * 0.52 },
+  ];
+  // Rounded lower half sweeping from the right shoulder to the point and back up.
+  const steps = 14;
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const px = 0.94 - 0.44 * t;
+    const py = 0.52 + 0.46 * Math.sin((t * Math.PI) / 2);
+    points.push({ x: x + side * px, y: y + side * py });
+  }
+  for (let i = steps; i >= 0; i -= 1) {
+    const t = i / steps;
+    const px = 0.06 + 0.44 * t;
+    const py = 0.52 + 0.46 * Math.sin((t * Math.PI) / 2);
+    points.push({ x: x + side * px, y: y + side * py });
+  }
+  points.push({ x: x + side * 0.06, y: y + side * 0.18 });
+  return points;
+}
+
+/** Pennant flag on a short pole. */
+export function flagPoints(x: number, y: number, side: number): PathPoint[] {
+  return toPoints(
+    [
+      [0.1, 0.04],
+      [0.94, 0.04],
+      [0.72, 0.3],
+      [0.94, 0.56],
+      [0.1, 0.56],
+      [0.1, 0.96],
+      [0.02, 0.96],
+      [0.02, 0.04],
+    ],
+    x,
+    y,
+    side,
+  );
+}
+
+/** Parallelogram slanted to the right. */
+export function parallelogramPoints(x: number, y: number, side: number): PathPoint[] {
+  return toPoints(
+    [
+      [0.22, 0.18],
+      [1, 0.18],
+      [0.78, 0.82],
+      [0, 0.82],
+    ],
+    x,
+    y,
+    side,
+  );
+}
+
+/** Trapezoid with a narrower top edge. */
+export function trapezoidPoints(x: number, y: number, side: number): PathPoint[] {
+  return toPoints(
+    [
+      [0.22, 0.16],
+      [0.78, 0.16],
+      [1, 0.84],
+      [0, 0.84],
+    ],
+    x,
+    y,
+    side,
+  );
+}
+
+/** Starburst: a many-pointed seal used for price stickers. */
+export function burstPoints(x: number, y: number, side: number, points = 12): PathPoint[] {
+  const cx = x + side / 2;
+  const cy = y + side / 2;
+  const outer = side / 2;
+  const inner = side * 0.33;
+  const result: PathPoint[] = [];
+  for (let i = 0; i < points * 2; i += 1) {
+    const angle = ((-90 + (360 / (points * 2)) * i) * Math.PI) / 180;
+    const r = i % 2 === 0 ? outer : inner;
+    result.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+  }
+  return result;
+}
