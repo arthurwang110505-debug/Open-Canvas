@@ -1,4 +1,10 @@
-import type { EmbeddedFontFace, FontUsage, SvgRasterizer, TextMeasurer } from '@opencanvas/export';
+import type {
+  EmbeddedFontFace,
+  FontUsage,
+  SvgRasterizer,
+  TextMeasurer,
+  VideoRecorderFactory,
+} from '@opencanvas/export';
 
 /**
  * The browser steps an export needs. They are injectable because jsdom has no canvas backend
@@ -16,4 +22,9 @@ export interface ExportServices {
    * export error instead of silently rendering the wrong typeface.
    */
   resolveFontFaces: (usages: readonly FontUsage[]) => Promise<EmbeddedFontFace[]>;
+  /**
+   * Encodes rendered frames into a video file. Undefined in a browser that cannot record
+   * (no `MediaRecorder`), which is why the download dialog asks before offering the format.
+   */
+  createVideoRecorder?: VideoRecorderFactory;
 }

@@ -435,3 +435,24 @@ Cloud photo search, AI generation, video editing, and realtime collaboration sta
 ### Still open
 
 Curved/warped text, video export of animations, cloud photo search, AI generation, and realtime collaboration remain out of scope or later-phase. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.
+
+## Tenth sprint — video export of the animations (2026-10-29)
+
+### What shipped
+
+- **A Video format in the Download dialog.** The design's own entrance animations are recorded to a WebM file (MP4 where that is what the browser records), with a choice of frame rate (15/30 fps), quality (Standard caps the long edge at 1280 px, HD at 1920 px), and page scope (all pages or the current one). The dialog states the real frame size, frame rate, length, and page count _before_ anything renders, and the button reports `Rendering frame N of M` while it works.
+- **A frame evaluator, so a frame can stand alone.** Present mode animates with CSS keyframes; a video has no stylesheet, so `packages/export/src/animation.ts` evaluates the same motion numerically — the same `cubic-bezier(0.16, 1, 0.3, 1)` and the same starting poses for fade/rise/pop/pan/blur. `animation-fill-mode: both` is honoured too: an element with a delay is invisible until its turn, instead of every element appearing on frame one.
+- **`renderPageToSvg({ animationTime })`.** The posed state is baked into the markup — offset outside the rotation, scale around the element's own centre, blur as an `feGaussianBlur` filter, opacity multiplied into the element's own — and `data-animate` is suppressed, because an already-posed frame must not be animated a second time. Without the option the output is byte-identical to before, so every still export is untouched.
+- **A planned timeline.** Each page runs until its last entrance finishes plus a 1.2 s hold, never shorter than 2 s, and the whole video is capped at 20 s; a design longer than that is cut and the dialog says so. Multi-page designs become one continuous movie.
+- **Browser-local encoding.** `MediaRecorder` over a `canvas.captureStream()`, with the frames rendered first and then played back against a clock. Pushing frames as fast as they rasterize would be simpler, but the encoder timestamps by wall clock, so a slow machine would produce a slow-motion file; playback recording keeps the video the length the dialog promised. A browser without `MediaRecorder` sees the option disabled with the reason, rather than an error after clicking.
+- **Wording brought back in line.** The Animate panel used to say downloads are still images. It now names what honours the animation — Present mode, a shared link, and the Video download — and what stays still (PNG, JPG, SVG, PDF).
+
+### Verification
+
+- Full workspace typecheck, ESLint, Prettier, and production build pass.
+- Vitest: **840 tests in 83 files** pass (was 794/80). New: `packages/export/src/animation.test.ts` (13 — easing endpoints, monotonicity, fill-mode during the delay, per-entrance starting poses, group and hidden-element walking), `packages/export/src/video.test.ts` (18 — page timing, truncation, even frame dimensions, frame-to-page mapping, orchestration, progress, and encoder-failure handling), `apps/web/src/editor/EditorVideoExport.test.tsx` (8 — the dialog's stated facts, a real recording through a fake encoder, per-frame posing, page scope, quality, the no-animation note, the unsupported-browser path, and a reported failure), plus 7 frame-baking cases in `svg.test.ts`.
+- The still-export path is covered by assertion, not assumption: a document with an animation renders exactly as before when no `animationTime` is given.
+
+### Still open
+
+Curved/warped text, GIF export, cloud photo search, AI generation, and realtime collaboration remain out of scope or later-phase. Video _editing_ (timeline, clips, audio) stays a non-goal: this sprint exports the design's own motion, it does not add a second product surface. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.

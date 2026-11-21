@@ -108,8 +108,9 @@ describe('element entrance animations (Sprint 9)', () => {
     await user.selectOptions(select, 'rise');
     expect(within(properties).getByLabelText('Entrance')).toHaveValue('rise');
     expect(within(properties).getByLabelText('Duration')).toHaveValue('0.6');
+    // The panel names every surface that honours the animation, including the video download.
     expect(
-      within(properties).getByText(/Plays in Present mode and in a shared link/),
+      within(properties).getByText(/Plays in Present mode, in a shared link, and in the Video/),
     ).toBeInTheDocument();
 
     await user.selectOptions(within(properties).getByLabelText('Entrance'), 'none');

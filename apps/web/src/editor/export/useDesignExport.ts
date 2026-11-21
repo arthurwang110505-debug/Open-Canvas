@@ -2,9 +2,12 @@ import type { DesignDocument, ImageAsset, Result } from '@opencanvas/document';
 import { err, ok } from '@opencanvas/document';
 import {
   collectFontUsages,
+  DEFAULT_VIDEO_FPS,
   renderDocumentToPdf,
+  renderDocumentToVideo,
   renderPageToSvg,
   type SvgPageOptions,
+  type VideoQuality,
 } from '@opencanvas/export';
 import { blobToDataUrl, dataUrlToBlob } from '@opencanvas/storage';
 import { useCallback, useRef, useState } from 'react';
@@ -16,7 +19,11 @@ import { ensureFontsLoaded } from '../../fonts/embed';
 import { useExportServices } from './useExportServices';
 import { exportFileName, type ExportExtension } from '../../fileNames';
 
-export type ExportKind = ExportExtension;
+/**
+ * What the user picks in the download dialog. `video` is not a file extension: the recorder
+ * decides whether the browser gave us WebM or MP4, and the filename follows what it produced.
+ */
+export type ExportKind = Exclude<ExportExtension, 'webm' | 'mp4'> | 'video';
 
 /** Raster resolution multiplier: 2× keeps text and edges crisp without huge files. */
 export const RASTER_SCALE = 2;
@@ -31,6 +38,10 @@ export interface ExportRequestOptions {
   pageScope?: ExportPageScope;
   /** PNG only: leave the page background out so the file has a transparent background. */
   transparent?: boolean;
+  /** Video only: frames per second. Defaults to `DEFAULT_VIDEO_FPS`. */
+  fps?: number;
+  /** Video only: frame size cap. Defaults to `standard`. */
+  quality?: VideoQuality;
 }
 
 /** Lets callers (the download dialog) close on success and show the error inline on failure. */
@@ -41,14 +52,25 @@ interface ExportedFile {
   filename: string;
 }
 
+/** How far a multi-frame export has got, for a progress indicator. */
+export interface ExportProgress {
+  completed: number;
+  total: number;
+}
+
 export interface DesignExportApi {
   /** Which format is currently being produced, if any. */
   busy: ExportKind | null;
+  /** Frame progress while a video renders; null for single-file exports. */
+  progress: ExportProgress | null;
+  /** Whether this browser can record video at all. */
+  videoSupported: boolean;
   exportDesign: (kind: ExportKind, options?: ExportRequestOptions) => Promise<ExportOutcome>;
   exportPng: () => Promise<ExportOutcome>;
   exportJpg: () => Promise<ExportOutcome>;
   exportSvg: () => Promise<ExportOutcome>;
   exportPdf: () => Promise<ExportOutcome>;
+  exportVideo: () => Promise<ExportOutcome>;
 }
 
 /**
@@ -62,6 +84,7 @@ export function useDesignExport(): DesignExportApi {
   const services = useExportServices();
   const notifications = useNotificationStore();
   const [busy, setBusy] = useState<ExportKind | null>(null);
+  const [progress, setProgress] = useState<ExportProgress | null>(null);
   const running = useRef(false);
 
   const resolveImageHref = useCallback(
@@ -97,7 +120,8 @@ export function useDesignExport(): DesignExportApi {
         options.scale !== undefined && Number.isFinite(options.scale) && options.scale > 0
           ? options.scale
           : RASTER_SCALE;
-      const pageScope: ExportPageScope = kind === 'pdf' ? (options.pageScope ?? 'all') : 'current';
+      const pageScope: ExportPageScope =
+        kind === 'pdf' || kind === 'video' ? (options.pageScope ?? 'all') : 'current';
       // PNG/SVG export the active page; PDF exports every page unless told otherwise. Collect
       // the fonts each included page actually needs before rendering (hidden elements are not
       // rendered, so they are skipped).
@@ -119,6 +143,30 @@ export function useDesignExport(): DesignExportApi {
         ...(services.measureText ? { measureText: services.measureText } : {}),
         ...(fontFaces.length > 0 ? { fontFaces } : {}),
       };
+      if (kind === 'video') {
+        if (!services.createVideoRecorder) {
+          return err('This browser cannot record video. Try Chrome, Edge, or Firefox.');
+        }
+        // The recorder renders a page per frame, so the fixed page id is dropped here.
+        const { pageId: _pageId, ...frameOptions } = svgOptions;
+        const recorded = await renderDocumentToVideo(document, {
+          pageIds: pages.map((page) => page.id),
+          fps: options.fps ?? DEFAULT_VIDEO_FPS,
+          ...(options.quality ? { quality: options.quality } : {}),
+          rasterize: services.rasterize,
+          createRecorder: services.createVideoRecorder,
+          svgOptions: frameOptions,
+          onProgress: (completed, total) => {
+            setProgress({ completed, total });
+          },
+        });
+        if (!recorded.ok) return err(recorded.error.message);
+        return ok({
+          blob: recorded.value.blob,
+          filename: exportFileName(document.name, recorded.value.extension),
+        });
+      }
+
       const filename = exportFileName(document.name, kind);
 
       // A transparent PNG omits the page background rect; every other kind keeps it.
@@ -171,6 +219,7 @@ export function useDesignExport(): DesignExportApi {
       if (running.current) return { ok: false, error: 'Another export is already in progress.' };
       running.current = true;
       setBusy(kind);
+      setProgress(null);
       try {
         const produced = await produce(kind, options);
         if (!produced.ok) {
@@ -193,6 +242,7 @@ export function useDesignExport(): DesignExportApi {
       } finally {
         running.current = false;
         setBusy(null);
+        setProgress(null);
       }
     },
     [notifications, produce, services],
@@ -200,10 +250,13 @@ export function useDesignExport(): DesignExportApi {
 
   return {
     busy,
+    progress,
+    videoSupported: services.createVideoRecorder !== undefined,
     exportDesign: run,
     exportPng: useCallback(() => run('png'), [run]),
     exportJpg: useCallback(() => run('jpg'), [run]),
     exportSvg: useCallback(() => run('svg'), [run]),
     exportPdf: useCallback(() => run('pdf'), [run]),
+    exportVideo: useCallback(() => run('video'), [run]),
   };
 }

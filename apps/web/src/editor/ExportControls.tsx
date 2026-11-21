@@ -10,7 +10,7 @@ import { useDesignExport } from './export/useDesignExport';
  * and output dimensions are confirmed before anything is rendered.
  */
 export function ExportControls() {
-  const { busy, exportDesign } = useDesignExport();
+  const { busy, progress, videoSupported, exportDesign } = useDesignExport();
   const [open, setOpen] = useState(false);
 
   // An in-flight export owns the dialog: dismissing it would hide the progress and result.
@@ -32,7 +32,15 @@ export function ExportControls() {
         {busy ? <LoaderCircle className="animate-spin" /> : <Download aria-hidden="true" />}
         <span className="hidden sm:inline">{busy ? 'Preparing…' : 'Download'}</span>
       </Button>
-      {open ? <ExportDialog busy={busy} onExport={exportDesign} onClose={handleClose} /> : null}
+      {open ? (
+        <ExportDialog
+          busy={busy}
+          progress={progress}
+          videoSupported={videoSupported}
+          onExport={exportDesign}
+          onClose={handleClose}
+        />
+      ) : null}
     </>
   );
 }

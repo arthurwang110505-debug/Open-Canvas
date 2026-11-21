@@ -22,6 +22,7 @@ import {
 } from '@opencanvas/document';
 import { getIcon, ICON_VIEWBOX, type IconShape } from '@opencanvas/icons';
 
+import { animationStateAt, isSettledAnimationState, type ElementAnimationState } from './animation';
 import { buildFontFaceCss, type EmbeddedFontFace } from './fonts';
 import { TEXT_BASELINE_EM, wrapTextLines, type TextMeasurer } from './textLayout';
 import { describeCause, type ExportError } from './types';
@@ -47,6 +48,8 @@ interface RenderContext {
   filters: string[];
   /** Emit `data-animate` hints for elements that carry an entrance animation. */
   animations: boolean;
+  /** Seconds into playback to draw, for video frames. Undefined renders the finished page. */
+  animationTime?: number;
 }
 
 export interface SvgPageOptions {
@@ -64,6 +67,13 @@ export interface SvgPageOptions {
    * and must not carry playback hints that no viewer would honour.
    */
   animations?: boolean;
+  /**
+   * Draws the page as it looks this many seconds after it appeared, with every entrance
+   * evaluated and baked into the markup. This is how video frames are produced: the frame has
+   * to stand on its own, without a stylesheet. Set it and `animations` is ignored, because an
+   * already-posed element must not be animated a second time by CSS.
+   */
+  animationTime?: number;
   /** Required as soon as the page shows an image element. */
   resolveImageHref?: ImageHrefResolver;
   /** Enables word wrapping to the element width, matching the canvas. */
@@ -368,6 +378,7 @@ function collectImages(elements: readonly DesignElement[]): ImageSourceElement[]
  * export stays byte-identical to what earlier versions produced.
  */
 function animationAttributes(element: DesignElement, context: RenderContext): string {
+  if (context.animationTime !== undefined) return '';
   if (!context.animations || !element.animation) return '';
   const { type, duration, delay } = element.animation;
   // Timing travels as custom properties so a player only has to ship the stylesheet: no DOM
@@ -379,14 +390,74 @@ function animationAttributes(element: DesignElement, context: RenderContext): st
   );
 }
 
+/**
+ * The posed state of one element on a video frame, or undefined when nothing is being played
+ * back (every still export) or this element simply has no entrance.
+ */
+function frameState(
+  element: DesignElement,
+  context: RenderContext,
+): ElementAnimationState | undefined {
+  if (context.animationTime === undefined || !element.animation) return undefined;
+  const state = animationStateAt(element.animation, context.animationTime);
+  return isSettledAnimationState(state) ? undefined : state;
+}
+
+/**
+ * Position, rotation, and — on a video frame — the entrance offset and scale.
+ *
+ * The offset is applied outside the rotation, and the scale around the element's own centre,
+ * which is what `transform-box: fill-box; transform-origin: center` plus the individual
+ * `translate`/`scale` properties do in the stylesheet. Without a frame state the string is
+ * exactly what earlier versions emitted, so still exports stay byte-identical.
+ */
+function elementTransform(
+  element: DesignElement,
+  state: ElementAnimationState | undefined,
+): string {
+  const x = element.x + (state?.translateX ?? 0);
+  const y = element.y + (state?.translateY ?? 0);
+  let transform = `translate(${formatNumber(x)} ${formatNumber(y)})`;
+  if (element.rotation !== 0) transform += ` rotate(${formatNumber(element.rotation)})`;
+  if (state && state.scale !== 1) {
+    const cx = element.width / 2;
+    const cy = element.height / 2;
+    transform +=
+      ` translate(${formatNumber(cx)} ${formatNumber(cy)})` +
+      ` scale(${formatNumber(state.scale)})` +
+      ` translate(${formatNumber(-cx)} ${formatNumber(-cy)})`;
+  }
+  return transform;
+}
+
+/** A Gaussian blur filter, shared by every element that needs the same radius on this frame. */
+function blurFilterAttribute(context: RenderContext, deviation: number): string {
+  const key = `blur|${formatNumber(deviation)}`;
+  let id = context.filterIds.get(key);
+  if (!id) {
+    id = `element-blur-${String(context.filters.length + 1)}`;
+    context.filterIds.set(key, id);
+    // The default filter region would clip a blur this wide, so it is widened explicitly.
+    context.filters.push(
+      `    <filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">` +
+        `<feGaussianBlur stdDeviation="${formatNumber(deviation)}"/>` +
+        `</filter>`,
+    );
+  }
+  return ` filter="url(#${id})"`;
+}
+
 function renderElement(element: DesignElement, context: RenderContext): string {
-  const rotation = element.rotation !== 0 ? ` rotate(${formatNumber(element.rotation)})` : '';
-  const opacity = element.opacity < 1 ? ` opacity="${formatNumber(element.opacity)}"` : '';
+  const state = frameState(element, context);
+  const transform = elementTransform(element, state);
+  const alpha = element.opacity * (state?.opacity ?? 1);
+  const opacity = alpha < 1 ? ` opacity="${formatNumber(alpha)}"` : '';
+  const blur = state && state.blur > 0 ? blurFilterAttribute(context, state.blur) : '';
   const animate = animationAttributes(element, context);
   if (element.type === 'group') {
     const inner = element.children.map((child) => renderElement(child, context)).join('\n');
     // Group itself is a container; its children are already positioned relative to group's origin
-    return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(element.y)})${rotation}"${opacity}${animate}>\n${inner}\n  </g>`;
+    return `  <g transform="${transform}"${opacity}${blur}${animate}>\n${inner}\n  </g>`;
   }
   let shape: string;
   switch (element.type) {
@@ -412,9 +483,7 @@ function renderElement(element: DesignElement, context: RenderContext): string {
       shape = renderFrame(element, context);
       break;
   }
-  return `  <g transform="translate(${formatNumber(element.x)} ${formatNumber(
-    element.y,
-  )})${rotation}"${opacity}${animate}>
+  return `  <g transform="${transform}"${opacity}${blur}${animate}>
 ${shape}
   </g>`;
 }
@@ -486,6 +555,9 @@ export async function renderPageToSvg(
     filterIds: new Map(),
     filters: [],
     animations: options.animations === true,
+    ...(options.animationTime !== undefined && Number.isFinite(options.animationTime)
+      ? { animationTime: Math.max(0, options.animationTime) }
+      : {}),
   };
 
   // The body is rendered first: it is what discovers which gradients (and therefore which

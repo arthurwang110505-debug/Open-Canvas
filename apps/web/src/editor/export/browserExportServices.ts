@@ -1,5 +1,6 @@
 import { createSvgRasterizer, type TextMeasurer } from '@opencanvas/export';
 
+import { createBrowserVideoRecorder, isVideoExportSupported } from './browserVideoRecorder';
 import { downloadBlob } from '../../download';
 import { resolveFontFaces } from '../../fonts/embed';
 import type { ExportServices } from './ExportServices';
@@ -29,5 +30,7 @@ export function createBrowserExportServices(): ExportServices {
     ...(measureText ? { measureText } : {}),
     download: downloadBlob,
     resolveFontFaces,
+    // Offered only where it works, so the dialog never promises a file it cannot produce.
+    ...(isVideoExportSupported() ? { createVideoRecorder: createBrowserVideoRecorder } : {}),
   };
 }
