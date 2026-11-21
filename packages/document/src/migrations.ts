@@ -101,6 +101,14 @@ export const MIGRATIONS: readonly Migration[] = [
     // keeps an older build from silently dropping an outline/shadow the author chose.
     migrate: (raw) => ({ ...raw }),
   },
+  {
+    from: 11,
+    to: 12,
+    description: 'Add element entrance animations',
+    // Additive and optional: an element without `animation` behaves exactly as before. The bump
+    // stops an older build from silently dropping an entrance the author chose for a deck.
+    migrate: (raw) => ({ ...raw }),
+  },
 ];
 
 export interface MigrateOptions {

@@ -416,3 +416,22 @@ Canva-scale cloud photo search, AI tools, and marketplace content remain out of 
 ### Still open
 
 Cloud photo search, AI generation, video editing, and realtime collaboration stay out of scope for a local-first, account-free product. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.
+
+## Ninth sprint — animation and table styles (2026-11-20)
+
+### What shipped
+
+- **Element entrance animations (Canva "Animate").** Schema v12 adds an optional `animation` (`type`, `duration`, `delay`) to every element, with five entrances: Fade, Rise, Pop, Pan, Blur. The Properties panel gained an **Animate** section, and entrances play in Present mode and in a shared link. A download stays a still image, and the panel says so instead of letting someone find out after exporting.
+- **Honest playback plumbing.** `renderPageToSvg` gained an `animations` option, off by default: only a player asks for it, and only then does the markup carry `data-animate` plus `--element-animate-duration` / `--element-animate-delay` custom properties. The keyframes live in the shared theme, so a player needs no DOM walking, and `prefers-reduced-motion` disables them outright.
+- **Table styles.** Tables gained a header-row toggle, banded rows, and an accent colour. The style is not stored in the document: it is recovered from the painted cells (`parseTableStyle`), so a table stays a plain group of rects and texts that ungroups cleanly, and each style change is one undo step.
+- **Schema v12 migration.** Additive v11 → v12, a committed `schema-v12.json` fixture, and a one-step v11 migration test asserting a document gains no fields on the way up.
+
+### Verification
+
+- Full workspace typecheck, ESLint, Prettier, and production build pass.
+- Vitest: **794 tests in 80 files** pass (was 783/79), including a new `EditorAnimate.test.tsx` (animation round-trip and rejection of an unknown entrance, playback attributes present only when requested, setting and clearing an entrance from the panel, table-style round-trips, cell bounds, and a style change undone in one step) plus the extended `migrations.test.ts`.
+- The built CSS bundle was checked to contain all five `element-*` keyframes and the reduced-motion override, so the animations survive the production build rather than being tree-shaken as unused classes.
+
+### Still open
+
+Curved/warped text, video export of animations, cloud photo search, AI generation, and realtime collaboration remain out of scope or later-phase. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.

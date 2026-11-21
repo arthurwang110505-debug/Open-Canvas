@@ -46,7 +46,8 @@ export function PresentMode({ document: doc, initialPageIndex = 0, onClose }: Pr
     let cancelled = false;
     if (!page) return;
     void (async () => {
-      const res = await renderPageToSvg(doc, { pageId: page.id });
+      // Animations are a playback concern: the presenter sees entrances, a downloaded file does not.
+      const res = await renderPageToSvg(doc, { pageId: page.id, animations: true });
       if (!cancelled && res.ok) setRendered({ pageId: page.id, svg: res.value });
     })();
     return () => {

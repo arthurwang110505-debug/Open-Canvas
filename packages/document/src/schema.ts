@@ -100,6 +100,26 @@ const CanvasDimensionSchema = z
  * and `rotation` (degrees, clockwise) is applied around that top-left origin.
  * This is exactly `transform="translate(x y) rotate(rotation)"` in SVG.
  */
+/**
+ * Entrance animations (Canva "Animate").
+ *
+ * An animation is presentation metadata, not geometry: it plays when a page is shown in Present
+ * mode or through a shared link, and a still export (PNG/JPG/PDF/SVG) draws the element in its
+ * final state. Keeping it optional means a document without animation is byte-identical to one
+ * written before they existed.
+ */
+export const ElementAnimationTypeSchema = z.enum(['fade', 'rise', 'pop', 'pan', 'blur']);
+export type ElementAnimationType = z.infer<typeof ElementAnimationTypeSchema>;
+
+export const ElementAnimationSchema = z.object({
+  type: ElementAnimationTypeSchema,
+  /** Seconds the entrance takes. */
+  duration: z.number().min(0.1).max(5).default(0.6),
+  /** Seconds to wait after the page appears before this element enters. */
+  delay: z.number().min(0).max(10).default(0),
+});
+export type ElementAnimation = z.infer<typeof ElementAnimationSchema>;
+
 const ElementBaseSchema = z.object({
   id: IdSchema,
   name: z.string().max(LIMITS.maxNameLength).optional(),
@@ -111,6 +131,7 @@ const ElementBaseSchema = z.object({
   opacity: z.number().min(0).max(1).default(1),
   locked: z.boolean().default(false),
   visible: z.boolean().default(true),
+  animation: ElementAnimationSchema.optional(),
 });
 
 export const RectElementSchema = ElementBaseSchema.extend({
@@ -296,6 +317,7 @@ export interface GroupElement {
   opacity: number;
   locked: boolean;
   visible: boolean;
+  animation?: ElementAnimation;
   type: 'group';
   children: DesignElement[];
 }
