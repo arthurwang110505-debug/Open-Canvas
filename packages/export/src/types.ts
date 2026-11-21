@@ -6,7 +6,8 @@ export type ExportErrorCode =
   | 'image-failed'
   | 'raster-failed'
   | 'raster-too-large'
-  | 'pdf-failed';
+  | 'pdf-failed'
+  | 'video-failed';
 
 export interface ExportError {
   code: ExportErrorCode;

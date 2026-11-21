@@ -458,3 +458,75 @@ describe('wrapTextLines', () => {
     expect(wrapTextLines(element, (text) => text.length)).toEqual(['a', '', 'b']);
   });
 });
+
+describe('animation frames', () => {
+  function animatedDocument(animation: {
+    type: 'fade' | 'rise' | 'pop' | 'pan' | 'blur';
+    duration: number;
+    delay: number;
+  }) {
+    const document = makeDocument();
+    const rect = createRectElement({ id: 'r1', x: 40, y: 50, width: 200, height: 100 });
+    firstPage(document).elements.push({ ...rect, animation });
+    return document;
+  }
+
+  it('leaves a still export exactly as it was', async () => {
+    const document = animatedDocument({ type: 'pop', duration: 1, delay: 0 });
+    const still = await render(document);
+    expect(still).toContain('<g transform="translate(40 50)">');
+    expect(still).not.toContain('data-animate');
+    expect(still).not.toContain('opacity=');
+  });
+
+  it('poses the element at the requested moment', async () => {
+    const document = animatedDocument({ type: 'rise', duration: 1, delay: 0 });
+
+    const start = await render(document, { animationTime: 0 });
+    // `rise` starts 24 units below its resting position, fully transparent.
+    expect(start).toContain('<g transform="translate(40 74)" opacity="0">');
+
+    const end = await render(document, { animationTime: 1 });
+    // Once settled the frame is the ordinary still: no stray transform or opacity.
+    expect(end).toContain('<g transform="translate(40 50)">');
+    expect(end).not.toContain('opacity=');
+  });
+
+  it('scales a pop around the element centre', async () => {
+    const document = animatedDocument({ type: 'pop', duration: 1, delay: 0 });
+    const frame = await render(document, { animationTime: 0 });
+    expect(frame).toContain('translate(100 50) scale(0.82) translate(-100 -50)');
+  });
+
+  it('blurs through a filter the frame carries with it', async () => {
+    const document = animatedDocument({ type: 'blur', duration: 1, delay: 0 });
+    const frame = await render(document, { animationTime: 0 });
+    expect(frame).toContain('filter="url(#element-blur-1)"');
+    expect(frame).toContain('<feGaussianBlur stdDeviation="10"/>');
+  });
+
+  it('multiplies the element\u2019s own opacity instead of replacing it', async () => {
+    const document = makeDocument();
+    const rect = createRectElement({ id: 'r1', x: 0, y: 0, width: 10, height: 10 });
+    firstPage(document).elements.push({
+      ...rect,
+      opacity: 0.5,
+      animation: { type: 'fade', duration: 1, delay: 0 },
+    });
+    const frame = await render(document, { animationTime: 1 });
+    expect(frame).toContain('opacity="0.5"');
+  });
+
+  it('never emits playback hints on a posed frame', async () => {
+    const document = animatedDocument({ type: 'fade', duration: 1, delay: 0 });
+    const frame = await render(document, { animations: true, animationTime: 0.5 });
+    expect(frame).not.toContain('data-animate');
+    expect(frame).not.toContain('--element-animate-duration');
+  });
+
+  it('holds an element back until its delay has passed', async () => {
+    const document = animatedDocument({ type: 'fade', duration: 0.5, delay: 2 });
+    const frame = await render(document, { animationTime: 1 });
+    expect(frame).toContain('opacity="0"');
+  });
+});

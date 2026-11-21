@@ -1374,8 +1374,8 @@ function AnimationProperties({ element }: { element: DesignElement }) {
             />
           </div>
           <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Plays in Present mode and in a shared link. Downloads are still images, so they show the
-            element in its final position.
+            Plays in Present mode, in a shared link, and in the Video download. PNG, JPG, SVG, and
+            PDF stay still images of the final position.
           </p>
         </>
       ) : null}

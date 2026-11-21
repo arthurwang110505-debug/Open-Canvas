@@ -1,6 +1,12 @@
+import {
+  planVideoTimeline,
+  videoFrameSize,
+  VIDEO_FPS_OPTIONS,
+  type VideoQuality,
+} from '@opencanvas/export';
 import { Button, Dialog, cn } from '@opencanvas/ui';
-import { Download, FileImage, FileText, LoaderCircle, PenTool, X } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+import { Download, FileImage, FileText, Film, LoaderCircle, PenTool, X } from 'lucide-react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 
 import { exportFileName } from '../fileNames';
 import { useEditor } from './hooks';
@@ -10,6 +16,7 @@ import {
   type ExportKind,
   type ExportOutcome,
   type ExportPageScope,
+  type ExportProgress,
 } from './export/useDesignExport';
 
 interface FormatOption {
@@ -49,6 +56,13 @@ const FORMATS: readonly FormatOption[] = [
     description: 'One file with a page for each design page.',
     icon: <FileText />,
   },
+  {
+    kind: 'video',
+    name: 'Video',
+    tag: 'Animation',
+    description: 'Records the entrance animations as a movie file, in this browser.',
+    icon: <Film />,
+  },
 ];
 
 const SCALE_OPTIONS: readonly { value: number; label: string }[] = [
@@ -57,12 +71,32 @@ const SCALE_OPTIONS: readonly { value: number; label: string }[] = [
   { value: 3, label: 'Large' },
 ];
 
+const QUALITY_OPTIONS: readonly { value: VideoQuality; label: string }[] = [
+  { value: 'standard', label: 'Standard' },
+  { value: 'hd', label: 'HD' },
+];
+
+/** Seconds, to one decimal, without a trailing `.0`. */
+function formatSeconds(value: number): string {
+  return `${(Math.round(value * 10) / 10).toString()} s`;
+}
+
 export interface ExportDialogProps {
   /** Format currently being produced by the shared export hook, if any. */
   busy: ExportKind | null;
+  /** Frame progress while a video is rendering. */
+  progress?: ExportProgress | null;
+  /** False in a browser without `MediaRecorder`: the video option says so instead of failing. */
+  videoSupported?: boolean;
   onExport: (
     kind: ExportKind,
-    options?: { scale?: number; pageScope?: ExportPageScope; transparent?: boolean },
+    options?: {
+      scale?: number;
+      pageScope?: ExportPageScope;
+      transparent?: boolean;
+      fps?: number;
+      quality?: VideoQuality;
+    },
   ) => Promise<ExportOutcome>;
   onClose: () => void;
 }
@@ -72,7 +106,13 @@ export interface ExportDialogProps {
  * produced — format, pages, and pixel dimensions — before anything is rendered. Every option
  * shown here maps to a real capability of the export pipeline; nothing is decorative.
  */
-export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
+export function ExportDialog({
+  busy,
+  progress = null,
+  videoSupported = true,
+  onExport,
+  onClose,
+}: ExportDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
   const document = useEditor((state) => state.document);
@@ -81,6 +121,8 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
   const [scale, setScale] = useState<number>(RASTER_SCALE);
   const [pageScope, setPageScope] = useState<ExportPageScope>('all');
   const [transparent, setTransparent] = useState<boolean>(false);
+  const [fps, setFps] = useState<number>(30);
+  const [quality, setQuality] = useState<VideoQuality>('standard');
   const [error, setError] = useState<string | null>(null);
 
   const exporting = busy !== null;
@@ -92,9 +134,27 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
   const pageLabel = `Page ${activePageIndex + 1} of ${pageCount}`;
   const outputWidth = Math.round(document.size.width * scale);
   const outputHeight = Math.round(document.size.height * scale);
-  const filename = exportFileName(document.name, format);
+  // The recorder decides the container, so the dialog names the common case and the note
+  // under the video options explains the other one.
+  const filename = exportFileName(document.name, format === 'video' ? 'webm' : format);
 
   const isRaster = format === 'png' || format === 'jpg';
+  const isVideo = format === 'video';
+
+  // The timeline is planned here so the dialog can state the real length and frame count
+  // before anything is rendered — the same plan the recorder will follow.
+  const video = useMemo(() => {
+    const pageIds = pageScope === 'all' ? document.pages.map((page) => page.id) : [activePageId];
+    const planned = planVideoTimeline(document, { pageIds, fps });
+    const size = videoFrameSize(document.size, quality);
+    return { plan: planned.ok ? planned.value : null, size };
+  }, [activePageId, document, fps, pageScope, quality]);
+
+  const videoPageLabel =
+    pageScope === 'all'
+      ? `${pageCount.toString()} ${pageCount === 1 ? 'page' : 'pages'}`
+      : pageLabel.toLowerCase();
+
   const summary =
     format === 'png'
       ? `${outputWidth} × ${outputHeight} px · ${pageLabel.toLowerCase()} (current page only)${
@@ -104,9 +164,15 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
         ? `${outputWidth} × ${outputHeight} px · ${pageLabel.toLowerCase()} (current page only)`
         : format === 'svg'
           ? `${document.size.width} × ${document.size.height} · vector · current page only`
-          : pageScope === 'all'
-            ? `All ${pageCount} ${pageCount === 1 ? 'page' : 'pages'} · rendered as images at ${RASTER_SCALE}×`
-            : `${pageLabel} only · rendered as an image at ${RASTER_SCALE}×`;
+          : format === 'video'
+            ? video.plan
+              ? `${video.size.width.toString()} × ${video.size.height.toString()} px · ${fps.toString()} fps · ${formatSeconds(
+                  video.plan.duration,
+                )} · ${videoPageLabel}`
+              : 'This design has no pages to record.'
+            : pageScope === 'all'
+              ? `All ${pageCount} ${pageCount === 1 ? 'page' : 'pages'} · rendered as images at ${RASTER_SCALE}×`
+              : `${pageLabel} only · rendered as an image at ${RASTER_SCALE}×`;
 
   const chooseFormat = (kind: ExportKind) => {
     setFormat(kind);
@@ -117,8 +183,9 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
     setError(null);
     const outcome = await onExport(format, {
       scale: isRaster ? scale : RASTER_SCALE,
-      pageScope: format === 'pdf' ? pageScope : 'current',
+      pageScope: format === 'pdf' || isVideo ? pageScope : 'current',
       ...(format === 'png' ? { transparent } : {}),
+      ...(isVideo ? { fps, quality } : {}),
     });
     if (outcome.ok) onClose();
     else setError(outcome.error);
@@ -163,19 +230,24 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
             <div role="radiogroup" aria-label="File format" className="flex flex-col gap-2">
               {FORMATS.map((option) => {
                 const selected = format === option.kind;
+                const unavailable = option.kind === 'video' && !videoSupported;
                 return (
                   <button
                     key={option.kind}
                     type="button"
                     role="radio"
                     aria-checked={selected}
+                    aria-disabled={unavailable}
                     aria-label={`${option.name} — ${option.tag.toLowerCase()}`}
-                    onClick={() => chooseFormat(option.kind)}
+                    onClick={() => {
+                      if (!unavailable) chooseFormat(option.kind);
+                    }}
                     className={cn(
                       'flex items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:mt-0.5 [&_svg]:size-5 [&_svg]:shrink-0',
                       selected
                         ? 'border-primary bg-primary/5 [&_svg]:text-primary'
                         : 'border-border bg-panel hover:border-primary/40 [&_svg]:text-muted-foreground',
+                      unavailable && 'cursor-not-allowed opacity-60 hover:border-border',
                     )}
                   >
                     {option.icon}
@@ -187,7 +259,9 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
                         </span>
                       </span>
                       <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-                        {option.description}
+                        {unavailable
+                          ? 'This browser cannot record video. Try Chrome, Edge, or Firefox.'
+                          : option.description}
                       </span>
                     </span>
                   </button>
@@ -292,6 +366,125 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
               </div>
             ) : null}
 
+            {isVideo ? (
+              <>
+                <div>
+                  <p id="export-fps-label" className="text-xs font-medium">
+                    Frame rate
+                  </p>
+                  <div
+                    role="radiogroup"
+                    aria-labelledby="export-fps-label"
+                    className="mt-1.5 flex gap-1.5"
+                  >
+                    {VIDEO_FPS_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        role="radio"
+                        aria-checked={fps === option}
+                        aria-label={`${option.toString()} frames per second`}
+                        onClick={() => setFps(option)}
+                        className={cn(
+                          'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          fps === option
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        {option} fps
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p id="export-quality-label" className="text-xs font-medium">
+                    Quality
+                  </p>
+                  <div
+                    role="radiogroup"
+                    aria-labelledby="export-quality-label"
+                    className="mt-1.5 flex gap-1.5"
+                  >
+                    {QUALITY_OPTIONS.map((option) => {
+                      const size = videoFrameSize(document.size, option.value);
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={quality === option.value}
+                          aria-label={`${option.label} — ${size.width.toString()} by ${size.height.toString()} pixels`}
+                          onClick={() => setQuality(option.value)}
+                          className={cn(
+                            'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                            quality === option.value
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          {option.label} · {size.width}p
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <p id="export-video-pages-label" className="text-xs font-medium">
+                    Pages
+                  </p>
+                  <div
+                    role="radiogroup"
+                    aria-labelledby="export-video-pages-label"
+                    className="mt-1.5 flex gap-1.5"
+                  >
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={pageScope === 'all'}
+                      aria-label={`All pages (${pageCount.toString()})`}
+                      onClick={() => setPageScope('all')}
+                      className={cn(
+                        'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        pageScope === 'all'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      All pages ({pageCount})
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={pageScope === 'current'}
+                      aria-label="Current page only"
+                      onClick={() => setPageScope('current')}
+                      className={cn(
+                        'flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        pageScope === 'current'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      Current page only
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  {video.plan && !video.plan.animated
+                    ? 'Nothing here is animated yet, so the video holds the design still. Add an entrance under Animate in the Properties panel.'
+                    : 'Each page plays its entrance animations, then holds. Recorded in this browser, so the design never leaves your device.'}
+                  {video.plan?.truncated
+                    ? ' The design is longer than this format allows, so the recording stops partway.'
+                    : ''}{' '}
+                  Saved as WebM, or MP4 where that is what the browser records.
+                </p>
+              </>
+            ) : null}
+
             {format === 'svg' ? (
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 Fonts are embedded when possible, so the file keeps its typefaces on other machines.
@@ -328,7 +521,11 @@ export function ExportDialog({ busy, onExport, onClose }: ExportDialogProps) {
             ) : (
               <Download aria-hidden="true" />
             )}
-            {exporting ? 'Preparing…' : `Download ${format.toUpperCase()}`}
+            {exporting
+              ? progress
+                ? `Rendering frame ${progress.completed.toString()} of ${progress.total.toString()}…`
+                : 'Preparing…'
+              : `Download ${format === 'video' ? 'video' : format.toUpperCase()}`}
           </Button>
         </div>
       </div>

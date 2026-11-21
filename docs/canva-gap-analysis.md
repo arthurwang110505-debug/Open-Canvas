@@ -27,8 +27,8 @@
 | **畫布尺寸**        | 數百種（IG、TikTok、Pinterest、LinkedIn、YouTube…）       | 8 種預設                                                                     | 🟡 中缺口                   |
 | **文字效果**        | 描邊、陰影、彎曲、間距、列表                              | 僅大小寫與列表，無描邊/陰影/彎曲                                             | 🟡 中缺口                   |
 | **表格**            | 一鍵表格，可編輯儲存格                                    | 表格群組 + 儲存格編輯 + 樣式（標題列/斑馬紋/主色）                           | ✅ 已接近                   |
-| **動畫**            | 元素進場動畫（上升、淡入、彈跳…）                         | 元素進場動畫 5 種 + 簡報頁面轉場（Sprint 9）                                 | ✅ 已接近                   |
-| **匯出**            | PNG / JPG / PDF / SVG / MP4 / GIF，透明背景               | PNG（1–3×）/ SVG / 光柵 PDF                                                  | 🟡 部分缺口                 |
+| **動畫**            | 元素進場動畫（上升、淡入、彈跳…）+ 匯出成影片             | 元素進場動畫 5 種 + 簡報頁面轉場 + 影片匯出（Sprint 9/10）                   | ✅ 已接近                   |
+| **匯出**            | PNG / JPG / PDF / SVG / MP4 / GIF，透明背景               | PNG（1–3×，可透明）/ JPG / SVG / 光柵 PDF / **動畫影片 WebM**                | 🟡 部分缺口（缺 GIF）       |
 | **品牌包**          | 色票、字體、Logo、團隊共用、核准流程                      | 本機單一品牌包（色票+字體）                                                  | 🟡 個人夠用，團隊缺席       |
 | **AI**              | Magic Design / Write / Dream Lab / 去背 / Magic Eraser 等 | 0                                                                            | 🔴 最大缺口（但屬雲端戰場） |
 | **協作與雲端**      | 即時多人、留言、審核、雲端同步                            | 本機儲存、分享連結僅限同一瀏覽器                                             | 🔴 結構性缺口（定位不同）   |
@@ -127,6 +127,21 @@
 
 驗證：Vitest **794 passed / 80 files**（新增 `EditorAnimate.test.tsx` 10 項：動畫 schema 往返與非法值拒絕、匯出只在請求播放時標註、面板設定/清除進場、表格樣式往返與一步 undo、儲存格邊界；擴充 `migrations.test.ts`）；Typecheck / ESLint / Prettier / Web build 全過；產出 CSS 已確認含 5 組 keyframes 與 reduced-motion 停用規則。
 
+### Sprint 10 — 動畫影片匯出（Canva「Share > Download > MP4 Video」對應）
+
+交付（2026-10-29）：
+
+1. **下載對話框新增「Video」格式**：錄下設計自己的進場動畫，輸出 WebM（瀏覽器若只支援 MP4 則為 MP4）。可選**影格率**（15 / 30 fps）、**畫質**（Standard 最長邊 1280 / HD 最長邊 1920）、**頁面範圍**（全部頁面 / 僅目前頁）。對話框在按下下載前就寫明實際的像素尺寸、fps、秒數與頁數，錄製過程顯示「Rendering frame N of M」。
+2. **逐格動畫求值器（`packages/export/src/animation.ts`）**：播放端靠 CSS keyframes，影片沒有樣式表可用，因此新增純函式 `animationStateAt(animation, t)`，以同一條 `cubic-bezier(0.16, 1, 0.3, 1)` 與同一組起始姿勢（fade/rise/pop/pan/blur）計算任意時間點的 opacity / 位移 / 縮放 / 模糊。`animation-fill-mode: both` 的語意一併照搬——有 delay 的元素在輪到它之前就是隱形的，不會在影片第一格全部現形。
+3. **SVG 匯出器新增 `animationTime`**：把當下姿勢直接烘進 `<g>`（位移在旋轉之外、縮放繞元素中心、模糊走 `feGaussianBlur` filter、透明度與元素自身 opacity 相乘），且**不再輸出 `data-animate`**——已經擺好姿勢的畫面不能再被 CSS 動一次。未指定 `animationTime` 時輸出與過去逐字節相同，靜態下載完全不受影響。
+4. **時間軸規劃（`planVideoTimeline`）**：每頁播到最後一個進場結束再停留 1.2 秒，最短 2 秒（純靜態頁也看得清楚），整支片上限 20 秒，超過就截斷並在對話框明說。多頁設計會接成一支連續影片。
+5. **瀏覽器端編碼（`browserVideoRecorder.ts`）**：`MediaRecorder` + `canvas.captureStream()`，全程在本機，不上傳。先把每格光柵化成 PNG data URL，再依時鐘回放錄製——直接邊算邊推會讓編碼器以牆上時間打時間戳，慢機器會錄出慢動作；回放錄製則保證片長與對話框承諾一致。不支援錄影的瀏覽器直接把選項標為停用並說明原因，而不是按下去才失敗。
+6. **誠實用語更新**：屬性面板的「Animate」說明從「下載都是靜態圖」改為「在簡報模式、分享連結與 Video 下載中播放；PNG/JPG/SVG/PDF 仍是最終畫面的靜態圖」。
+
+驗證：Vitest **840 passed / 83 files**（新增 `packages/export/src/animation.test.ts` 13 項、`video.test.ts` 18 項、`EditorVideoExport.test.tsx` 8 項，並在 `svg.test.ts` 補 7 項逐格烘焙測試）；Typecheck / ESLint / Prettier / Web build 全過。
+
+> 注意定位：這是**把設計自己的動畫錄成影片**，不是做影片編輯器（時間軸、剪輯、配樂、轉場素材仍在「明確不追」之列）。
+
 7. **範本擴充到 150–200 個**：以既有 blueprint 系統程式產生 + 分類策展，而非手寫 60 個的笨方法。Canva 的百萬範本無法追，但「搜得到、品質好」的 200 個已足夠個人使用。✅ Sprint 7 完成（156 個，見下方交付紀錄）。
 8. **字體擴充**：15 → 30+ 家族（仍走 @fontsource 本機打包，離線可用）。Canva 有數百字體，但本機打包的字體每多一家就多一份體積，需取捨。✅ Sprint 7 完成（33 家族）。
 9. **照片庫可插拔**：內建照片仍少（10 張），應做成「來源可插拔」架構（本機包 + 使用者自訂 URL 來源），而非硬塞數百張進 repo。✅ Sprint 7 完成（貼連結匯入 + 本機記住清單）。
@@ -136,7 +151,7 @@
 
 - **即時多人協作、雲端同步、留言審核**：需後端與帳號系統，與 local-first 定位衝突。若要做，應為 opt-in 而非預設。
 - **AI 生成全家桶（Dream Lab 級）、去背雲端版**：需 GPU 後端與內容審核。唯一可考慮的本機 AI 是瀏覽器端去背（segmentation 模型），但體積與相容性風險高，列為探索項。
-- **影片編輯、Docs/Whiteboards/Sheets、印刷履約、App 市集**：公司級戰場，追了會稀釋「免帳號、免上傳、打開就能用」的定位。
+- **影片編輯（時間軸剪輯、素材庫、配樂）、Docs/Whiteboards/Sheets、印刷履約、App 市集**：公司級戰場，追了會稀釋「免帳號、免上傳、打開就能用」的定位。※ 例外：**把設計自己的進場動畫錄成影片檔**已於 Sprint 10 交付——那是匯出能力，不是第二條產品線。
 
 ## 5. OpenCanvas 的反向優勢（保留）
 
