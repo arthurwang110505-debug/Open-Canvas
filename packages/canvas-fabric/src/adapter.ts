@@ -406,6 +406,50 @@ export class FabricCanvasAdapter {
   }
 
   /**
+   * Hands the viewport over to a touch gesture.
+   *
+   * A pinch nearly always starts with one finger already down, and that finger may have been
+   * read as the start of a drag. Ending the transform first means the second finger landing
+   * cannot smear an object across the page; `skipTargetFind` then keeps the canvas from
+   * grabbing anything else until the fingers lift.
+   */
+  beginViewportGesture(): void {
+    if (this.disposed) return;
+    this.canvas.endCurrentTransform();
+    this.canvas.skipTargetFind = true;
+    this.canvas.selection = false;
+  }
+
+  endViewportGesture(): void {
+    if (this.disposed) return;
+    this.canvas.skipTargetFind = false;
+    this.canvas.selection = true;
+  }
+
+  /**
+   * Zoom and pan together, in one render.
+   *
+   * Applying them as two separate calls would paint twice per touch move and fire the viewport
+   * callback twice, which is visible as a stutter on exactly the hardware this is for.
+   */
+  applyViewportGesture(gesture: {
+    zoom: number;
+    focus: { x: number; y: number };
+    panX: number;
+    panY: number;
+  }): void {
+    if (this.disposed) return;
+    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, gesture.zoom));
+    this.canvas.zoomToPoint(new Point(gesture.focus.x, gesture.focus.y), clamped);
+    if (gesture.panX !== 0 || gesture.panY !== 0) {
+      this.canvas.relativePan(new Point(gesture.panX, gesture.panY));
+    }
+    this.canvas.requestRenderAll();
+    this.callbacks.onZoomChanged(clamped);
+    this.callbacks.onViewportChanged?.();
+  }
+
+  /**
    * Bounding box of the current selection in client coordinates (viewport pixels), or `null`
    * when nothing is selected. Used to anchor floating UI to the object rather than the screen.
    */

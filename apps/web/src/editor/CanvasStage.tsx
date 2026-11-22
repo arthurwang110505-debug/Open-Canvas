@@ -22,6 +22,7 @@ import { CropOverlay } from './canvas/CropOverlay';
 import { Rulers } from './canvas/Rulers';
 import { useCanvasController, useEditor, useEditorStore, useNotificationStore } from './hooks';
 import { useDraw } from './draw/DrawContext';
+import { usePinchZoom } from './usePinchZoom';
 
 /** What a dropped photo replaces: a frame it fills or an image it swaps. */
 interface DropTarget {
@@ -485,12 +486,16 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
     // Don't finish on leave — wait for up
   }, []);
 
+  usePinchZoom(containerRef, adapterRef);
+
   return (
     <div
       ref={containerRef}
       data-testid="canvas-stage"
       className={cn(
-        'relative h-full w-full overflow-hidden bg-workspace',
+        // `touch-action: none` hands every touch to the canvas: without it the browser
+        // claims two fingers for its own page zoom and the gesture never arrives.
+        'relative h-full w-full touch-none overflow-hidden bg-workspace',
         dropActive && 'ring-2 ring-ring ring-inset',
         drawEnabled && 'cursor-crosshair',
       )}

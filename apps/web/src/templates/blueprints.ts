@@ -1,5 +1,6 @@
-import type { Blueprint, BlueprintOptions } from './types';
+import type { Blueprint, BlueprintOptions, ResolvedPalette, TemplatePalette } from './types';
 import { Frame } from './kit';
+import { MIN_TEXT_CONTRAST, readableOn, relativeLuminance } from './readability';
 
 /**
  * Layouts the catalogue multiplies. Each one draws with fractions of the page (see `Frame`), so
@@ -7,17 +8,47 @@ import { Frame } from './kit';
  * live in `instances.ts` — a new design is data, not another 150-line factory.
  */
 
+/**
+ * Turns four brand colours into the roles a layout needs, each already legible on the surface
+ * it will be drawn on.
+ *
+ * Doing this once, here, is what stops the catalogue drifting: a new palette can be any four
+ * colours a designer likes, and the layouts stay readable without anyone remembering to check.
+ */
+export function resolvePalette(palette: TemplatePalette): ResolvedPalette {
+  const { bg, accent, soft } = palette;
+  // Text on a fill starts from whichever of black or white the fill is furthest from, then is
+  // pushed until it passes — the same choice a designer makes by eye, made the same way twice.
+  const against = (surface: string, preferred?: string) =>
+    readableOn(
+      preferred ?? (relativeLuminance(surface) > 0.4 ? '#000000' : '#ffffff'),
+      surface,
+      MIN_TEXT_CONTRAST,
+    );
+  return {
+    bg,
+    ink: readableOn(palette.ink, bg, MIN_TEXT_CONTRAST),
+    accent,
+    accentText: readableOn(accent, bg, MIN_TEXT_CONTRAST),
+    soft,
+    onAccent: against(accent, palette.onAccent),
+    onSoft: against(soft),
+    onInk: against(palette.ink),
+  };
+}
+
 function start(options: BlueprintOptions) {
   const { document, frame } = Frame.document({
     templateId: options.templateId,
     name: options.name,
     presetId: options.presetId,
   });
-  frame.background(options.background ?? options.palette.bg);
+  const palette = resolvePalette(options.palette);
+  frame.background(options.background ?? palette.bg);
   return {
     document,
     frame,
-    palette: options.palette,
+    palette,
     content: options.content,
     type: options.type,
   };
@@ -41,7 +72,7 @@ const statement: Blueprint = {
         w: 0.7,
         size: 0.022,
         weight: 700,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.14,
       });
     }
@@ -103,7 +134,7 @@ const split: Blueprint = {
       x: panelX + 0.12,
       y: 0.62,
       size: 0.16,
-      color: palette.onAccent ?? palette.bg,
+      color: palette.onAccent,
       strokeWidth: 1.5,
     });
     if (content.eyebrow) {
@@ -113,7 +144,7 @@ const split: Blueprint = {
         w: textWidth,
         size: 0.02,
         weight: 700,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.14,
       });
     }
@@ -146,7 +177,7 @@ const split: Blueprint = {
         w: 0.28,
         h: 0.075,
         fill: palette.accent,
-        color: palette.onAccent ?? palette.bg,
+        color: palette.onAccent,
         font: type.body,
       });
     }
@@ -178,7 +209,7 @@ const bigType: Blueprint = {
         w: 0.8,
         size: 0.02,
         weight: 700,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.16,
       });
     }
@@ -246,7 +277,7 @@ const sale: Blueprint = {
       y: 0.08,
       size: 0.66,
       fill: 'none',
-      stroke: { color: palette.accent, width: 3 },
+      stroke: { color: palette.accentText, width: 3 },
       opacity: 0.5,
     });
     frame.rect({ x: 0.07, y: 0.08, w: 0.28, h: 0.05, fill: palette.ink, radius: 0.025 });
@@ -267,7 +298,7 @@ const sale: Blueprint = {
       size: 0.17,
       weight: 800,
       font: type.display,
-      color: palette.onAccent ?? palette.bg,
+      color: palette.onAccent,
       align: 'center',
       lineHeight: 0.9,
     });
@@ -318,7 +349,7 @@ const quote: Blueprint = {
       size: 0.26,
       weight: 700,
       font: type.display,
-      color: palette.accent,
+      color: palette.accentText,
       opacity: 0.25,
       lineHeight: 0.9,
     });
@@ -374,7 +405,7 @@ const stats: Blueprint = {
         w: 0.7,
         size: 0.02,
         weight: 700,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.14,
       });
     }
@@ -402,7 +433,7 @@ const stats: Blueprint = {
         size: 0.1,
         weight: 700,
         font: type.display,
-        color: palette.accent,
+        color: palette.accentText,
         align: 'center',
       });
       frame.text(stat.label, {
@@ -442,7 +473,7 @@ const agenda: Blueprint = {
         w: 0.6,
         size: 0.02,
         weight: 700,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.14,
       });
     }
@@ -466,7 +497,7 @@ const agenda: Blueprint = {
         size: 0.035,
         weight: 700,
         font: type.display,
-        color: palette.accent,
+        color: palette.accentText,
       });
       frame.text(item, {
         x: 0.2,
@@ -522,7 +553,7 @@ const cover: Blueprint = {
         w: 0.5,
         size: 0.02,
         weight: 700,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.16,
       });
     }
@@ -581,7 +612,7 @@ const cover: Blueprint = {
       x: blockX + 0.16,
       y: 0.74,
       size: 0.08,
-      color: palette.onAccent ?? palette.bg,
+      color: palette.onAccent,
       strokeWidth: 1.5,
     });
     return document;
@@ -600,7 +631,7 @@ const event: Blueprint = {
       size: 0.14,
       weight: 800,
       font: type.display,
-      color: palette.accent,
+      color: palette.accentText,
       lineHeight: 0.9,
     });
     frame.text((content.month ?? 'NOV').toUpperCase(), {
@@ -617,7 +648,7 @@ const event: Blueprint = {
       x: 0.07,
       y: 0.3,
       size: 0.05,
-      color: palette.accent,
+      color: palette.accentText,
       strokeWidth: 1.6,
     });
     frame.rule(
@@ -686,7 +717,7 @@ const profile: Blueprint = {
       size: 0.055,
       weight: 700,
       font: type.display,
-      color: palette.onAccent ?? palette.bg,
+      color: palette.onAccent,
       align: 'center',
     });
     frame.text(content.title, {
@@ -706,7 +737,7 @@ const profile: Blueprint = {
         size: 0.018,
         weight: 600,
         font: type.body,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.14,
       });
     }
@@ -751,7 +782,7 @@ const product: Blueprint = {
       y: 0.06,
       size: 0.58,
       fill: 'none',
-      stroke: { color: palette.accent, width: 2 },
+      stroke: { color: palette.accentText, width: 2 },
       opacity: 0.4,
     });
     frame.rect({
@@ -781,7 +812,7 @@ const product: Blueprint = {
         w: 0.6,
         size: 0.018,
         weight: 700,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.14,
       });
     }
@@ -832,7 +863,7 @@ const banner: Blueprint = {
       y: 0.16,
       size: 0.5,
       fill: 'none',
-      stroke: { color: palette.accent, width: 4 },
+      stroke: { color: palette.accentText, width: 4 },
       opacity: 0.35,
     });
     frame.circle({ x: 0.86, y: 0.3, size: 0.2, fill: palette.accent, opacity: 0.9 });
@@ -843,7 +874,7 @@ const banner: Blueprint = {
         w: 0.6,
         size: 0.02,
         weight: 700,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.16,
       });
     }
@@ -876,7 +907,7 @@ const banner: Blueprint = {
         w: 0.26,
         h: 0.11,
         fill: palette.accent,
-        color: palette.onAccent ?? palette.bg,
+        color: palette.onAccent,
         font: type.body,
       });
     }
@@ -915,7 +946,7 @@ const paletteBoard: Blueprint = {
         w: 0.6,
         size: 0.018,
         weight: 600,
-        color: palette.accent,
+        color: palette.accentText,
         tracking: 0.16,
       });
     }

@@ -202,10 +202,10 @@ const COLLECTIONS: readonly Collection[] = [
         content: {
           title: 'Spring\nGala',
           subtitle: 'An evening of music and dinner under the lights.',
-          date: 'Sat · Apr 12',
+          date: '12',
           month: 'April',
           cta: 'RSVP',
-          footer: 'The Grand Hall · 19:00',
+          footer: 'Saturday · The Grand Hall · 19:00',
         },
       },
       {
@@ -215,10 +215,10 @@ const COLLECTIONS: readonly Collection[] = [
         content: {
           title: 'Founders\nNight',
           subtitle: 'Pitch, mingle, and meet the next cohort.',
-          date: 'Thu · May 8',
+          date: '08',
           month: 'May',
           cta: 'Save your seat',
-          footer: 'Studio 3 · 18:30',
+          footer: 'Thursday · Studio 3 · 18:30',
         },
       },
     ],
