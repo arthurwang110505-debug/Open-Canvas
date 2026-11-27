@@ -148,6 +148,7 @@ export function HomeSidebar({
       {isMobile && mobileOpen ? (
         <div
           aria-hidden="true"
+          // theme-ok: a scrim dims what is behind it, so it is dark in both themes.
           className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-[2px] lg:hidden"
           onClick={onClose}
         />
@@ -159,7 +160,7 @@ export function HomeSidebar({
         aria-modal={isMobile && mobileOpen ? true : undefined}
         aria-label="Dashboard navigation"
         hidden={isMobile && !mobileOpen}
-        className={`fixed inset-y-0 left-0 z-50 h-dvh w-[min(86vw,320px)] max-w-full shrink-0 flex-col overflow-y-auto border-r border-border bg-white shadow-[0_16px_48px_rgba(15,23,42,0.2)] lg:static lg:z-auto lg:h-full lg:w-[248px] lg:shadow-none ${mobileOpen ? 'flex' : 'hidden lg:flex'}`}
+        className={`fixed inset-y-0 left-0 z-50 h-dvh w-[min(86vw,320px)] max-w-full shrink-0 flex-col overflow-y-auto border-r border-border bg-panel shadow-[0_16px_48px_rgba(15,23,42,0.2)] lg:static lg:z-auto lg:h-full lg:w-[248px] lg:shadow-none ${mobileOpen ? 'flex' : 'hidden lg:flex'}`}
       >
         <div className="flex items-center gap-3 px-4 py-4">
           <span
@@ -295,7 +296,7 @@ export function HomeSidebar({
               })}
             </div>
           )}
-          <div className="mt-auto rounded-xl bg-[#f8f7ff] p-3 text-[11px] leading-relaxed text-muted-foreground">
+          <div className="mt-auto rounded-xl bg-accent p-3 text-[11px] leading-relaxed text-muted-foreground">
             Projects stay private in this browser. Export a design to back it up or move it.
           </div>
         </div>

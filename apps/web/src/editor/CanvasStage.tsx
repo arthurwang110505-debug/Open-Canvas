@@ -526,7 +526,7 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
       ) : null}
       {isEmpty && !drawEnabled && !dropActive ? (
         <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center px-6">
-          <div className="pointer-events-none flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border border-border/80 bg-white/95 px-6 py-5 text-center shadow-[0_12px_40px_rgba(16,24,40,0.12)] backdrop-blur">
+          <div className="pointer-events-none flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border border-border/80 bg-panel/95 px-6 py-5 text-center shadow-card-hover backdrop-blur">
             <span className="grid size-10 place-items-center rounded-xl bg-secondary text-secondary-foreground">
               <LayoutTemplate className="size-5" />
             </span>

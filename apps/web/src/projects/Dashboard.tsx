@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 
+import { ThemeToggle } from '../ThemeToggle';
 import { navigate } from '../router';
 import { getTemplate } from '../templates/catalog';
 import { TemplateGallery } from '../templates/TemplateGallery';
@@ -432,7 +433,7 @@ export function Dashboard() {
         : viewHeading('projects', organizationSnapshot.folders);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f7f8fc] text-foreground lg:flex-row">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-workspace text-foreground lg:flex-row">
       <HomeSidebar
         activeView={activeView}
         mobileOpen={mobileNavOpen}
@@ -456,7 +457,7 @@ export function Dashboard() {
       />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-white/90 px-4 backdrop-blur sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-panel/90 px-4 backdrop-blur sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 lg:hidden">
             <Button
               variant="ghost"
@@ -477,6 +478,7 @@ export function Dashboard() {
               : 'This browser has no IndexedDB: designs are kept in memory only and are lost on reload.'}
           </p>
           <div className="flex items-center gap-2 sm:ml-auto">
+            <ThemeToggle />
             <Button size="sm" onClick={openCreateDesign} className="rounded-lg">
               <Sparkles className="size-4" />
               <span className="hidden min-[480px]:inline">Create a design</span>
@@ -510,7 +512,7 @@ export function Dashboard() {
             {notice ? (
               <p
                 role="status"
-                className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+                className="mb-4 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success"
               >
                 {notice}
               </p>
@@ -569,7 +571,7 @@ export function Dashboard() {
                           type="button"
                           disabled={busy !== null}
                           onClick={() => navigate({ name: 'editor', projectId: project.id })}
-                          className="flex min-w-0 items-center gap-3 rounded-2xl border border-border bg-white p-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-md disabled:opacity-50"
+                          className="flex min-w-0 items-center gap-3 rounded-2xl border border-border bg-panel p-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-md disabled:opacity-50"
                         >
                           <span className="w-24 shrink-0">
                             <ProjectThumbnail project={project} />
@@ -588,7 +590,7 @@ export function Dashboard() {
                           {metadataByProject.get(project.id)?.starred ? (
                             <Star
                               aria-label="Starred"
-                              className="size-4 shrink-0 fill-amber-400 text-amber-400"
+                              className="size-4 shrink-0 fill-warning text-warning"
                             />
                           ) : null}
                         </button>
@@ -601,7 +603,7 @@ export function Dashboard() {
                     {[1, 2, 3].map((index) => (
                       <div
                         key={index}
-                        className="h-24 animate-pulse rounded-2xl bg-white ring-1 ring-border"
+                        className="h-24 animate-pulse rounded-2xl bg-panel ring-1 ring-border"
                       />
                     ))}
                   </div>
@@ -699,7 +701,7 @@ export function Dashboard() {
                       onClear={() => setSearchQuery('')}
                       clearLabel="Clear design search"
                       wrapperClassName="max-w-sm flex-1"
-                      className="h-10 rounded-full bg-white shadow-sm"
+                      className="h-10 rounded-full bg-panel shadow-sm"
                     />
                     <div className="flex items-center gap-3">
                       <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
@@ -711,7 +713,7 @@ export function Dashboard() {
                         aria-label="Sort designs"
                         value={sortBy}
                         onChange={(event) => setSortBy(event.target.value as 'recent' | 'name')}
-                        className="h-9 w-36 rounded-full bg-white text-[13px]"
+                        className="h-9 w-36 rounded-full bg-panel text-[13px]"
                       >
                         <option value="recent">Last edited</option>
                         <option value="name">Name</option>
@@ -725,13 +727,13 @@ export function Dashboard() {
                     {[1, 2, 3].map((index) => (
                       <div
                         key={index}
-                        className="h-72 animate-pulse rounded-2xl bg-white ring-1 ring-border"
+                        className="h-72 animate-pulse rounded-2xl bg-panel ring-1 ring-border"
                       />
                     ))}
                   </div>
                 ) : null}
                 {list.status === 'error' ? (
-                  <div className="space-y-3 rounded-2xl border border-destructive/30 bg-white p-6">
+                  <div className="space-y-3 rounded-2xl border border-destructive/30 bg-panel p-6">
                     <p role="alert" className="text-sm">
                       {list.message}
                     </p>
@@ -752,12 +754,24 @@ export function Dashboard() {
                     description="Start with a custom canvas or explore an editable template."
                     className="px-6 py-12"
                     action={
-                      <Button
-                        onClick={() => setShowCreateDesign(true)}
-                        className="rounded-full px-5"
-                      >
-                        Create a design
-                      </Button>
+                      // The copy offered two routes but the panel only had one button. A
+                      // template is the faster of the two for someone with nothing yet, so it
+                      // is here rather than one scroll away.
+                      <div className="flex flex-wrap justify-center gap-2">
+                        <Button
+                          onClick={() => setShowCreateDesign(true)}
+                          className="rounded-full px-5"
+                        >
+                          Create a design
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => changeView('templates')}
+                          className="rounded-full px-5"
+                        >
+                          <LayoutTemplate className="size-4" /> Browse templates
+                        </Button>
+                      </div>
                     }
                   />
                 ) : null}

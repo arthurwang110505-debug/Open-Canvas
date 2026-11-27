@@ -106,7 +106,7 @@ export function ShareDialog({ document, onClose, onPresent }: Props) {
                   {copied ? 'Copied' : 'Copy'}
                 </Button>
               </div>
-              <p className="flex items-center gap-1 text-xs text-emerald-700">
+              <p className="flex items-center gap-1 text-xs text-success">
                 <Check className="size-3.5" />
                 Link ready — it works in this browser and its tabs.
               </p>

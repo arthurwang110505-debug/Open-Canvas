@@ -1,5 +1,6 @@
 import { Button, TooltipProvider } from '@opencanvas/ui';
 
+import { useThemeEffect } from './useAppTheme';
 import { Dashboard } from './projects/Dashboard';
 import { ProjectEditor } from './projects/ProjectEditor';
 import type { ProjectsServices } from './projects/ProjectsContext';
@@ -48,6 +49,7 @@ export interface AppProps {
  * (`#/design/<id>`). No account, server or AI is involved — everything is local.
  */
 export function App({ projects }: AppProps = {}) {
+  useThemeEffect();
   return (
     <TooltipProvider>
       <ProjectsProvider services={projects}>

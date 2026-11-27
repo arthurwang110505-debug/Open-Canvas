@@ -3,9 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <title>OpenCanvas</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!--
+      Resolve the theme before the stylesheet paints. Without this the first frame is light and
+      then snaps to dark, which is the most noticeable flaw a themed app can ship. Kept inline
+      and synchronous on purpose; it must run before anything renders.
+      Mirrors THEME_BOOTSTRAP_SCRIPT in src/theme.ts.
+    -->
+    <script>
+      (function () {
+        try {
+          var s = localStorage.getItem('opencanvas.theme');
+          var d =
+            s === 'dark' ||
+            ((s === null || s === 'system') &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', d);
+          document.documentElement.style.colorScheme = d ? 'dark' : 'light';
+        } catch (e) {
+          /* storage blocked: stay light */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

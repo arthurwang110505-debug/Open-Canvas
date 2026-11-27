@@ -456,3 +456,26 @@ Curved/warped text, video export of animations, cloud photo search, AI generatio
 ### Still open
 
 Curved/warped text, GIF export, cloud photo search, AI generation, and realtime collaboration remain out of scope or later-phase. Video _editing_ (timeline, clips, audio) stays a non-goal: this sprint exports the design's own motion, it does not add a second product surface. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.
+
+## Eleventh sprint — dark mode, undo instead of confirm, and a touch-reachable editor (2026-10-29)
+
+### What shipped
+
+- **A real dark mode, picked by the user or by the system.** Light / Dark / Match system, in the dashboard header and in the editor's top bar (inside the overflow menu on narrow screens). The choice is stored under `opencanvas.theme` and syncs across tabs; "Match system" keeps following the OS after the fact rather than reading it once at startup.
+- **No flash of the wrong theme.** An inline script in `<head>` applies the stored choice before the first paint. It is the one piece of logic that is deliberately duplicated — once as a string in `theme.ts` and once in `index.html` — so a test executes both copies and fails if they drift.
+- **A palette that was designed against the contrast target, not adjusted until it looked right.** All 14 text pairs in each theme meet WCAG AA. Two findings worth recording: the light theme's `success` (3.30) and `warning` (3.19) were already failing before this sprint and are now `#15803d` / `#b45309`; and the light primary `#6d45e8` cannot be reused in dark — white on it is 4.04. Dark uses `#9d7bff` with dark text, at 5.88. Panel and workspace can only differ by about 1.12 in a dark theme, so the separation between them has to come from the border, which is why `border` is `#343b49` rather than something subtler.
+- **Theme state in a store, not a context.** A provider would have forced every test that renders the editor to wrap it, and the editor does not otherwise need one. A vanilla store with a lazy singleton keeps `useAppTheme()` callable anywhere, with a `resetThemeStore()` seam because the store snapshots `matchMedia` and `localStorage` when it is built.
+- **Deleting offers Undo instead of asking first.** Removing an object or a page used to be silent; it now raises a toast naming what went ("Object deleted", "3 objects deleted", "Page 2 deleted") with an Undo button wired to the same history the keyboard uses. The button is labelled "Undo delete" to assistive technology, because the toolbar already has an "Undo" and two controls with the same name and different scope is precisely the ambiguity a screen-reader user cannot resolve.
+- **The mobile sheet closes the way a sheet should.** A grab handle, a drag that follows the finger, and a dismiss at 96 px of travel or a flick of 0.5 px/ms. Only the handle starts the gesture — making the whole sheet draggable fights the scrollable panels inside it — and an upward drag is rubber-banded rather than ignored, so the sheet feels attached to the finger instead of stuck.
+- **Controls that could not be reached by touch.** The page controls in the pages strip were `opacity-0` until hover, which on a phone means never. The hidden state is now scoped to `[@media(hover:hover)]`, so a pointer still gets the uncluttered version and a finger gets a control.
+- **An empty dashboard offers both routes.** The copy had always mentioned a custom canvas _and_ a template; now both are buttons, rather than one button and a scroll.
+
+### Verification
+
+- Full workspace typecheck, ESLint, Prettier, and production build pass.
+- Vitest: **922 tests in 89 files** pass (was 912/85, counting the pinch-zoom and template work in the same branch). New: `apps/web/src/theme.test.ts` (17 — every text pair in both themes at AA, border visibility, the `@custom-variant` line Tailwind v4 needs for a class-driven `dark:`, and both copies of the bootstrap executed against a stub document), `apps/web/src/ThemeToggle.test.tsx` (6), `apps/web/src/editor/EditorUndoFeedback.test.tsx` (12 — five undo-toast paths and seven sheet-gesture cases), `apps/web/src/themeCoverage.test.ts` (3).
+- `themeCoverage.test.ts` is the regression guard worth singling out: it walks every `.tsx` in the app and the UI package and fails on a hard-coded colour, a bare `bg-white`, or a fixed palette ramp. A dark mode does not break loudly — one panel stays glaring while everything around it adapts — so the exceptions are marked in place with a `theme-ok:` comment giving the reason, next to the code they excuse.
+
+### Still open
+
+The mobile rail still scrolls horizontally with all ten tabs; the reduction in destinations it calls for is a navigation change rather than a styling one. Document surfaces — page thumbnails, template and share previews, Present mode — stay light on purpose: the app's theme must not repaint someone's artwork. Cloud photo search, AI generation, and realtime collaboration remain out of scope. Native `canvas`-dependent PNG/PDF runtime verification remains separate from the passing SVG/browser checks because the optional native dependency could not be built in this sandbox.

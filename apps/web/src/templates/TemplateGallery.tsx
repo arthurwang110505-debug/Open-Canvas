@@ -99,7 +99,7 @@ export function TemplateGallery({
 
   return (
     <section
-      className={panel || home ? '' : 'rounded-2xl bg-white p-5 shadow-sm ring-1 ring-border'}
+      className={panel || home ? '' : 'rounded-2xl bg-panel p-5 shadow-sm ring-1 ring-border'}
       aria-label="Templates"
     >
       <div
@@ -127,7 +127,7 @@ export function TemplateGallery({
             onClear={() => setQuery('')}
             clearLabel="Clear template search"
             wrapperClassName={panel ? '' : 'max-w-xs flex-1 sm:max-w-[260px]'}
-            className="h-9 rounded-full bg-white text-[13px]"
+            className="h-9 rounded-full bg-panel text-[13px]"
           />
         ) : null}
       </div>
@@ -162,7 +162,7 @@ export function TemplateGallery({
             aria-label="Template orientation"
             value={orientation}
             onChange={(event) => setOrientation(event.target.value as TemplateOrientation | 'all')}
-            className="h-8 w-auto min-w-36 rounded-full bg-white text-xs"
+            className="h-8 w-auto min-w-36 rounded-full bg-panel text-xs"
           >
             {ORIENTATION_FILTERS.map((filter) => (
               <option key={filter.id} value={filter.id}>
@@ -174,7 +174,7 @@ export function TemplateGallery({
             aria-label="Template color"
             value={color}
             onChange={(event) => setColor(event.target.value as TemplateColorMood | 'all')}
-            className="h-8 w-auto min-w-32 rounded-full bg-white text-xs"
+            className="h-8 w-auto min-w-32 rounded-full bg-panel text-xs"
           >
             {COLOR_FILTERS.map((filter) => (
               <option key={filter.id} value={filter.id}>
@@ -211,7 +211,7 @@ export function TemplateGallery({
             key={tpl.id}
             data-testid="template-card"
             style={{ animationDelay: `${Math.min(index, 11) * 45}ms` }}
-            className="group mb-4 inline-flex w-full animate-rise-in break-inside-avoid flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-colors hover:border-primary/30 hover:shadow-card-hover"
+            className="group mb-4 inline-flex w-full animate-rise-in break-inside-avoid flex-col overflow-hidden rounded-xl border border-border bg-panel shadow-sm transition-colors hover:border-primary/30 hover:shadow-card-hover"
           >
             <div className="relative w-full p-2">
               <TemplateThumbnail document={documents.get(tpl.id) ?? tpl.build()} />

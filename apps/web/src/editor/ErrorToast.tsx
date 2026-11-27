@@ -1,8 +1,9 @@
-import { Button } from '@opencanvas/ui';
+import { Button, cn } from '@opencanvas/ui';
 import { X } from 'lucide-react';
 import { useEffect } from 'react';
 
 import { useEditor, useEditorStore, useNotification, useNotificationStore } from './hooks';
+import type { AppNotification } from './notifications';
 
 const AUTO_DISMISS_MS = 6000;
 
@@ -31,14 +32,20 @@ export function ErrorToast() {
     return () => window.clearTimeout(timer);
   }, [commandError, notification, store, notifications]);
 
-  const shown = commandError
-    ? { kind: 'error' as const, title: 'Change not applied', message: commandError.message }
+  const shown: AppNotification | null = commandError
+    ? { kind: 'error', title: 'Change not applied', message: commandError.message }
     : notification;
   if (!shown) return null;
+  const action = shown.action;
   return (
     <div
       role={shown.kind === 'error' ? 'alert' : 'status'}
-      className="absolute bottom-4 left-1/2 flex max-w-md -translate-x-1/2 animate-toast-in items-start gap-2 rounded-md border border-destructive/30 bg-background px-3 py-2 text-sm shadow-lg"
+      aria-label={shown.title}
+      className={cn(
+        'absolute bottom-4 left-1/2 flex max-w-md -translate-x-1/2 animate-toast-in items-start gap-2',
+        'rounded-lg border bg-panel px-3 py-2 text-sm shadow-card-hover',
+        shown.kind === 'error' ? 'border-destructive/40' : 'border-border',
+      )}
     >
       <div className="flex-1">
         <p className={shown.kind === 'error' ? 'font-medium text-destructive' : 'font-medium'}>
@@ -46,6 +53,20 @@ export function ErrorToast() {
         </p>
         <p className="text-muted-foreground">{shown.message}</p>
       </div>
+      {action ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="shrink-0 rounded-full"
+          aria-label={action.ariaLabel ?? action.label}
+          onClick={() => {
+            action.run();
+            dismiss();
+          }}
+        >
+          {action.label}
+        </Button>
+      ) : null}
       <Button variant="ghost" size="icon-sm" aria-label="Dismiss" onClick={dismiss}>
         <X />
       </Button>

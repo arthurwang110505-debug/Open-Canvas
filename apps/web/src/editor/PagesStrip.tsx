@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEve
 
 import { PageGridView } from './PageGridView';
 import { PageThumbnail } from './PageThumbnail';
-import { useEditor } from './hooks';
+import { useEditorActions } from './actions';
+import { useEditor, useNotificationStore } from './hooks';
 import { useMediaQuery } from '../useMediaQuery';
 
 interface PageContextMenuState {
@@ -19,6 +20,8 @@ export function PagesStrip() {
   const document = useEditor((state) => state.document);
   const activePageId = useEditor((state) => state.activePageId);
   const dispatch = useEditor((state) => state.dispatch);
+  const notifications = useNotificationStore();
+  const { undo } = useEditorActions();
   const setActivePage = useEditor((state) => state.setActivePage);
   const pages = document.pages;
   const canDelete = pages.length > 1;
@@ -44,9 +47,18 @@ export function PagesStrip() {
 
   const onDelete = useCallback(
     (pageId: string) => {
-      if (canDelete) dispatch({ type: 'page.delete', pageId });
+      if (!canDelete) return;
+      const index = pages.findIndex((page) => page.id === pageId);
+      dispatch({ type: 'page.delete', pageId });
+      // A page can hold an afternoon's work, so losing one silently is the worst outcome here.
+      notifications.getState().show({
+        kind: 'info',
+        title: `Page ${index + 1} deleted`,
+        message: 'Everything on it went with it.',
+        action: { label: 'Undo', ariaLabel: 'Undo page delete', run: () => undo() },
+      });
     },
-    [dispatch, canDelete],
+    [dispatch, canDelete, pages, notifications, undo],
   );
 
   const onMove = useCallback(
@@ -170,6 +182,7 @@ export function PagesStrip() {
                 >
                   <div
                     className={[
+                      // theme-ok: the thumbnail shows the page itself, which is paper in either theme.
                       'relative overflow-hidden rounded-lg border-2 bg-white transition-all',
                       isActive
                         ? 'border-primary shadow-sm ring-2 ring-primary/20'
@@ -191,7 +204,7 @@ export function PagesStrip() {
                       className="absolute inset-0 rounded-md focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     />
                   </div>
-                  <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                  <div className="flex items-center gap-0.5 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100">
                     <Tooltip content="Move left">
                       <Button
                         variant="ghost"
@@ -265,7 +278,7 @@ export function PagesStrip() {
             role="menu"
             aria-label={`Page ${contextPageIndex + 1} actions`}
             style={{ left: pageContextMenu.x, top: Math.max(0, pageContextMenu.y) }}
-            className="absolute z-50 min-w-44 rounded-xl border border-border bg-white p-1.5 shadow-[0_12px_32px_rgba(16,24,40,0.18)]"
+            className="absolute z-50 min-w-44 rounded-xl border border-border bg-panel p-1.5 shadow-card-hover"
           >
             <button
               type="button"

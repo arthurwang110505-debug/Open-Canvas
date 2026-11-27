@@ -191,7 +191,7 @@ export function CanvasContextMenu({
       aria-label={selected.length === 0 ? 'Page context menu' : 'Selection context menu'}
       onContextMenu={(event) => event.preventDefault()}
       style={{ left: position.x, top: position.y }}
-      className="absolute z-50 min-w-60 rounded-xl border border-border bg-white p-1.5 shadow-[0_12px_32px_rgba(16,24,40,0.18)]"
+      className="absolute z-50 min-w-60 rounded-xl border border-border bg-panel p-1.5 shadow-card-hover"
     >
       {actions.map((action) => (
         <div key={action.label}>

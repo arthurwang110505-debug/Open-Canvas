@@ -28,7 +28,7 @@ export function EmptyState({
     <div
       data-slot="empty-state"
       className={cn(
-        'rounded-2xl border border-dashed border-border bg-white px-5 py-8',
+        'rounded-2xl border border-dashed border-border bg-panel px-5 py-8',
         layout === 'centered'
           ? 'flex flex-col items-center text-center'
           : 'flex flex-col items-center text-center sm:flex-row sm:text-left',
