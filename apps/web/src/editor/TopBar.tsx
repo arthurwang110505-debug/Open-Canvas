@@ -24,7 +24,9 @@ import {
   Redo2,
   Ruler,
   Save,
+  Moon,
   Share2,
+  Sun,
   Undo2,
 } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
@@ -35,8 +37,24 @@ import { HistoryPanel } from './panels/HistoryPanel';
 import { useCanvasController, useEditor, usePersistenceState, useSnappingEnabled } from './hooks';
 import { ShareDialog } from '../share/ShareDialog';
 import { PresentMode } from '../share/PresentMode';
+import { ThemeToggle } from '../ThemeToggle';
 import { navigate } from '../router';
 import type { SidebarTab } from './Sidebar';
+import { useAppTheme } from '../useAppTheme';
+import type { ThemePreference } from '../theme';
+
+const THEME_HINTS: Record<ThemePreference, string> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
+};
+
+/** The compact menu has no room for three choices, so one item cycles through them. */
+function nextThemePreference(current: ThemePreference): ThemePreference {
+  if (current === 'light') return 'dark';
+  if (current === 'dark') return 'system';
+  return 'light';
+}
 
 function DocumentTitle() {
   const name = useEditor((state) => state.document.name);
@@ -204,6 +222,7 @@ export function TopBar({ onOpenPanel, onOpenShortcuts }: TopBarProps) {
   const [showShare, setShowShare] = useState(false);
   const [showPresent, setShowPresent] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const theme = useAppTheme();
 
   return (
     <>
@@ -312,6 +331,7 @@ export function TopBar({ onOpenPanel, onOpenShortcuts }: TopBarProps) {
           <Separator orientation="vertical" className="hidden h-6 xl:block" />
           <RulerToggle />
           <SnapToggle />
+          <ThemeToggle className="hidden xl:block" />
           <Menu className="xl:hidden">
             <MenuTrigger asChild>
               <Button
@@ -359,6 +379,13 @@ export function TopBar({ onOpenPanel, onOpenShortcuts }: TopBarProps) {
                 onSelect={() => canvas.setSnapping(!snapping)}
               >
                 Snap to objects
+              </MenuItem>
+              <MenuItem
+                icon={theme.resolved === 'dark' ? <Moon /> : <Sun />}
+                hint={THEME_HINTS[theme.preference]}
+                onSelect={() => theme.setPreference(nextThemePreference(theme.preference))}
+              >
+                Appearance
               </MenuItem>
               <MenuSeparator />
               <MenuItem

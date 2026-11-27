@@ -53,7 +53,7 @@ export function TemplatePreviewModal({
       </header>
 
       <div className="grid gap-6 p-5 sm:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)] sm:p-7">
-        <div className="flex min-h-56 items-center justify-center rounded-2xl bg-[#f4f3f8] p-5 sm:min-h-[390px]">
+        <div className="flex min-h-56 items-center justify-center rounded-2xl bg-muted p-5 sm:min-h-[390px]">
           <TemplateThumbnail
             document={document}
             className="max-h-[360px] w-full max-w-[560px] shadow-sm"

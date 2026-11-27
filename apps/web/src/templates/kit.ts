@@ -59,6 +59,73 @@ export interface PolygonOptions {
 }
 
 /**
+ * Average glyph advance as a share of the font size.
+ *
+ * Templates are built without a rasterizer, so widths are estimated. Half an em is deliberately
+ * generous for the faces this catalogue ships: it over-estimates narrow display faces like Anton
+ * rather than under-estimating and letting a headline run past its box.
+ */
+const AVERAGE_ADVANCE = 0.5;
+
+/** A fitted size never drops below this share of the size the layout asked for. */
+const MIN_FIT_SCALE = 0.42;
+
+/** Visual lines `content` needs at `fontSize`, using the estimated advance. */
+function countLines(content: string, fontSize: number, width: number, tracking: number): number {
+  const advance = fontSize * (AVERAGE_ADVANCE + tracking);
+  if (advance <= 0 || width <= 0) return content.split('\n').length;
+  let total = 0;
+  for (const hardLine of content.split('\n')) {
+    const words = hardLine.split(/\s+/).filter((word) => word.length > 0);
+    if (words.length === 0) {
+      total += 1;
+      continue;
+    }
+    // Greedy wrapping, matching how the renderer breaks lines.
+    let lines = 1;
+    let used = 0;
+    for (const word of words) {
+      const wordWidth = word.length * advance;
+      const spaced = used === 0 ? wordWidth : used + advance + wordWidth;
+      if (used > 0 && spaced > width) {
+        lines += 1;
+        used = wordWidth;
+      } else {
+        used = spaced;
+      }
+    }
+    total += lines;
+  }
+  return total;
+}
+
+/**
+ * The largest size at or below `requested` that keeps `content` within the line budget the
+ * layout reserved for it.
+ *
+ * Blueprints are written once and rendered into every preset, so a headline that fits an A4
+ * poster can overrun a square post. Rather than let the text spill across whatever sits below,
+ * the size steps down the way a designer would — but only as far as `MIN_FIT_SCALE`, so a
+ * mis-slotted string shrinks to something legible instead of disappearing.
+ */
+function fitFontSize(
+  content: string,
+  requested: number,
+  width: number,
+  tracking: number,
+  budget: number,
+): number {
+  if (countLines(content, requested, width, tracking) <= budget) return requested;
+  const floor = Math.max(8, Math.round(requested * MIN_FIT_SCALE));
+  let size = requested;
+  while (size > floor) {
+    size = Math.max(floor, Math.round(size * 0.94));
+    if (countLines(content, size, width, tracking) <= budget) break;
+  }
+  return size;
+}
+
+/**
  * Draws in fractions of the page, so every blueprint works in any preset: `x`/`w` are shares of
  * the width, `y`/`h` shares of the height, and type size is a share of the short side.
  */
@@ -100,13 +167,20 @@ export class Frame {
   }
 
   text(content: string, options: TextOptions): TextElement {
-    const fontSize = this.px(options.size);
     const lineHeight = options.lineHeight ?? 1.15;
-    const lines = content.split('\n').length;
+    const tracking = options.tracking ?? 0;
+    const width = Math.round(options.w * this.width);
+    // The hard line breaks the author wrote are the space the layout set aside; anything beyond
+    // them is an accident of this preset, so the size comes down to meet the budget.
+    const budget = content.split('\n').length;
+    const fontSize = fitFontSize(content, this.px(options.size), width, tracking, budget);
+    // Height follows the lines actually drawn, so the box a user clicks matches the glyphs even
+    // where the size hit its floor.
+    const lines = countLines(content, fontSize, width, tracking);
     const element = createTextElement({
       x: Math.round(options.x * this.width),
       y: Math.round(options.y * this.height),
-      width: Math.round(options.w * this.width),
+      width,
       height: Math.round(fontSize * lineHeight * lines + fontSize * 0.35),
       text: content,
       fontFamily: options.font ?? 'Inter',
@@ -115,7 +189,7 @@ export class Frame {
       color: options.color ?? '#111827',
       textAlign: options.align ?? 'left',
       lineHeight,
-      letterSpacing: Math.round((options.tracking ?? 0) * fontSize),
+      letterSpacing: Math.round(tracking * fontSize),
       ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
     });
     this.page.elements.push(element);

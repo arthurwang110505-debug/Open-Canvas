@@ -54,7 +54,7 @@ function SelectionColor({ element }: { element: DesignElement }) {
   return (
     <Tooltip content={label}>
       <label
-        className="grid size-11 shrink-0 cursor-pointer place-items-center sm:size-8 rounded-lg border border-border bg-white hover:bg-muted"
+        className="grid size-11 shrink-0 cursor-pointer place-items-center sm:size-8 rounded-lg border border-border bg-panel hover:bg-muted"
         aria-label={label}
       >
         <input
@@ -233,7 +233,7 @@ export function ContextualToolbar({ onOpenPanel }: ContextualToolbarProps) {
     <div
       role="toolbar"
       aria-label="Contextual toolbar"
-      className="relative z-20 flex h-11 min-w-0 items-center overflow-visible border-b border-border bg-white px-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="relative z-20 flex h-11 min-w-0 items-center overflow-visible border-b border-border bg-panel px-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-none"
     >
       <div
         key={selected.map((element) => element.id).join(',') || 'page'}

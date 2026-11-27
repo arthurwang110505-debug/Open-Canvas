@@ -50,7 +50,7 @@ export function HomeHero({
           role="search"
           aria-label="Find a template"
           onSubmit={submitSearch}
-          className="mt-5 flex max-w-2xl items-center gap-2 rounded-xl border border-border bg-white p-1.5 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20"
+          className="mt-5 flex max-w-2xl items-center gap-2 rounded-xl border border-border bg-panel p-1.5 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20"
         >
           <SearchField
             aria-label="Search templates"
@@ -102,7 +102,7 @@ export function HomeHero({
                 key={preset.id}
                 type="button"
                 onClick={() => onCreatePreset(preset)}
-                className="group flex min-w-0 items-center gap-3 rounded-xl border border-border bg-white p-3 text-left transition-colors hover:border-primary/35 hover:bg-accent/40"
+                className="group flex min-w-0 items-center gap-3 rounded-xl border border-border bg-panel p-3 text-left transition-colors hover:border-primary/35 hover:bg-accent/40"
               >
                 <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-foreground/70 transition-colors group-hover:bg-secondary group-hover:text-primary">
                   <Icon className="size-[18px]" aria-hidden="true" />

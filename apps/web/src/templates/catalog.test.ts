@@ -1,12 +1,20 @@
-import { CANVAS_PRESETS, validateDocument } from '@opencanvas/document';
+import { CANVAS_PRESETS, type TextElement, validateDocument } from '@opencanvas/document';
 import { renderPageToSvg, type TextMeasurer, wrapTextLines } from '@opencanvas/export';
 import { getIcon } from '@opencanvas/icons';
 import { describe, expect, it } from 'vitest';
 
-import { getBlueprint } from './blueprints';
+import { getBlueprint, resolvePalette } from './blueprints';
+import { Frame, type TextOptions } from './kit';
 import { TEMPLATES, categoryLabel, getTemplate } from './catalog';
 import { GENERATED_INSTANCES } from './generated';
 import { INSTANCES } from './instances';
+import {
+  MIN_TEXT_CONTRAST,
+  auditReadability,
+  contrastRatio,
+  readableOn,
+  relativeLuminance,
+} from './readability';
 import { SIGNATURE_TEMPLATES } from './signature';
 
 const PRESETS = new Set(CANVAS_PRESETS.map((preset) => preset.id));
@@ -177,5 +185,200 @@ describe('the template catalogue', () => {
   it('finds a design by id', () => {
     expect(getTemplate('studio-opening')?.label).toBe('Studio Opening');
     expect(getTemplate('nope')).toBeUndefined();
+  });
+
+  // The catalogue is written once per blueprint and rendered into every preset, so the way to
+  // keep it honest is to measure the result rather than trust the authoring. The half-em advance
+  // below is the same estimate the layout kit fits against.
+  const measure: TextMeasurer = (text, style) => text.length * style.fontSize * 0.5;
+
+  const drawnBottom = (element: TextElement): number => {
+    const lines = wrapTextLines(element, measure).length;
+    return element.y + element.fontSize * (element.lineHeight * (lines - 1) + 1.13);
+  };
+
+  it('never lets one block of text run into another, in any design', () => {
+    const collisions: string[] = [];
+    for (const template of TEMPLATES) {
+      const document = template.build();
+      for (const page of document.pages) {
+        const texts = page.elements.filter(
+          (element): element is TextElement => element.type === 'text',
+        );
+        for (const a of texts) {
+          const bottom = drawnBottom(a);
+          for (const b of texts) {
+            if (a === b || b.y < a.y) continue;
+            const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+            const overlapY = Math.min(bottom, drawnBottom(b)) - Math.max(a.y, b.y);
+            // A few pixels of kerning slack keeps this from firing on touching baselines.
+            if (overlapX > 4 && overlapY > 4) {
+              collisions.push(
+                `${template.id}: "${a.text.slice(0, 32)}" overlaps "${b.text.slice(0, 32)}"`,
+              );
+            }
+          }
+        }
+      }
+    }
+    expect(collisions).toEqual([]);
+  });
+
+  it('keeps every line of text on the page once it has wrapped', () => {
+    const spills: string[] = [];
+    for (const template of TEMPLATES) {
+      const document = template.build();
+      for (const page of document.pages) {
+        for (const element of page.elements) {
+          if (element.type !== 'text') continue;
+          const bottom = drawnBottom(element);
+          if (bottom > document.size.height + 2) {
+            spills.push(
+              `${template.id}: "${element.text.slice(0, 32)}" reaches ${Math.round(bottom)} of ` +
+                `${document.size.height}`,
+            );
+          }
+        }
+      }
+    }
+    expect(spills).toEqual([]);
+  });
+
+  it('can be read: every line of text clears WCAG AA against what sits behind it', () => {
+    const failures: string[] = [];
+    for (const template of TEMPLATES) {
+      for (const finding of auditReadability(template.build())) {
+        failures.push(
+          `${template.id}: "${finding.text}" at ${finding.fontSize}px is ${finding.colour} on ` +
+            `${finding.backdrop} (${finding.ratio.toFixed(2)}:1, needs ${finding.required}:1)`,
+        );
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+});
+
+describe('palette resolution', () => {
+  // Four colours in, eight roles out. The roles are what layouts draw with, so these are the
+  // guarantees that keep a new palette from quietly producing unreadable designs.
+  const resolve = (bg: string, ink: string, accent: string, soft: string, onAccent?: string) =>
+    resolvePalette({ bg, ink, accent, soft, ...(onAccent === undefined ? {} : { onAccent }) });
+
+  it('leaves a palette that already works exactly as the designer wrote it', () => {
+    const palette = resolve('#ffffff', '#111827', '#b91c1c', '#fee2e2');
+    expect(palette.ink).toBe('#111827');
+    expect(palette.accentText).toBe('#b91c1c');
+  });
+
+  it('keeps accent usable as a fill even when it is too pale to be text', () => {
+    const palette = resolve('#fff7ed', '#431407', '#ea580c', '#fed7aa');
+    // The fill is untouched, so the design keeps its bright orange furniture...
+    expect(palette.accent).toBe('#ea580c');
+    // ...while the text form is darkened only as far as legibility demands.
+    expect(palette.accentText).not.toBe('#ea580c');
+    expect(contrastRatio(palette.accentText, palette.bg)).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST);
+  });
+
+  it('rescues ink that was set to the same colour as the background', () => {
+    const palette = resolve('#111111', '#111111', '#facc15', '#fde68a', '#111111');
+    expect(contrastRatio(palette.ink, palette.bg)).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST);
+  });
+
+  it('honours an explicit onAccent when it is legible rather than overriding the designer', () => {
+    const palette = resolve('#ffffff', '#111827', '#facc15', '#fef9c3', '#111111');
+    expect(palette.onAccent).toBe('#111111');
+  });
+
+  it('gives every role enough contrast against the surface it is drawn on', () => {
+    const palette = resolve('#f7fee7', '#1a2e05', '#65a30d', '#d9f99d');
+    const pairs: readonly (readonly [string, string, string])[] = [
+      ['ink on bg', palette.ink, palette.bg],
+      ['accentText on bg', palette.accentText, palette.bg],
+      ['onAccent on accent', palette.onAccent, palette.accent],
+      ['onSoft on soft', palette.onSoft, palette.soft],
+      ['onInk on ink', palette.onInk, '#1a2e05'],
+    ];
+    for (const [role, colour, surface] of pairs) {
+      expect(contrastRatio(colour, surface), role).toBeGreaterThanOrEqual(MIN_TEXT_CONTRAST);
+    }
+  });
+});
+
+describe('contrast repair', () => {
+  it('measures contrast the way WCAG does', () => {
+    expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 5);
+    expect(contrastRatio('#ffffff', '#ffffff')).toBeCloseTo(1, 5);
+    // Order must not matter.
+    expect(contrastRatio('#777777', '#ffffff')).toBeCloseTo(contrastRatio('#ffffff', '#777777'), 5);
+    expect(relativeLuminance('#ffffff')).toBeCloseTo(1, 5);
+    expect(relativeLuminance('#000000')).toBeCloseTo(0, 5);
+  });
+
+  it('reads three-digit hex the same as six', () => {
+    expect(relativeLuminance('#fff')).toBeCloseTo(relativeLuminance('#ffffff'), 5);
+  });
+
+  it('moves a colour as little as possible, keeping its hue recognisable', () => {
+    const repaired = readableOn('#ea580c', '#fff7ed', MIN_TEXT_CONTRAST);
+    const [r, g, b] = [1, 3, 5].map((index) =>
+      Number.parseInt(repaired.slice(index, index + 2), 16),
+    );
+    // Still orange: red leads, green sits in the middle, blue stays low.
+    expect(r).toBeGreaterThan(g ?? 0);
+    expect(g ?? 0).toBeGreaterThan(b ?? 0);
+  });
+
+  it('sends grey straight to the clean pole instead of a muddy mid-tone', () => {
+    // Grey has no hue worth preserving, so crawling it to a barely-legal tone would just look
+    // like a mistake.
+    expect(readableOn('#111111', '#111111', MIN_TEXT_CONTRAST)).toBe('#ffffff');
+    expect(readableOn('#eeeeee', '#ffffff', MIN_TEXT_CONTRAST)).toBe('#000000');
+  });
+
+  it('picks the pole by measurement, not by guessing light or dark', () => {
+    // A mid cyan looks light, yet black reads on it and white does not.
+    expect(readableOn('#ffffff', '#06b6d4', MIN_TEXT_CONTRAST)).toBe('#000000');
+  });
+});
+
+describe('fitting text to the space a layout reserved', () => {
+  const build = (text: string, options: Partial<TextOptions> & { size: number }) => {
+    const { document, frame } = Frame.document({
+      templateId: 'fit-test',
+      name: 'Fit test',
+      presetId: 'instagram-post',
+    });
+    frame.text(text, { x: 0.1, y: 0.1, w: 0.8, ...options });
+    return document.pages[0]?.elements[0] as TextElement;
+  };
+
+  it('leaves type alone when it already fits', () => {
+    const element = build('Short', { size: 0.05 });
+    expect(element.fontSize).toBe(Math.round(0.05 * 1080));
+  });
+
+  it('steps a headline down until it fits the line it was given', () => {
+    const headline = 'Attention is the only material';
+    const element = build(headline, { size: 0.06 });
+    expect(element.fontSize).toBeLessThan(Math.round(0.06 * 1080));
+    // One line at the fitted size, which is what the layout budgeted for.
+    expect(headline.length * element.fontSize * 0.5).toBeLessThanOrEqual(element.width);
+    // ...and no smaller than it had to be: one step back up would have spilled.
+    const taller = Math.round(element.fontSize / 0.94);
+    expect(headline.length * taller * 0.5).toBeGreaterThan(element.width);
+  });
+
+  it('respects the line breaks an author wrote instead of squeezing them out', () => {
+    const element = build('Spring\nGala', { size: 0.12 });
+    expect(element.fontSize).toBe(Math.round(0.12 * 1080));
+    expect(element.height).toBeGreaterThan(element.fontSize * 2);
+  });
+
+  it('refuses to shrink text into illegibility, keeping an honest box instead', () => {
+    // A string far too long for its slot: the size bottoms out and the height grows to match
+    // what is actually drawn, rather than quietly reporting one line.
+    const element = build('supercalifragilistic '.repeat(14).trim(), { size: 0.12 });
+    expect(element.fontSize).toBeGreaterThanOrEqual(Math.round(0.12 * 1080 * 0.4));
+    expect(element.height).toBeGreaterThan(element.fontSize * 2);
   });
 });

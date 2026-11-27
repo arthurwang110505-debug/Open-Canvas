@@ -1,4 +1,5 @@
 export * from './arrange';
+export * from './gesture';
 export * from './commands';
 export * from './history';
 export * from './layout';

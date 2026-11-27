@@ -273,7 +273,7 @@ export function Rulers() {
               aria-hidden="true"
               className={`absolute ${
                 horizontal ? 'top-1/2 right-0 left-0 border-t' : 'top-0 bottom-0 left-1/2 border-l'
-              } ${guide.kind === 'bleed' ? 'border-dashed border-rose-500' : 'border-indigo-500'}`}
+              } ${guide.kind === 'bleed' ? 'border-dashed border-rose-500' : 'border-indigo-500'}`} // theme-ok: guide colours are canvas annotations, constant in both themes
             />
           </button>
         );
@@ -290,7 +290,7 @@ export function Rulers() {
             addAtCenter('horizontal');
           }
         }}
-        className="pointer-events-auto absolute top-0 right-0 left-6 h-6 cursor-row-resize border-b border-border bg-white/95 shadow-sm outline-none focus-visible:bg-muted"
+        className="pointer-events-auto absolute top-0 right-0 left-6 h-6 cursor-row-resize border-b border-border bg-panel/95 shadow-sm outline-none focus-visible:bg-muted"
       >
         <HorizontalTicks ticks={horizontalTicks} />
         {pointer ? (
@@ -313,7 +313,7 @@ export function Rulers() {
             addAtCenter('vertical');
           }
         }}
-        className="pointer-events-auto absolute top-6 bottom-0 left-0 w-6 cursor-col-resize border-r border-border bg-white/95 shadow-sm outline-none focus-visible:bg-muted"
+        className="pointer-events-auto absolute top-6 bottom-0 left-0 w-6 cursor-col-resize border-r border-border bg-panel/95 shadow-sm outline-none focus-visible:bg-muted"
       >
         <VerticalTicks ticks={verticalTicks} />
         {pointer ? (
@@ -326,7 +326,7 @@ export function Rulers() {
         ) : null}
       </button>
 
-      <div className="pointer-events-auto absolute top-0 left-0 size-6 border-r border-b border-border bg-white">
+      <div className="pointer-events-auto absolute top-0 left-0 size-6 border-r border-b border-border bg-panel">
         <Menu>
           <MenuTrigger asChild>
             <Button

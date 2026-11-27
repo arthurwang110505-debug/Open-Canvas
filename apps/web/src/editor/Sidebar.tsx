@@ -35,6 +35,7 @@ import { PagePropertiesPanel, PropertiesPanel } from './PropertiesPanel';
 import { useDraw } from './draw/DrawContext';
 import { TemplateGallery } from '../templates/TemplateGallery';
 import { getTemplate } from '../templates/catalog';
+import { useSheetDismiss } from './useSheetDismiss';
 import { useMediaQuery } from '../useMediaQuery';
 
 export type SidebarTab =
@@ -286,6 +287,11 @@ export function Sidebar({
     });
   }, [active, baseId, onMobileOpenChange]);
 
+  const sheet = useSheetDismiss({
+    enabled: isMobile && mobileOpen && !collapsed,
+    onDismiss: closeMobilePanel,
+  });
+
   useEffect(() => {
     if (!isMobile || !mobileOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -348,7 +354,7 @@ export function Sidebar({
           'relative flex h-full min-w-16 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[10px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-[21px] lg:h-[62px] lg:w-full lg:min-w-0 lg:flex-none lg:rounded-xl lg:py-2',
           selected
             ? 'bg-primary/10 text-primary'
-            : 'text-muted-foreground hover:bg-white hover:text-foreground',
+            : 'text-muted-foreground hover:bg-panel hover:text-foreground',
         )}
       >
         {selected ? (
@@ -380,13 +386,14 @@ export function Sidebar({
       {isMobile && mobileOpen && !collapsed ? (
         <div
           aria-hidden="true"
+          // theme-ok: a scrim dims what is behind it, so it is dark in both themes.
           className="fixed inset-0 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-30 bg-slate-950/20 backdrop-blur-[1px] lg:hidden"
           onClick={closeMobilePanel}
         />
       ) : null}
       <nav
         aria-label="Editor tools"
-        className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(4rem_+_env(safe-area-inset-bottom))] shrink-0 flex-row items-stretch gap-1 overflow-x-auto overscroll-x-contain border-t border-border bg-[#faf9fc] px-1 pb-[env(safe-area-inset-bottom)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:static lg:z-20 lg:h-auto lg:w-[76px] lg:flex-col lg:items-center lg:overflow-x-visible lg:overflow-y-auto lg:border-r lg:border-t-0 lg:px-1.5 lg:py-2 lg:pb-2"
+        className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(4rem_+_env(safe-area-inset-bottom))] shrink-0 flex-row items-stretch gap-1 overflow-x-auto overscroll-x-contain border-t border-border bg-panel px-1 pb-[env(safe-area-inset-bottom)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:static lg:z-20 lg:h-auto lg:w-[76px] lg:flex-col lg:items-center lg:overflow-x-visible lg:overflow-y-auto lg:border-r lg:border-t-0 lg:px-1.5 lg:py-2 lg:pb-2"
       >
         <Button
           variant="ghost"
@@ -419,11 +426,26 @@ export function Sidebar({
           id={`${baseId}-panel-${active}`}
           aria-labelledby={`${baseId}-tab-${active}`}
           hidden={panelHidden}
+          style={sheet.offset > 0 ? { transform: `translateY(${sheet.offset}px)` } : undefined}
           className={cn(
-            'fixed inset-x-0 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-40 h-[min(62dvh,560px)] min-h-0 min-w-0 flex-col rounded-t-2xl border-t border-border bg-panel shadow-[0_-16px_48px_rgba(15,23,42,0.18)] max-lg:animate-sheet-in lg:static lg:z-auto lg:h-full lg:w-[300px] lg:rounded-none lg:border-t-0 lg:shadow-none',
+            'fixed inset-x-0 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-40 h-[min(62dvh,560px)] min-h-0 min-w-0 flex-col rounded-t-2xl border-t border-border bg-panel shadow-card-hover max-lg:animate-sheet-in lg:static lg:z-auto lg:h-full lg:w-[300px] lg:rounded-none lg:border-t-0 lg:shadow-none lg:transform-none',
             mobileOpen ? 'flex' : 'hidden lg:flex',
+            // While a finger is on the handle the sheet tracks it exactly; on release it
+            // springs back, so the only animation is the one the user did not perform.
+            sheet.dragging ? 'transition-none' : 'max-lg:transition-transform max-lg:duration-200',
           )}
         >
+          {/*
+            A grab handle, and the hit area around it. Phones expect a sheet to be swiped away;
+            the close button stays for pointer users and screen readers.
+          */}
+          <div
+            {...sheet.handleProps}
+            aria-hidden="true"
+            className="flex shrink-0 cursor-grab touch-none justify-center py-2 active:cursor-grabbing lg:hidden"
+          >
+            <span className="h-1 w-9 rounded-full bg-muted-foreground/40" />
+          </div>
           <div className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2">
             <div className="min-w-0">
               <h2 className="text-sm font-semibold">{activeLabel}</h2>

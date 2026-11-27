@@ -40,8 +40,8 @@ export function ShareViewer({ shareId }: { shareId: string }) {
 
   if (!doc) {
     return (
-      <div className="grid h-full place-items-center bg-[#f8f9fb] p-6">
-        <div className="max-w-md rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-border">
+      <div className="grid h-full place-items-center bg-workspace p-6">
+        <div className="max-w-md rounded-2xl bg-panel p-8 text-center shadow-sm ring-1 ring-border">
           <h1 className="text-lg font-semibold">Share not found</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             This link may have been created in another browser. Ask the owner to create a new share
@@ -63,8 +63,8 @@ export function ShareViewer({ shareId }: { shareId: string }) {
   const total = doc.pages.length;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[#f8f9fb]">
-      <header className="flex shrink-0 items-center justify-between border-b border-border bg-white px-4 py-3 shadow-sm">
+    <div className="flex h-full flex-col overflow-hidden bg-workspace">
+      <header className="flex shrink-0 items-center justify-between border-b border-border bg-panel px-4 py-3 shadow-sm">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{doc.name}</p>
           <p className="text-xs text-muted-foreground">
@@ -88,7 +88,7 @@ export function ShareViewer({ shareId }: { shareId: string }) {
 
       <div className="flex flex-1 flex-col overflow-hidden">
         {total > 1 ? (
-          <div className="flex shrink-0 items-center justify-center gap-2 border-b border-border bg-white px-4 py-2">
+          <div className="flex shrink-0 items-center justify-center gap-2 border-b border-border bg-panel px-4 py-2">
             <Button
               variant="ghost"
               size="sm"
@@ -116,6 +116,7 @@ export function ShareViewer({ shareId }: { shareId: string }) {
         <div className="flex flex-1 items-center justify-center overflow-auto p-6 sm:p-10">
           {svg ? (
             <div
+              // theme-ok: the shared design keeps its own paper colour.
               className="max-h-full max-w-full overflow-hidden rounded-xl bg-white p-2 shadow-lg ring-1 ring-border [&_svg]:h-auto [&_svg]:w-auto [&_svg]:max-w-[min(90vw,1200px)] [&_svg]:object-contain"
               dangerouslySetInnerHTML={{ __html: svg }}
             />

@@ -8,6 +8,7 @@ import {
 } from '@opencanvas/document';
 
 import { presetSize } from './kit';
+import { MIN_TEXT_CONTRAST, readableOn } from './readability';
 import type { TemplateDefinition } from './types';
 
 // ---------------------------------------------------------------------------
@@ -490,7 +491,9 @@ function tplPresentationStats(): DesignDocument {
         fontSize: 14,
         fontWeight: 700,
         textAlign: 'center',
-        color: '#ffffff',
+        // Three chips, three different brand colours: white reads on the indigo and vanishes
+        // on the amber, so the label is chosen per chip rather than assumed.
+        color: readableOn('#ffffff', c.color, MIN_TEXT_CONTRAST),
       }),
     );
   }
@@ -749,7 +752,7 @@ function tplYoutube(): DesignDocument {
       y: 500,
       width: 200,
       height: 36,
-      fill: { type: 'solid', color: '#ef4444' },
+      fill: { type: 'solid', color: '#b91c1c' },
       cornerRadius: 6,
     }),
   );
@@ -763,7 +766,7 @@ function tplYoutube(): DesignDocument {
       fontSize: 16,
       fontWeight: 700,
       textAlign: 'center',
-      color: '#ffffff',
+      color: readableOn('#ffffff', '#b91c1c', MIN_TEXT_CONTRAST),
     }),
   );
   return doc;
@@ -909,7 +912,7 @@ function tplQuote(): DesignDocument {
       text: '— ALBERT EINSTEIN',
       fontSize: 22,
       fontWeight: 600,
-      color: '#ddd6fe',
+      color: '#ede9fe',
       textAlign: 'center',
       letterSpacing: 3,
     }),
@@ -1083,7 +1086,7 @@ function tplBrand(): DesignDocument {
         fontSize: 14,
         fontWeight: 400,
         textAlign: 'center',
-        color: '#9ca3af',
+        color: '#6b7280',
       }),
     );
   }

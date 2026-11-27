@@ -78,7 +78,7 @@ export function ProjectCard({
   };
 
   return (
-    <li className="group flex min-w-0 animate-rise-in flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md">
+    <li className="group flex min-w-0 animate-rise-in flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md">
       <div className="relative p-2">
         <button
           type="button"
@@ -98,8 +98,8 @@ export function ProjectCard({
           onClick={() => onToggleStar(project.id, !starred)}
           className={`absolute right-4 top-4 size-9 rounded-full border border-white/60 shadow-sm backdrop-blur transition-colors ${
             starred
-              ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
-              : 'bg-white/90 text-muted-foreground hover:text-amber-600'
+              ? 'bg-warning/12 text-warning hover:bg-warning/20'
+              : 'bg-panel/90 text-muted-foreground hover:text-warning'
           }`}
         >
           <Star className={`size-4 ${starred ? 'fill-current' : ''}`} />

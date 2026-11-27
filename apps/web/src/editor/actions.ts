@@ -30,7 +30,7 @@ import {
 import { panFramePhoto } from '@opencanvas/canvas-fabric';
 import { useMemo } from 'react';
 
-import { useCanvasController, useEditorStore } from './hooks';
+import { useCanvasController, useEditorStore, useNotificationStore } from './hooks';
 import { FONT_PAIRINGS, TEXT_PRESETS, type TextPreset } from './textPresets';
 import { buildChartGroup, type ChartDatum, type ChartKind } from './elements/charts';
 import { regenerateChartGroup } from './elements/chartData';
@@ -228,6 +228,7 @@ function placeAt(
 export function useEditorActions(): EditorActions {
   const store = useEditorStore();
   const canvas = useCanvasController();
+  const notifications = useNotificationStore();
 
   return useMemo<EditorActions>(() => {
     const dispatch = (command: EditorCommand, options?: DispatchOptions) =>
@@ -590,7 +591,17 @@ export function useEditorActions(): EditorActions {
 
       deleteSelection: () => {
         const ids = selected();
-        if (ids.length > 0) dispatch({ type: 'element.delete', pageId: pageId(), elementIds: ids });
+        if (ids.length === 0) return;
+        dispatch({ type: 'element.delete', pageId: pageId(), elementIds: ids });
+        // Deleting is the one change people most often make by accident. Saying so, and
+        // offering the way back in the same breath, is cheaper than a confirm dialog on every
+        // delete and far less annoying.
+        notifications.getState().show({
+          kind: 'info',
+          title: ids.length === 1 ? 'Object deleted' : `${ids.length} objects deleted`,
+          message: 'You can put it back.',
+          action: { label: 'Undo', ariaLabel: 'Undo delete', run: () => store.getState().undo() },
+        });
       },
 
       duplicateSelection: () => {
@@ -883,5 +894,5 @@ export function useEditorActions(): EditorActions {
         dispatch({ type: 'document.replace', document: snapshot });
       },
     };
-  }, [store, canvas]);
+  }, [store, canvas, notifications]);
 }

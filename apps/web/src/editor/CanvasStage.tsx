@@ -22,6 +22,7 @@ import { CropOverlay } from './canvas/CropOverlay';
 import { Rulers } from './canvas/Rulers';
 import { useCanvasController, useEditor, useEditorStore, useNotificationStore } from './hooks';
 import { useDraw } from './draw/DrawContext';
+import { usePinchZoom } from './usePinchZoom';
 
 /** What a dropped photo replaces: a frame it fills or an image it swaps. */
 interface DropTarget {
@@ -485,12 +486,16 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
     // Don't finish on leave — wait for up
   }, []);
 
+  usePinchZoom(containerRef, adapterRef);
+
   return (
     <div
       ref={containerRef}
       data-testid="canvas-stage"
       className={cn(
-        'relative h-full w-full overflow-hidden bg-workspace',
+        // `touch-action: none` hands every touch to the canvas: without it the browser
+        // claims two fingers for its own page zoom and the gesture never arrives.
+        'relative h-full w-full touch-none overflow-hidden bg-workspace',
         dropActive && 'ring-2 ring-ring ring-inset',
         drawEnabled && 'cursor-crosshair',
       )}
@@ -521,7 +526,7 @@ export function CanvasStage({ onOpenPageSettings, onOpenProperties }: CanvasStag
       ) : null}
       {isEmpty && !drawEnabled && !dropActive ? (
         <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center px-6">
-          <div className="pointer-events-none flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border border-border/80 bg-white/95 px-6 py-5 text-center shadow-[0_12px_40px_rgba(16,24,40,0.12)] backdrop-blur">
+          <div className="pointer-events-none flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border border-border/80 bg-panel/95 px-6 py-5 text-center shadow-card-hover backdrop-blur">
             <span className="grid size-10 place-items-center rounded-xl bg-secondary text-secondary-foreground">
               <LayoutTemplate className="size-5" />
             </span>

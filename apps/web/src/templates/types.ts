@@ -22,6 +22,33 @@ export interface TemplatePalette {
   onAccent?: string;
 }
 
+/**
+ * What a blueprint actually draws with.
+ *
+ * `TemplatePalette` is the designer's intent — four colours and a mood. This is that intent
+ * after every colour has been checked against the surface it lands on, so a blueprint cannot
+ * accidentally put an amber eyebrow on cream or (as one palette really did) ink on a
+ * background of the same colour. `accent` and `soft` are untouched: they are fills, and
+ * darkening a brand shape to suit text that happens to sit elsewhere would be the wrong fix.
+ */
+export interface ResolvedPalette {
+  bg: string;
+  /** Body and headline colour, readable on `bg`. */
+  ink: string;
+  /** Fill colour. Never used for text. */
+  accent: string;
+  /** `accent` as a text colour on `bg`, darkened or lightened only as far as it must be. */
+  accentText: string;
+  /** Pale fill colour. Never used for text. */
+  soft: string;
+  /** Text on an `accent` fill. */
+  onAccent: string;
+  /** Text on a `soft` fill. */
+  onSoft: string;
+  /** Text on an `ink` fill. */
+  onInk: string;
+}
+
 export interface TemplateTypography {
   display: string;
   body: string;

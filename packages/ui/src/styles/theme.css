@@ -2,6 +2,8 @@
  * Design tokens shared by every OpenCanvas surface. Tailwind v4 turns these into utilities
  * such as `bg-background`, `text-muted-foreground`, `border-border`, `bg-primary`.
  */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
@@ -20,8 +22,8 @@
   --color-accent-foreground: #312e81;
   --color-destructive: #dc2626;
   --color-destructive-foreground: #ffffff;
-  --color-success: #16a34a;
-  --color-warning: #d97706;
+  --color-success: #15803d;
+  --color-warning: #b45309;
   --color-workspace: #f2f3f5;
   --color-panel: #ffffff;
 
@@ -51,6 +53,51 @@
   --animate-present-fade: present-fade 260ms ease-out both;
   --animate-present-next: present-next 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-present-prev: present-prev 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * Dark theme.
+ *
+ * `.dark` on the document element overrides the same tokens, so every utility built on them
+ * follows without a single component knowing which theme is on. Only the chrome changes: a
+ * design's own colours belong to the document, not the interface, so the page stays exactly
+ * the colour the author chose.
+ *
+ * Contrast is not left to taste — `theme.test.ts` asserts every foreground/surface pair in both
+ * themes clears WCAG AA, which is why the primary is a bright violet with near-black text
+ * rather than white on violet, a pairing that only reaches 4.0.
+ */
+.dark {
+  --color-background: #12141a;
+  --color-foreground: #e8eaef;
+  --color-muted: #1b1e26;
+  --color-muted-foreground: #a3abba;
+  --color-border: #343b49;
+  --color-input: #4a5262;
+  --color-ring: #9d7bff;
+  --color-primary: #9d7bff;
+  --color-primary-foreground: #12141a;
+  --color-secondary: #2a2342;
+  --color-secondary-foreground: #d8c9ff;
+  --color-accent: #221c35;
+  --color-accent-foreground: #cdbcff;
+  --color-destructive: #f0616b;
+  --color-destructive-foreground: #12141a;
+  --color-success: #3dd68c;
+  --color-warning: #f0a132;
+  /* The canvas sits below the panels, the way it does in every darkroom-style editor. */
+  --color-workspace: #0b0d11;
+  --color-panel: #171a21;
+
+  /* A soft shadow is invisible against near-black, so depth comes from a lifted edge instead. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-card-hover: 0 6px 20px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-page: 0 2px 10px rgba(0, 0, 0, 0.7), 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Native widgets (scrollbars, form controls, the caret) follow the theme too. */
+.dark {
+  color-scheme: dark;
 }
 
 @keyframes overlay-in {

@@ -109,7 +109,7 @@ export function Dialog({ labelledBy, describedBy, onClose, children, className }
       ref={overlayRef}
       data-dialog-overlay
       role="presentation"
-      className="fixed inset-0 z-[100] flex animate-overlay-in items-center justify-center overflow-y-auto bg-slate-950/45 p-3 backdrop-blur-[3px] sm:p-6"
+      className="fixed inset-0 z-[100] flex animate-overlay-in items-center justify-center overflow-y-auto bg-slate-950/45 p-3 backdrop-blur-[3px] sm:p-6" // theme-ok: a scrim dims what is behind it, so it is dark in both themes
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

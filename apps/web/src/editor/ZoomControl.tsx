@@ -33,7 +33,7 @@ export function ZoomControl() {
     <div
       role="group"
       aria-label="Zoom"
-      className="flex shrink-0 items-center gap-0.5 rounded-full border border-border bg-white/95 px-1 py-1 shadow-[0_8px_24px_rgba(16,24,40,0.12)]"
+      className="flex shrink-0 items-center gap-0.5 rounded-full border border-border bg-panel/95 px-1 py-1 shadow-card-hover"
     >
       <Tooltip content="Zoom out (Ctrl −)">
         <Button

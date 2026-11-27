@@ -78,7 +78,7 @@ export function ProjectThumbnail({ project }: ProjectThumbnailProps) {
 
   return (
     <div
-      className="relative overflow-hidden rounded-xl border border-border bg-white p-2"
+      className="relative overflow-hidden rounded-xl border border-border bg-panel p-2"
       style={{ aspectRatio: String(aspect) }}
     >
       <div
@@ -96,7 +96,7 @@ function FallbackThumbnail({ project }: { project: ProjectSummary }) {
   const isSquare = aspect >= 0.9 && aspect <= 1.1;
   const isWide = aspect > 1.8;
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-[#f8f7ff] via-white to-[#eef2ff]">
+    <div className="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-accent via-panel to-secondary">
       <div
         className="absolute inset-0 opacity-[0.04]"
         style={{
@@ -122,7 +122,7 @@ function FallbackThumbnail({ project }: { project: ProjectSummary }) {
             </div>
           </div>
         </div>
-        <span className="mt-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground shadow-sm ring-1 ring-border">
+        <span className="mt-2 rounded-full bg-panel px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground shadow-sm ring-1 ring-border">
           {project.size.width} × {project.size.height}
           {isSquare ? ' · Square' : isPortrait ? ' · Portrait' : isWide ? ' · Wide' : ''}
         </span>

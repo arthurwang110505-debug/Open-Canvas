@@ -267,7 +267,7 @@ function CropBoxView({ element, asset, draft, zoom, origin, controller, store }:
         ))}
       </div>
       <div className="pointer-events-auto absolute inset-x-0 top-3 flex justify-center">
-        <div className="flex items-center gap-1 rounded-full border border-border bg-white px-2 py-1.5 shadow-lg">
+        <div className="flex items-center gap-1 rounded-full border border-border bg-panel px-2 py-1.5 shadow-card-hover">
           <div className="flex items-center gap-1" role="group" aria-label="Crop aspect">
             {ASPECTS.map((aspect) => (
               <Button

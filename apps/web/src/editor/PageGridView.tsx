@@ -31,9 +31,9 @@ export function PageGridView({
     <Dialog
       labelledBy="page-grid-title"
       onClose={onClose}
-      className="flex h-[85dvh] max-w-6xl flex-col overflow-hidden bg-[#f8f8fa]"
+      className="flex h-[85dvh] max-w-6xl flex-col overflow-hidden bg-workspace"
     >
-      <header className="flex shrink-0 items-center gap-3 border-b border-border bg-white px-5 py-3">
+      <header className="flex shrink-0 items-center gap-3 border-b border-border bg-panel px-5 py-3">
         <div className="min-w-0 flex-1">
           <h2 id="page-grid-title" className="text-sm font-semibold text-foreground">
             All pages
@@ -68,14 +68,14 @@ export function PageGridView({
             return (
               <article
                 key={page.id}
-                className={`group overflow-hidden rounded-xl border bg-white transition-shadow ${active ? 'border-primary shadow-[0_0_0_2px_rgba(122,92,249,0.16)]' : 'border-border hover:shadow-card'}`}
+                className={`group overflow-hidden rounded-xl border bg-panel transition-shadow ${active ? 'border-primary shadow-[0_0_0_2px_rgba(122,92,249,0.16)]' : 'border-border hover:shadow-card'}`}
               >
                 <button
                   type="button"
                   aria-label={`Go to page ${index + 1}${active ? ' (current)' : ''}`}
                   aria-current={active ? 'page' : undefined}
                   onClick={() => onSelectPage(page.id)}
-                  className="flex min-h-40 w-full items-center justify-center overflow-hidden bg-[#f0f0f3] p-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="flex min-h-40 w-full items-center justify-center overflow-hidden bg-muted p-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <span className="overflow-hidden rounded-sm shadow-[0_3px_10px_rgba(15,23,42,0.14)]">
                     <PageThumbnail document={document} pageId={page.id} targetWidth={160} />
